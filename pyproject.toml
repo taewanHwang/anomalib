@@ -33,8 +33,8 @@ dependencies = [
     "omegaconf>=2.1.1",
     "rich>=13.5.2",
     "jsonargparse[signatures]>=4.27.7",
-    "docstring_parser",     # CLI help-formatter
-    "rich_argparse",        # CLI help-formatter
+    "docstring_parser", # CLI help-formatter
+    "rich_argparse", # CLI help-formatter
     # Torch and Lightning dependencies
     "lightning>=2.2",
     "torchmetrics>=1.3.2",
@@ -53,6 +53,7 @@ dependencies = [
     "pandas>=1.1.0",
     "matplotlib>=3.4.3",
     "scikit-learn",
+    "gpustat>=1.1.1",
 ]
 
 [project.optional-dependencies]
