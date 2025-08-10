@@ -9,6 +9,7 @@ datasets:
 - ``BTechDataset``: BTech dataset containing industrial objects
 - ``DatumaroDataset``: Dataset in Datumaro format (Intel Geti™ export)
 - ``FolderDataset``: Custom dataset from folder structure
+- ``HDMAPDataset``: HDMAP dataset for domain transfer learning
 - ``KolektorDataset``: Kolektor surface defect dataset
 - ``MVTecADDataset``: MVTec AD dataset with industrial objects
 - ``MVTecLOCODataset``: MVTec LOCO dataset with logical and structural anomalies
@@ -28,6 +29,7 @@ Example:
 from .btech import BTechDataset
 from .datumaro import DatumaroDataset
 from .folder import FolderDataset
+from .hdmap import HDMAPDataset
 from .kolektor import KolektorDataset
 from .mpdd import MPDDDataset
 from .mvtec_loco import MVTecLOCODataset
@@ -42,6 +44,7 @@ __all__ = [
     "BTechDataset",
     "DatumaroDataset",
     "FolderDataset",
+    "HDMAPDataset",
     "KolektorDataset",
     "MPDDDataset",
     "MVTecDataset",

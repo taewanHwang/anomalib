@@ -23,7 +23,8 @@ Reference:
 from pathlib import Path
 
 import numpy as np
-from cv2 import imread
+# from cv2 import imread
+import cv2
 from pandas import DataFrame
 from sklearn.model_selection import train_test_split
 from torchvision.transforms.v2 import Transform
@@ -208,7 +209,7 @@ def is_mask_anomalous(path: str) -> int:
         >>> is_mask_anomalous(path)
         1
     """
-    img_arr = imread(path)
+    img_arr = cv2.imread(path)
     if np.all(img_arr == 0):
         return 0
     return 1

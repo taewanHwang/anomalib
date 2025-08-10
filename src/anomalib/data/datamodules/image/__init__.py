@@ -9,6 +9,7 @@ anomaly detection. The following data modules are available:
 - ``BTech``: BTech Surface Defect Dataset
 - ``Datumaro``: Dataset in Datumaro format (Intel Geti™ export)
 - ``Folder``: Custom folder structure with normal/abnormal images
+- ``HDMAP``: HDMAP dataset for domain transfer learning
 - ``Kolektor``: Kolektor Surface-Defect Dataset
 - ``MPDD``: Metal Parts Defect Detection Dataset
 - ``MVTecAD``: MVTec Anomaly Detection Dataset
@@ -33,6 +34,7 @@ from enum import Enum
 from .btech import BTech
 from .datumaro import Datumaro
 from .folder import Folder
+from .hdmap import HDMAPDataModule as HDMAP
 from .kolektor import Kolektor
 from .mpdd import MPDD
 from .mvtec_loco import MVTecLOCO
@@ -85,6 +87,7 @@ __all__ = [
     "BTech",
     "Datumaro",
     "Folder",
+    "HDMAP",
     "Kolektor",
     "MPDD",
     "MVTec",  # Include MVTec for backward compatibility
