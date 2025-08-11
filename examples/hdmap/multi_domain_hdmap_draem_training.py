@@ -26,13 +26,21 @@ MultiDomainHDMAPDataModule과 DRAEM 모델을 활용한 효율적인 도메인 �
 import os
 import torch
 import gc
+import json
+import shutil
+from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any, List
+import logging
 
 # MultiDomain HDMAP import
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
 from anomalib.models import Draem
 from anomalib.engine import Engine
 from anomalib.loggers import AnomalibTensorBoardLogger
+
+# gt_mask 경고 메시지 비활성화
+logging.getLogger("anomalib.visualization.image.item_visualizer").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -44,9 +52,227 @@ def cleanup_gpu_memory():
         torch.cuda.empty_cache()
         gc.collect()
         print(f"GPU 메모리 사용량: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
-        print(f"GPU 메모리 예약량: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+
+
+def create_custom_visualizations(
+    experiment_name: str = "multi_domain_draem",
+    results_base_dir: str = "results/Draem/MultiDomainHDMAPDataModule",
+    source_domain: str = "domain_A",
+    target_domains: list = None,
+    source_results: Dict[str, Any] = None,
+    target_results: Dict[str, Dict[str, Any]] = None
+) -> str:
+    """Custom Visualization 폴더 구조 생성 및 실험 정보 저장.
+    
+    Args:
+        experiment_name: 실험 이름
+        results_base_dir: 기본 결과 디렉토리 경로
+        source_domain: 소스 도메인 이름
+        target_domains: 타겟 도메인 리스트
+        source_results: 소스 도메인 평가 결과
+        target_results: 타겟 도메인들 평가 결과
+        
+    Returns:
+        str: 생성된 custom_visualize 디렉토리 경로
+    """
+    print(f"\n🎨 Custom Visualization 생성")
+    
+    # 최신 버전 폴더 찾기 (latest 심볼릭 링크 또는 최신 v* 폴더)
+    base_path = Path(results_base_dir)
+    if (base_path / "latest").exists() and (base_path / "latest").is_symlink():
+        latest_version_path = base_path / "latest"
     else:
-        print("GPU를 사용할 수 없습니다. CPU로 실행됩니다.")
+        version_dirs = [d for d in base_path.glob("v*") if d.is_dir()]
+        if version_dirs:
+            latest_version_path = max(version_dirs, key=lambda x: int(x.name[1:]))
+        else:
+            print(f"   ❌ 결과 폴더를 찾을 수 없습니다: {base_path}")
+            return ""
+    
+    # Custom visualize 폴더 생성
+    custom_viz_path = latest_version_path / "custom_visualize"
+    custom_viz_path.mkdir(exist_ok=True)
+    
+    # 실제 사용할 폴더만 생성
+    folders_to_create = [
+        "source_domain",
+        "target_domains"
+    ]
+    
+    for folder in folders_to_create:
+        (custom_viz_path / folder).mkdir(exist_ok=True)
+    
+    # 타겟 도메인별 하위 폴더 생성
+    if target_domains:
+        for domain in target_domains:
+            (custom_viz_path / "target_domains" / domain).mkdir(exist_ok=True)
+    
+    # 실험 정보를 JSON으로 저장
+    experiment_info = {
+        "experiment_name": experiment_name,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "results_path": str(latest_version_path),
+        "source_domain": source_domain,
+        "target_domains": target_domains or [],
+        "results_summary": {
+            "source_results": source_results or {},
+            "target_results": target_results or {}
+        }
+    }
+    
+    # JSON 파일로 저장
+    info_file = custom_viz_path / "experiment_info.json"
+    with open(info_file, 'w', encoding='utf-8') as f:
+        json.dump(experiment_info, f, indent=2, ensure_ascii=False)
+    
+    print(f"✅ 폴더 구조 생성 완료: {custom_viz_path}")
+    
+    return str(custom_viz_path)
+
+
+def organize_source_domain_results(
+    custom_viz_path: str,
+    results_base_dir: str = "results/Draem/MultiDomainHDMAPDataModule",
+    source_domain: str = "domain_A"
+) -> bool:
+    """Source Domain 평가 결과 재배치 및 보존.
+    
+    목적: engine.test()로 생성된 Source Domain 시각화 결과를 source_domain/ 폴더로 재배치하여
+          나중에 분석할 때 용이하게 접근할 수 있도록 함
+    
+    방식: 기존 images/ 폴더에서 모든 결과를 source_domain/ 폴더로 전체 복사
+    
+    📊 DRAEM 시각화 결과 해석:
+    - Image: 원본 HDMAP 이미지
+    - Image + Anomaly Map: DRAEM의 reconstruction error 기반 anomaly map
+    - Image + Pred Mask: Threshold 기반 binary mask (빨간색 영역만 표시)
+      * DRAEM은 reconstruction loss와 discriminator loss 기반으로 anomaly score 계산
+      * threshold는 validation 데이터에서 최적화된 값 사용
+    
+    Args:
+        custom_viz_path: custom_visualize 폴더 경로
+        results_base_dir: 기본 결과 디렉토리 경로
+        source_domain: 소스 도메인 이름
+        
+    Returns:
+        bool: 성공 여부
+    """
+    print(f"\n📁 Source Domain 결과 재배치")
+    
+    # 경로 설정
+    custom_viz_path = Path(custom_viz_path)
+    source_viz_path = custom_viz_path / "source_domain"
+    source_viz_path.mkdir(exist_ok=True)
+    
+    # 기존 images 폴더 경로
+    base_path = Path(results_base_dir)
+    if (base_path / "latest").exists():
+        latest_version_path = base_path / "latest"
+    else:
+        version_dirs = [d for d in base_path.glob("v*") if d.is_dir()]
+        latest_version_path = max(version_dirs, key=lambda x: int(x.name[1:]))
+    
+    images_path = latest_version_path / "images"
+    fault_path = images_path / "fault"
+    good_path = images_path / "good"
+    
+    if not fault_path.exists() or not good_path.exists():
+        print("   ❌ images/fault 또는 images/good 폴더가 존재하지 않습니다.")
+        return False
+    
+    # 모든 파일 리스트 가져오기
+    fault_files = list(fault_path.glob("*.png"))
+    good_files = list(good_path.glob("*.png"))
+    
+    # Source domain 폴더에 전체 복사
+    fault_dest = source_viz_path / "fault"
+    good_dest = source_viz_path / "good"
+    fault_dest.mkdir(exist_ok=True)
+    good_dest.mkdir(exist_ok=True)
+    
+    # 이상 샘플 전체 복사 (Image | Anomaly Map | Pred Mask 3단 구성)
+    for src_file in fault_files:
+        dest_file = fault_dest / src_file.name
+        shutil.copy2(src_file, dest_file)
+    
+    # 정상 샘플 전체 복사 (Image | Anomaly Map | Pred Mask 3단 구성)
+    for src_file in good_files:
+        dest_file = good_dest / src_file.name
+        shutil.copy2(src_file, dest_file)
+        
+    return True
+
+
+def copy_target_domain_results(
+    domain: str,
+    results_base_dir: str = "results/Draem/MultiDomainHDMAPDataModule"
+) -> bool:
+    """Target Domain 평가 결과 전체 복사 및 보존.
+    
+    각 Target Domain 평가가 완료되면 images/ 폴더의 모든 결과를 
+    custom_visualize/target_domains/{domain}/ 폴더로 완전히 복사하여 보존합니다.
+    
+    목적: engine.test()로 생성된 시각화 결과를 도메인별로 재배치하여 
+          나중에 분석할 때 용이하게 접근할 수 있도록 함
+    
+    Args:
+        domain: 타겟 도메인 이름
+        results_base_dir: 기본 결과 디렉토리 경로
+        
+    Returns:
+        bool: 성공 여부
+    """
+    try:
+        # 경로 설정
+        base_path = Path(results_base_dir)
+        if (base_path / "latest").exists():
+            latest_version_path = base_path / "latest"
+        else:
+            version_dirs = [d for d in base_path.glob("v*") if d.is_dir()]
+            if version_dirs:
+                latest_version_path = max(version_dirs, key=lambda x: int(x.name[1:]))
+            else:
+                print(f"         ❌ 결과 폴더를 찾을 수 없습니다.")
+                return False
+        
+        # 소스 경로 (현재 images/ 폴더 - 방금 평가한 domain의 결과)
+        images_path = latest_version_path / "images"
+        fault_path = images_path / "fault"
+        good_path = images_path / "good"
+        
+        # 타겟 경로 (custom_visualize/target_domains/{domain}/)
+        custom_viz_path = latest_version_path / "custom_visualize"
+        target_domain_path = custom_viz_path / "target_domains" / domain
+        target_fault_path = target_domain_path / "fault"
+        target_good_path = target_domain_path / "good"
+        
+        # 타겟 폴더 생성
+        target_fault_path.mkdir(parents=True, exist_ok=True)
+        target_good_path.mkdir(parents=True, exist_ok=True)
+        
+        if not fault_path.exists() or not good_path.exists():
+            print(f"         ⚠️  images/fault 또는 images/good 폴더가 존재하지 않습니다.")
+            return False
+        
+        # 모든 파일 복사 (전체 결과 보존)
+        fault_files = list(fault_path.glob("*.png"))
+        good_files = list(good_path.glob("*.png"))
+        
+        # fault 폴더 전체 복사
+        for src_file in fault_files:
+            dest_file = target_fault_path / src_file.name
+            shutil.copy2(src_file, dest_file)
+        
+        # good 폴더 전체 복사
+        for src_file in good_files:
+            dest_file = target_good_path / src_file.name
+            shutil.copy2(src_file, dest_file)
+    
+        return True
+        
+    except Exception as e:
+        print(f"         ❌ 샘플 저장 중 오류: {e}")
+        return False
 
 
 def create_multi_domain_datamodule(
@@ -76,7 +302,7 @@ def create_multi_domain_datamodule(
     print(f"   Target Domains: {target_domains}")
     
     datamodule = MultiDomainHDMAPDataModule(
-        root="./datasets/HDMAP/1000_8bit_resize_pad_256x256",
+        root="./datasets/HDMAP/1000_8bit_resize_256x256",
         source_domain=source_domain,
         target_domains=target_domains,  # "auto" 또는 ["domain_B", "domain_C"]
         validation_strategy="source_test",  # 소스 도메인 test를 validation으로 사용
@@ -237,15 +463,17 @@ def evaluate_target_domains(
     model: Draem, 
     engine: Engine, 
     datamodule: MultiDomainHDMAPDataModule,
-    checkpoint_path: str = None
+    checkpoint_path: str = None,
+    save_samples: bool = True
 ) -> Dict[str, Dict[str, Any]]:
-    """Target Domains 성능 평가.
+    """Target Domains 성능 평가 및 결과 복사.
     
     Args:
         model: 평가할 모델
         engine: Engine 객체
         datamodule: 멀티 도메인 데이터 모듈
         checkpoint_path: 체크포인트 경로
+        save_samples: Target Domain 전체 결과 복사 여부
         
     Returns:
         Dict: 각 target domain별 평가 결과
@@ -282,6 +510,10 @@ def evaluate_target_domains(
         
         target_results[target_domain] = results[0] if results else {}
         print(f"✅ {target_domain} 평가 완료")
+        
+        # Target Domain 평가 결과 전체 복사 (평가 직후)
+        if save_samples:
+            copy_target_domain_results(domain=target_domain)
     
     return target_results
 
@@ -350,7 +582,7 @@ def main():
     SOURCE_DOMAIN = "domain_A"  # 훈련용 소스 도메인
     TARGET_DOMAINS = "auto"  # 자동으로 나머지 도메인들 선택
     BATCH_SIZE = 16
-    MAX_EPOCHS = 20  # 충분한 학습을 위한 에포크 수
+    MAX_EPOCHS = 3  # 충분한 학습을 위한 에포크 수
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
@@ -410,7 +642,8 @@ def main():
             model=trained_model,
             engine=engine,
             datamodule=multi_datamodule,
-            checkpoint_path=best_checkpoint
+            checkpoint_path=best_checkpoint,
+            save_samples=True  # Target Domain 전체 결과 복사 활성화
         )
         
         # ========================================================================================
@@ -421,6 +654,25 @@ def main():
             source_results=source_results,
             target_results=target_results
         )
+        
+        # 6단계: Custom Visualization 생성
+        
+        custom_viz_path = create_custom_visualizations(
+            experiment_name=f"multi_domain_draem_{SOURCE_DOMAIN}",
+            source_domain=SOURCE_DOMAIN,
+            target_domains=list(target_results.keys()),
+            source_results=source_results,
+            target_results=target_results
+        )
+        
+        # 6-1단계: Source Domain 결과 재배치
+        organize_source_domain_results(
+            custom_viz_path=custom_viz_path,
+            source_domain=SOURCE_DOMAIN
+        )
+        
+        print(f"\n🎉 MultiDomain DRAEM 실험 완료!")
+        print(f"   🎨 결과: {custom_viz_path}")
                 
         # 메모리 정리
         cleanup_gpu_memory()
