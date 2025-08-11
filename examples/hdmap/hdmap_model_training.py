@@ -27,6 +27,10 @@ from anomalib.data.datamodules.image.hdmap import HDMAPDataModule
 from anomalib.models import Draem
 from anomalib.engine import Engine
 from anomalib.loggers import AnomalibTensorBoardLogger
+import logging
+
+# gt_mask 경고 메시지 비활성화
+logging.getLogger("anomalib.visualization.image.item_visualizer").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -60,8 +64,8 @@ def create_hdmap_datamodule(domain: str, batch_size: int = 16) -> HDMAPDataModul
     print(f"\n📂 {domain} DataModule 생성 중...")
     
     datamodule = HDMAPDataModule(
-        # root="./datasets/HDMAP/1000_8bit_resize_256x256",
-        root="./datasets/HDMAP/1000_8bit_resize_pad_256x256",
+        root="./datasets/HDMAP/1000_8bit_resize_256x256",
+        # root="./datasets/HDMAP/1000_8bit_resize_pad_256x256",
         domain=domain,
         train_batch_size=batch_size,
         eval_batch_size=batch_size,
