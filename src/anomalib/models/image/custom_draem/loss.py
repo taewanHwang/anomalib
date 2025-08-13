@@ -1,32 +1,9 @@
 
-"""Loss function for Custom DRAEM model implementation.
+"""Loss function for Custom DRAEM model.
 
-This module implements the multi-task loss function used to train the Custom DRAEM model
-for anomaly detection and fault severity prediction. The loss combines:
+Multi-task loss combining reconstruction, segmentation, and severity prediction losses.
 
-1. L2 reconstruction loss
-2. Structural similarity (SSIM) loss  
-3. Focal loss for anomaly segmentation
-4. MSE/SmoothL1 loss for severity prediction (NEW)
-
-The total loss is a weighted combination of all components with configurable weights.
-
-Example:
-    >>> import torch
-    >>> from anomalib.models.image.custom_draem.loss import CustomDraemLoss
-    >>> criterion = CustomDraemLoss(
-    ...     reconstruction_weight=1.0,
-    ...     segmentation_weight=1.0, 
-    ...     severity_weight=0.5
-    ... )
-    >>> input_image = torch.randn(8, 1, 256, 256)
-    >>> reconstruction = torch.randn(8, 1, 256, 256)
-    >>> anomaly_mask = torch.randint(0, 2, (8, 1, 256, 256))
-    >>> prediction = torch.randn(8, 2, 256, 256)
-    >>> severity_gt = torch.randn(8, 1) * 10.0
-    >>> severity_pred = torch.randn(8, 1) * 10.0
-    >>> loss = criterion(input_image, reconstruction, anomaly_mask, 
-    ...                  prediction, severity_gt, severity_pred)
+Author: Taewan Hwang
 """
 
 import torch
@@ -133,7 +110,15 @@ class CustomDraemLoss(nn.Module):
         """
         # Original DRAEM losses
         l2_loss_val = self.l2_loss(reconstruction, input_image)
-        focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+        
+        # Handle multi-channel anomaly mask - convert to single channel
+        if anomaly_mask.dim() == 4 and anomaly_mask.shape[1] > 1:
+            # Take first channel or convert RGB to grayscale
+            anomaly_mask_single = anomaly_mask[:, 0, :, :]  # Take first channel
+        else:
+            anomaly_mask_single = anomaly_mask.squeeze(1)
+        
+        focal_loss_val = self.focal_loss(prediction, anomaly_mask_single.long())
         ssim_loss_val = self.ssim_loss(reconstruction, input_image) * 2
 
         # NEW: Severity prediction loss
@@ -169,7 +154,14 @@ class CustomDraemLoss(nn.Module):
                 - "total_loss": Combined weighted loss
         """
         l2_loss_val = self.l2_loss(reconstruction, input_image)
-        focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+        
+        # Handle multi-channel anomaly mask - convert to single channel
+        if anomaly_mask.dim() == 4 and anomaly_mask.shape[1] > 1:
+            anomaly_mask_single = anomaly_mask[:, 0, :, :]  # Take first channel
+        else:
+            anomaly_mask_single = anomaly_mask.squeeze(1)
+        
+        focal_loss_val = self.focal_loss(prediction, anomaly_mask_single.long())
         ssim_loss_val = self.ssim_loss(reconstruction, input_image) * 2
         severity_loss_val = self.severity_loss(severity_pred, severity_gt)
 

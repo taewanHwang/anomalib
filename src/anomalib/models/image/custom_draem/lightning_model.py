@@ -1,16 +1,8 @@
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
 """Custom DRAEM Lightning Model.
 
-This module implements the Lightning wrapper for Custom DRAEM model designed 
-specifically for HDMAP datasets with fault severity prediction capabilities.
+Lightning wrapper for Custom DRAEM model with fault severity prediction for HDMAP datasets.
 
-The Custom DRAEM model extends the original DRAEM with:
-1. Support for 1-channel grayscale images (HDMAP format)
-2. Rectangular patch-based synthetic fault generation
-3. Fault Severity Prediction Sub-Network
-4. Multi-task learning (reconstruction + segmentation + severity)
+Author: Taewan Hwang
 """
 
 from collections.abc import Callable
@@ -21,6 +13,7 @@ import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from torch import nn
 
+
 from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
@@ -30,6 +23,7 @@ from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
 
 from .loss import CustomDraemLoss
+from .adaptive_loss import AdaptiveCustomDraemLoss
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
 from .torch_model import CustomDraemModel
 
@@ -42,6 +36,7 @@ class CustomDraem(AnomalibModule):
     Extended DRAEM model with fault severity prediction for HDMAP datasets.
     
     Args:
+        sspcab (bool, optional): Enable SSPCAB training. Defaults to ``False``.
         severity_max (float, optional): Maximum severity value for prediction.
             Defaults to ``10.0``.
         severity_input_mode (str, optional): Input mode for severity network.
@@ -62,6 +57,14 @@ class CustomDraem(AnomalibModule):
             Defaults to ``1.0``.
         severity_weight (float, optional): Weight for severity loss.
             Defaults to ``0.5``.
+        use_adaptive_loss (bool, optional): Use adaptive multi-task loss with
+            uncertainty weighting and progressive training. Defaults to ``True``.
+        warmup_epochs (int, optional): Number of warmup epochs focusing on
+            reconstruction before ramping up other tasks. Defaults to ``5``.
+        optimizer (str, optional): Optimizer type ("adam", "adamw", "sgd").
+            Defaults to ``"adam"``.
+        learning_rate (float, optional): Learning rate for optimizer.
+            Defaults to ``1e-4``.
             
     Example:
         >>> from anomalib.models.image import CustomDraem
@@ -75,6 +78,7 @@ class CustomDraem(AnomalibModule):
 
     def __init__(
         self,
+        sspcab: bool = False,
         severity_max: float = 10.0,
         severity_input_mode: str = "discriminative_only",
         patch_ratio_range: tuple[float, float] = (2.0, 4.0),
@@ -84,6 +88,10 @@ class CustomDraem(AnomalibModule):
         reconstruction_weight: float = 1.0,
         segmentation_weight: float = 1.0,
         severity_weight: float = 0.5,
+        use_adaptive_loss: bool = True,
+        warmup_epochs: int = 5,
+        optimizer: str = "adam",
+        learning_rate: float = 1e-4,
     ) -> None:
         super().__init__()
 
@@ -106,21 +114,49 @@ class CustomDraem(AnomalibModule):
         
         # Initialize model components
         self.model = CustomDraemModel(
+            sspcab=sspcab,
             severity_max=severity_max,
             severity_input_mode=severity_input_mode
         )
         
         # Initialize loss function
-        self.loss = CustomDraemLoss(
-            reconstruction_weight=reconstruction_weight,
-            segmentation_weight=segmentation_weight,
-            severity_weight=severity_weight
-        )
+        if use_adaptive_loss:
+            self.loss = AdaptiveCustomDraemLoss(
+                warmup_epochs=warmup_epochs,
+                initial_weights={
+                    "reconstruction": reconstruction_weight,
+                    "segmentation": segmentation_weight,
+                    "severity": severity_weight
+                },
+                use_uncertainty_weighting=True,
+                use_dwa=False  # Start with uncertainty weighting
+            )
+        else:
+            self.loss = CustomDraemLoss(
+                reconstruction_weight=reconstruction_weight,
+                segmentation_weight=segmentation_weight,
+                severity_weight=severity_weight
+            )
+        self.use_adaptive_loss = use_adaptive_loss
+        self.optimizer_name = optimizer
+        self.learning_rate = learning_rate
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
         """Return Custom DRAEM trainer arguments."""
         return {"gradient_clip_val": 0, "num_sanity_val_steps": 0}
+    
+    def configure_optimizers(self) -> torch.optim.Optimizer:
+        """Configure optimizer for training."""
+        if self.optimizer_name.lower() == "adam":
+            return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        elif self.optimizer_name.lower() == "adamw":
+            return torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        elif self.optimizer_name.lower() == "sgd":
+            return torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=0.9, weight_decay=1e-4)
+        else:
+            raise ValueError(f"Unsupported optimizer: {self.optimizer_name}. "
+                           f"Supported: 'adam', 'adamw', 'sgd'.")
 
     @property
     def learning_type(self) -> LearningType:
@@ -132,88 +168,85 @@ class CustomDraem(AnomalibModule):
         return LearningType.ONE_CLASS
 
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform the training step of Custom DRAEM.
-        
-        For each batch, the training step:
-        1. Generates synthetic faults using HDMAPCutPasteSyntheticGenerator
-        2. Passes augmented images through the model
-        3. Computes multi-task loss (reconstruction + segmentation + severity)
-        
-        Args:
-            batch (Batch): Input batch containing images.
-            
-        Returns:
-            STEP_OUTPUT: Loss value for backpropagation.
-        """
+        """Perform the training step of Custom DRAEM."""
         del args, kwargs  # These variables are not used.
         
         input_image = batch.image
         
-        # Generate synthetic faults using HDMAPCutPasteSyntheticGenerator
+        # No channel conversion needed - DRAEM backbone handles 3-channel input directly
+        
+        # Generate synthetic faults
         synthetic_image, fault_mask, severity_map, severity_label = self.augmenter(input_image)
         
-        # Pass synthetic image through the model (training mode)
-        # Note: Model automatically detects training mode via self.training
+        # Forward pass through model
         model_output = self.model(synthetic_image)
         reconstruction, prediction, severity_pred = model_output
-        
-        # Ensure severity prediction shape matches target shape
-        severity_pred = severity_pred.squeeze(-1)  # (B, 1) -> (B,)
+        severity_pred = severity_pred.squeeze(-1)
         
         # Compute multi-task loss
-        loss = self.loss(
-            input_image=input_image,           # Original image
-            reconstruction=reconstruction,      # Reconstructed image
-            anomaly_mask=fault_mask,           # Ground truth fault mask
-            prediction=prediction,             # Anomaly prediction logits
-            severity_gt=severity_label,        # Ground truth severity
-            severity_pred=severity_pred        # Predicted severity
-        )
+        if self.use_adaptive_loss:
+            loss = self.loss(
+                input_image=input_image,
+                reconstruction=reconstruction,
+                anomaly_mask=fault_mask,
+                prediction=prediction,
+                severity_gt=severity_label,
+                severity_pred=severity_pred,
+                epoch=self.current_epoch
+            )
+        else:
+            loss = self.loss(
+                input_image=input_image,
+                reconstruction=reconstruction,
+                anomaly_mask=fault_mask,
+                prediction=prediction,
+                severity_gt=severity_label,
+                severity_pred=severity_pred
+            )
         
-        # Log training loss
+        # Log metrics
+        # Both adaptive and standard loss return tensors
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
         
-        # Log individual loss components for monitoring
-        individual_losses = self.loss.get_individual_losses(
-            input_image, reconstruction, fault_mask, prediction, severity_label, severity_pred
-        )
+        if self.use_adaptive_loss:
+            individual_losses = self.loss.get_individual_losses(
+                input_image, reconstruction, fault_mask, prediction, severity_label, severity_pred, self.current_epoch
+            )
+        else:
+            individual_losses = self.loss.get_individual_losses(
+                input_image, reconstruction, fault_mask, prediction, severity_label, severity_pred
+            )
         self.log("train_l2_loss", individual_losses["l2_loss"].item(), on_epoch=True, logger=True)
         self.log("train_ssim_loss", individual_losses["ssim_loss"].item(), on_epoch=True, logger=True) 
         self.log("train_focal_loss", individual_losses["focal_loss"].item(), on_epoch=True, logger=True)
         self.log("train_severity_loss", individual_losses["severity_loss"].item(), on_epoch=True, logger=True)
         
+        # Log adaptive weights if using adaptive loss
+        if self.use_adaptive_loss:
+            for key, value in individual_losses.items():
+                if key.startswith("weight_") or key.startswith("uncertainty_"):
+                    self.log(f"train_{key}", value.item() if hasattr(value, 'item') else value, on_epoch=True, logger=True)
+        
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform the validation step of Custom DRAEM.
-        
-        During validation, the model processes real images (no synthetic generation)
-        and outputs anomaly predictions and severity estimates. This simulates
-        real-world inference where no ground truth is available.
-        
-        Args:
-            batch (Batch): Input batch containing images.
-            
-        Returns:
-            STEP_OUTPUT: Dictionary containing predictions and ground truth.
-        """
+        """Perform the validation step of Custom DRAEM."""
         del args, kwargs  # These variables are not used.
         
-        # For validation, use real images without synthetic fault generation
         input_image = batch.image
         
-        # Pass real image through the model (inference mode)
-        # Note: Model automatically detects eval mode via self.training
+        # No channel conversion needed - DRAEM backbone handles 3-channel input directly
+        
+        # Forward pass through model
         model_output = self.model(input_image)
         
-        # Extract predictions for evaluation
-        pred_score = model_output.pred_score      # Image-level anomaly score
-        anomaly_map = model_output.anomaly_map    # Pixel-level anomaly map  
-        severity_pred = model_output.pred_label   # Predicted severity
+        # Extract predictions
+        pred_score = model_output.pred_score
+        anomaly_map = model_output.anomaly_map
+        severity_pred = model_output.pred_label
         
-        # Log validation metrics if available
+        # Log validation metrics
         if hasattr(batch, 'mask') and batch.mask is not None:
-            # If ground truth masks are available, log some metrics
             mask_gt = batch.mask
             mask_coverage = (mask_gt > 0).float().mean()
             pred_coverage = (anomaly_map > 0.5).float().mean()
@@ -221,39 +254,41 @@ class CustomDraem(AnomalibModule):
             self.log("val_mask_coverage", mask_coverage.item(), on_epoch=True, logger=True)
             self.log("val_pred_coverage", pred_coverage.item(), on_epoch=True, logger=True)
         
-        # Log predicted severity statistics
         self.log("val_severity_mean", severity_pred.mean().item(), on_epoch=True, logger=True)
         self.log("val_severity_std", severity_pred.std().item(), on_epoch=True, logger=True)
         self.log("val_anomaly_score_mean", pred_score.mean().item(), on_epoch=True, logger=True)
         
-        # Return predictions in the format expected by anomalib
-        # Create a new object with original batch data + predictions
+        # Return predictions in anomalib format
         class ValidationOutput:
             def __init__(self, original_batch, predictions):
-                # Copy original batch attributes
                 for attr_name in dir(original_batch):
                     if not attr_name.startswith('_'):
                         setattr(self, attr_name, getattr(original_batch, attr_name))
-                # Add predictions
                 for key, value in predictions.items():
                     setattr(self, key, value)
         
         prediction = {
             "pred_score": pred_score,
             "anomaly_map": anomaly_map,
-            "pred_label": severity_pred,  # Custom: severity prediction
+            "pred_label": severity_pred,
         }
         
         return ValidationOutput(batch, prediction)
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        """Configure optimizers for Custom DRAEM.
+    def test_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
+        """Perform the test step of Custom DRAEM."""
+        del args, kwargs  # These variables are not used.
         
-        Returns:
-            torch.optim.Optimizer: Adam optimizer with specified learning rate.
-        """
-        return torch.optim.Adam(
-            params=self.parameters(),
-            lr=0.0001,  # Default learning rate
-            weight_decay=1e-5
+        input_image = batch.image
+        
+        # No channel conversion needed - DRAEM backbone handles 3-channel input directly
+        
+        # Forward pass through model
+        model_output = self.model(input_image)
+        
+        # Update batch with model predictions
+        return batch.update(
+            pred_score=model_output.pred_score,
+            anomaly_map=model_output.anomaly_map,
+            pred_label=model_output.pred_label
         )

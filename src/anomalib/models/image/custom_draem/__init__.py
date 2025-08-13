@@ -103,14 +103,12 @@ See Also:
 """
 
 from .lightning_model import CustomDraem
-from .torch_model import CustomDraemModel, ReconstructiveSubNetwork, DiscriminativeSubNetwork, FaultSeveritySubNetwork
+from .torch_model import CustomDraemModel, FaultSeveritySubNetwork
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
 
 __all__ = [
     "CustomDraem",
     "CustomDraemModel", 
-    "ReconstructiveSubNetwork",
-    "DiscriminativeSubNetwork", 
     "FaultSeveritySubNetwork",
     "HDMAPCutPasteSyntheticGenerator"
 ]

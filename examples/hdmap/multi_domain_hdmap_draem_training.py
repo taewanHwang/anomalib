@@ -43,7 +43,7 @@ from anomalib.loggers import AnomalibTensorBoardLogger
 logging.getLogger("anomalib.visualization.image.item_visualizer").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "14"
 
 
 def cleanup_gpu_memory():
@@ -582,7 +582,7 @@ def main():
     SOURCE_DOMAIN = "domain_A"  # 훈련용 소스 도메인
     TARGET_DOMAINS = "auto"  # 자동으로 나머지 도메인들 선택
     BATCH_SIZE = 16
-    MAX_EPOCHS = 3  # 충분한 학습을 위한 에포크 수
+    MAX_EPOCHS = 30  # 충분한 학습을 위한 에포크 수
     
     # GPU 메모리 정리
     cleanup_gpu_memory()

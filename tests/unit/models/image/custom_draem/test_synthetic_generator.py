@@ -1,27 +1,18 @@
-#!/usr/bin/env python3
 """Test script for HDMAPCutPasteSyntheticGenerator.
 
-This script tests the synthetic fault generation functionality with real HDMAP data
-and various configuration options. It provides visual validation of the generated
-synthetic faults, masks, and severity maps.
+This script tests the synthetic fault generation functionality.
 
-Usage:
-    python src/anomalib/models/image/custom_draem/test_synthetic_generator.py
+Author: Taewan Hwang
 """
 
-import sys
-from pathlib import Path
 import os
+import shutil
+from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from PIL import Image
-import numpy as np
-import shutil
-
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
 
 try:
     # Try direct import first (for uv run)
@@ -38,33 +29,35 @@ def load_sample_hdmap_image(image_path: str = None) -> torch.Tensor:
         image_path (str, optional): Path to HDMAP image. If None, creates synthetic test image.
         
     Returns:
-        torch.Tensor: Normalized grayscale image tensor [1, 1, H, W]
+        torch.Tensor: Normalized RGB image tensor [1, 3, H, W]
     """
     if image_path and Path(image_path).exists():
         # Load real HDMAP image
-        image = Image.open(image_path).convert('L')  # Convert to grayscale
-        image = image.resize((256, 256))  # Resize to standard size
+        image = Image.open(image_path).convert('RGB')  # Convert to RGB
+        image = image.resize((224, 224))  # Resize to ImageNet standard size
         image_array = np.array(image) / 255.0  # Normalize to [0, 1]
+        image_array = image_array.transpose(2, 0, 1)  # (H, W, C) -> (C, H, W)
     else:
         # Create synthetic test image with some patterns
         print("Creating synthetic test image (no real HDMAP path provided)")
-        image_array = np.zeros((256, 256))
+        image_array = np.zeros((3, 224, 224))  # 3-channel RGB
         
         # Add some structured patterns (simulating HDMAP features)
-        for i in range(0, 256, 32):
-            image_array[i:i+2, :] = 0.3  # Horizontal lines
-            image_array[:, i:i+2] = 0.3  # Vertical lines
+        for i in range(0, 224, 28):  # Adjusted for 224x224
+            image_array[:, i:i+2, :] = 0.3  # Horizontal lines
+            image_array[:, :, i:i+2] = 0.3  # Vertical lines
         
         # Add some random regions with different intensities
-        image_array[50:100, 50:100] = 0.6  # Bright region
-        image_array[150:200, 150:200] = 0.2  # Dark region
+        image_array[:, 40:80, 40:80] = 0.6  # Bright region
+        image_array[:, 120:160, 120:160] = 0.2  # Dark region
         
-        # Add some noise
-        noise = np.random.randn(256, 256) * 0.05
-        image_array = np.clip(image_array + noise, 0.0, 1.0)
+        # Add some noise to each channel
+        for c in range(3):
+            noise = np.random.randn(224, 224) * 0.05
+            image_array[c] = np.clip(image_array[c] + noise, 0.0, 1.0)
     
-    # Convert to PyTorch tensor [1, 1, H, W]
-    image_tensor = torch.from_numpy(image_array).float().unsqueeze(0).unsqueeze(0)
+    # Convert to PyTorch tensor [1, 3, H, W]
+    image_tensor = torch.from_numpy(image_array).float().unsqueeze(0)
     return image_tensor
 
 
@@ -273,8 +266,16 @@ def visualize_results(
     fig.suptitle(f'{title} (Severity: {severity_label.item():.3f})', fontsize=16)
     
     # Convert tensors to numpy for visualization
-    original = original_image[0, 0].cpu().numpy()
-    synthetic = synthetic_image[0, 0].cpu().numpy()
+    # For 3-channel RGB images, convert to grayscale for visualization
+    if original_image.shape[1] == 3:
+        # Convert RGB to grayscale using luminance formula
+        original = (0.299 * original_image[0, 0] + 0.587 * original_image[0, 1] + 0.114 * original_image[0, 2]).cpu().numpy()
+        synthetic = (0.299 * synthetic_image[0, 0] + 0.587 * synthetic_image[0, 1] + 0.114 * synthetic_image[0, 2]).cpu().numpy()
+    else:
+        # Original 1-channel case
+        original = original_image[0, 0].cpu().numpy()
+        synthetic = synthetic_image[0, 0].cpu().numpy()
+    
     mask = fault_mask[0, 0].cpu().numpy()
     severity = severity_map[0, 0].cpu().numpy()
     
@@ -323,10 +324,10 @@ def test_with_real_hdmap_data():
     
     # Try to find real HDMAP images
     possible_paths = [
-        "./datasets/HDMAP/1000_8bit_resize_256x256/domain_A/train/good/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_256x256/domain_A/test/fault/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_pad_256x256/domain_A/train/good/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_pad_256x256/domain_A/test/fault/000000.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000000.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/test/fault/000000.png",
+        "./datasets/HDMAP/1000_8bit_resize_pad_224x224/domain_A/train/good/000000.png",
+        "./datasets/HDMAP/1000_8bit_resize_pad_224x224/domain_A/test/fault/000000.png",
     ]
     
     # Find all existing images
@@ -360,7 +361,7 @@ def test_with_real_hdmap_data():
             
             # Store result with unique identifier
             path_parts = Path(real_image_path).parts
-            # Create identifier from path like "resize_256x256_domainA_train_good"
+            # Create identifier from path like "resize_224x224_domainA_train_good"
             identifier = f"{path_parts[-5]}_{path_parts[-4]}_{path_parts[-3]}_{path_parts[-2]}"
             identifier = identifier.replace("1000_8bit_", "").replace("domain_", "")
             
@@ -378,7 +379,7 @@ def main():
     print("=" * 60)
     
     # Create output directory for test results
-    output_dir = "src/anomalib/models/image/custom_draem/test_results"
+    output_dir = "tests/unit/models/image/custom_draem/test_results"
     
     # Remove existing output directory if it exists
     if Path(output_dir).exists():

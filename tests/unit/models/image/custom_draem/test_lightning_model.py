@@ -1,22 +1,12 @@
-#!/usr/bin/env python3
 """Test script for Custom DRAEM Lightning Model.
 
-This script tests the Lightning model training and validation steps to ensure
-they work correctly with the implemented synthetic generation and loss functions.
+This script tests the Lightning model training and validation steps.
 
-Usage:
-    python src/anomalib/models/image/custom_draem/test_lightning_model.py
+Author: Taewan Hwang
 """
-
-import sys
-from pathlib import Path
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
 
 from anomalib.models.image.custom_draem.lightning_model import CustomDraem
 from anomalib.models.image.custom_draem.synthetic_generator import HDMAPCutPasteSyntheticGenerator
@@ -27,10 +17,10 @@ import glob
 import os
 
 
-def create_test_batch(batch_size: int = 2, image_size: int = 256):
+def create_test_batch(batch_size: int = 2, image_size: int = 224):
     """Create a test batch for training/validation."""
-    # Create synthetic HDMAP-like images (1-channel grayscale)
-    images = torch.randn(batch_size, 1, image_size, image_size)
+    # Create synthetic HDMAP-like images (3-channel RGB for DRAEM backbone)
+    images = torch.randn(batch_size, 3, image_size, image_size)
     images = torch.clamp(images * 0.2 + 0.5, 0.0, 1.0)  # Normalize to [0, 1]
     
     # Create optional ground truth masks (for validation metrics)
@@ -52,7 +42,7 @@ def load_hdmap_images(data_path: str, category: str, max_images: int = 8) -> lis
     """Load real HDMAP images from dataset.
     
     Args:
-        data_path (str): Path to HDMAP dataset (e.g., 'datasets/HDMAP/1000_8bit_resize_256x256/domain_A')
+        data_path (str): Path to HDMAP dataset (e.g., 'datasets/HDMAP/1000_8bit_resize_224x224/domain_A')
         category (str): 'train/good', 'test/good', or 'test/fault'
         max_images (int): Maximum number of images to load
         
@@ -71,10 +61,16 @@ def load_hdmap_images(data_path: str, category: str, max_images: int = 8) -> lis
     images = []
     for img_file in png_files:
         try:
-            # Load as grayscale and convert to tensor
-            img = Image.open(img_file).convert('L')  # Convert to grayscale
+            # Load as RGB and convert to tensor (3-channel for DRAEM backbone)
+            img = Image.open(img_file).convert('RGB')  # Convert to RGB
             img_array = np.array(img) / 255.0  # Normalize to [0, 1]
-            img_tensor = torch.from_numpy(img_array).float().unsqueeze(0)  # Add channel dim: (H, W) -> (1, H, W)
+            img_tensor = torch.from_numpy(img_array).float().permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
+            
+            # Resize to 224x224 if needed (ImageNet standard for DRAEM backbone)
+            if img_tensor.shape[1] != 224 or img_tensor.shape[2] != 224:
+                import torch.nn.functional as F
+                img_tensor = F.interpolate(img_tensor.unsqueeze(0), size=(224, 224), mode='bilinear', align_corners=False).squeeze(0)
+            
             images.append(img_tensor)
         except Exception as e:
             print(f"⚠️ Error loading {img_file}: {e}")
@@ -108,7 +104,7 @@ def create_hdmap_batch(data_path: str, category: str, batch_size: int = 4):
     images = images[:batch_size]
     
     # Stack into batch tensor
-    batch_images = torch.stack(images, dim=0)  # (batch_size, 1, H, W)
+    batch_images = torch.stack(images, dim=0)  # (batch_size, 3, H, W)
     
     # Create empty masks (no ground truth masks available for HDMAP data)
     masks = torch.zeros_like(batch_images)
@@ -206,7 +202,7 @@ def test_with_real_hdmap_data():
     
     # Define dataset path
     # NOTE: Modify this path to point to your HDMAP dataset location
-    hdmap_path = "datasets/HDMAP/1000_8bit_resize_256x256/domain_A"
+    hdmap_path = "datasets/HDMAP/1000_8bit_resize_224x224/domain_A"
     
     # Initialize model (use discriminative_only for speed)
     model = CustomDraem(
@@ -303,7 +299,7 @@ def test_synthetic_generation_with_real_data():
     print("=" * 60)
     
     # NOTE: Modify this path to point to your HDMAP dataset location
-    hdmap_path = "datasets/HDMAP/1000_8bit_resize_256x256/domain_A"
+    hdmap_path = "datasets/HDMAP/1000_8bit_resize_224x224/domain_A"
     
     # Load a few real normal images
     real_images = load_hdmap_images(hdmap_path, "train/good", max_images=3)
@@ -359,17 +355,17 @@ def test_probabilistic_generation():
     print("=" * 60)
     
     # NOTE: Modify this path to point to your HDMAP dataset location
-    hdmap_path = "datasets/HDMAP/1000_8bit_resize_256x256/domain_A"
+    hdmap_path = "datasets/HDMAP/1000_8bit_resize_224x224/domain_A"
     
     # Load real images for testing
     real_images = load_hdmap_images(hdmap_path, "train/good", max_images=10)
     
     if len(real_images) == 0:
         print("⚠️ No real images found, using synthetic test images")
-        real_images = [torch.randn(1, 256, 256) for _ in range(10)]
+        real_images = [torch.randn(3, 224, 224) for _ in range(10)]
     
     # Stack into batch
-    test_batch = torch.stack(real_images, dim=0)  # (10, 1, H, W)
+    test_batch = torch.stack(real_images, dim=0)  # (10, 3, H, W)
     
     print(f"📊 Test batch shape: {test_batch.shape}")
     

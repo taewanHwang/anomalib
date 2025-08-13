@@ -126,7 +126,7 @@ def prepare_hdmap_dataset():
     N_training = 1000  # 훈련 샘플 수
     N_testing = 100    # 테스트 샘플 수
     bit_depth = '8bit'  # 비트 심도 ('8bit' 또는 '16bit')
-    target_size = (256, 256)  # 목표 이미지 크기
+    target_size = (224, 224)  # 목표 이미지 크기
     
     # 폴더 구조 설정
     base_folder = "HDMAP"  # 최상위 폴더

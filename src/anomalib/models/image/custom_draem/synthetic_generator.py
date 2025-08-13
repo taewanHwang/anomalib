@@ -1,32 +1,8 @@
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
 """HDMAP-specific synthetic fault generator for Custom DRAEM.
 
-This module provides functionality to generate synthetic faults specifically designed
-for HDMAP datasets using rectangular patch-based cut-paste approach. Unlike the 
-original DRAEM's Perlin noise-based generation, this generator:
+Rectangular patch-based cut-paste fault generator for HDMAP datasets.
 
-1. Uses rectangular patches cut from the same image
-2. Supports configurable aspect ratios (landscape/portrait/square)
-3. Generates continuous severity labels
-4. Validates patch boundaries automatically
-5. Supports multi-patch generation with identical properties
-
-Example:
-    >>> from anomalib.models.image.custom_draem.synthetic_generator import HDMAPCutPasteSyntheticGenerator
-    >>> import torch
-    >>> 
-    >>> generator = HDMAPCutPasteSyntheticGenerator(
-    ...     patch_ratio_range=(2.0, 4.0),  # Landscape patches
-    ...     patch_size_range=(20, 80),     # 20-80 pixels
-    ...     severity_max=10.0,             # 0-10 severity range
-    ...     patch_count=1                  # Single patch
-    ... )
-    >>> 
-    >>> # Generate synthetic fault
-    >>> image = torch.randn(1, 256, 256)  # 1-channel grayscale
-    >>> synthetic_image, fault_mask, severity_map, severity_label = generator(image)
+Author: Taewan Hwang
 """
 
 import random
