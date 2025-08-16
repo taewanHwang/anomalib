@@ -261,18 +261,23 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
             # 3. Extract patch from source location
             source_patch = synthetic_image[0, :, src_y:src_y+patch_height, src_x:src_x+patch_width].clone()
             
-            # 4. Apply severity modification to the patch
-            modified_patch = self._apply_severity_modification(source_patch, severity_value)
+            # 4. Generate fault signature from patch based on severity
+            fault_signature = self._apply_severity_modification(source_patch, severity_value)
             
-            # 5. Paste modified patch to target location
-            synthetic_image[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = modified_patch
+            # 5. Add fault signature to target location (additive approach)
+            original_region = synthetic_image[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width]
+            synthetic_image[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = original_region + fault_signature
             
-            # 6. Update masks (single channel)
-            fault_mask[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = 1.0
-            severity_map[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = severity_value / self.severity_max
+            # 6. Update masks (single channel) - only if there's actual fault
+            if severity_value > 0:
+                fault_mask[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = 1.0
+                severity_map[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = severity_value / self.severity_max
             
             # 7. Store patch position info
             patch_positions.append((src_x, src_y, tgt_x, tgt_y))
+        
+        # 7. Apply rescaling if image values exceed [0,1] range
+        synthetic_image = self._rescale_image_if_needed(synthetic_image)
         
         # Image-level severity (max of all patches) - shape [1] for single image
         severity_label = torch.tensor(severity_value, dtype=torch.float32, device=image.device)
@@ -322,20 +327,49 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         patch: torch.Tensor, 
         severity_value: float
     ) -> torch.Tensor:
-        """Apply severity-based modification to the patch.
+        """Generate fault signature from patch based on severity.
         
         Args:
             patch (torch.Tensor): Original patch of shape (channels, height, width)
-            severity_value (float): Severity value (0 to severity_max)
+            severity_value (float): Severity value (0 = no fault, >0 = fault intensity)
             
         Returns:
-            torch.Tensor: Modified patch with severity-based changes
+            torch.Tensor: Fault signature pattern (can be zero tensor if severity=0)
         """
+        if severity_value == 0:
+            # No fault pattern - return zero tensor
+            return torch.zeros_like(patch)
+        else:
+            # Create fault signature proportional to severity
+            fault_signature = patch * severity_value
+            return fault_signature
+    
+    def _rescale_image_if_needed(self, image: torch.Tensor) -> torch.Tensor:
+        """Rescale image to [0,1] range if values exceed bounds.
         
-        intensity_factor = 1.0 + severity_value
-        modified_patch = torch.clamp(patch * intensity_factor, 0.0, 1.0)
+        Args:
+            image (torch.Tensor): Synthetic image that may exceed [0,1] range
+            
+        Returns:
+            torch.Tensor: Rescaled image within [0,1] bounds
+        """
+        # Check if rescaling is needed
+        img_min = image.min()
+        img_max = image.max()
         
-        return modified_patch
+        # If already in valid range, return as-is
+        if img_max <= 1.0 and img_min >= 0.0:
+            return image
+        
+        # Apply rescaling for out-of-bounds values
+        if img_max > 1.0:
+            # Simple clamping approach - clips values above 1.0
+            rescaled_image = torch.clamp(image, 0.0, 1.0)
+            return rescaled_image
+        else:
+            # Handle negative values (unlikely but safety check)
+            rescaled_image = torch.clamp(image, 0.0, 1.0)
+            return rescaled_image
     
     def _get_patch_type_description(self, patch_ratio: float) -> str:
         """Get human-readable description of patch type based on height/width ratio."""

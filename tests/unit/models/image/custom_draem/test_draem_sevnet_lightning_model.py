@@ -6,9 +6,7 @@ Run with: pytest tests/unit/models/image/custom_draem/test_lightning_model_updat
 Author: Taewan Hwang
 """
 
-import pytest
 import torch
-import lightning as L
 from unittest.mock import MagicMock
 from anomalib.models.image.custom_draem import CustomDraem
 

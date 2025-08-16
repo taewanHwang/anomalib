@@ -17,14 +17,17 @@ Custom DRAEM is an extended version of the original DRAEM model with **DRAEM bac
 - **3-Channel RGB Support**: Direct processing of NxN RGB images
 - **SSPCAB Option**: Optional Self-Supervised Perceptual Consistency Attention Block
 
-### 🔧 Synthetic Fault Generation (Enhanced)
-- **Rectangular Patch-based**: Cut-paste approach within same image  
+### 🔧 Synthetic Fault Generation (Enhanced Additive Approach)
+- **Additive Fault Injection**: Physics-inspired approach where fault signatures are added to normal patterns
+- **Mathematical Model**: `result = original_image + fault_signature * severity_value`
+- **Zero-Severity Handling**: `severity=0` preserves original image completely (no fault)
+- **Automatic Range Scaling**: Intelligent clipping when values exceed [0,1] range
 - **Probabilistic Generation**: 0.0~1.0 probability control (compatible with original DRAEM)
 - **Adaptive Patch Sizing**: Automatic scaling based on input image dimensions
 - **Configurable Parameters**:
-  - Patch ratio: Landscape (>1.0), Portrait (<1.0), Square (1.0)
-  - Patch width range: Pixel-based sizing (e.g., 20-80 pixels)
-  - Severity range: 0 ~ user-defined max (e.g., 8.0)
+  - Patch ratio: Landscape (<1.0), Portrait (>1.0), Square (≈1.0)
+  - Patch width range: Pixel-based sizing (e.g., 8-128 pixels)
+  - Severity range: 0 ~ user-defined max (configurable, unlimited range)
   - Multi-patch support: 1-3 patches with identical properties
   - Anomaly probability: 0.5 (default), adjustable for normal/anomaly ratio
 
@@ -48,33 +51,26 @@ from anomalib.models.image.custom_draem import CustomDraem
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
 from anomalib.engine import Engine
 
-# Initialize model with DRAEM backbone integration
+# Initialize DRAEM-SevNet model
 model = CustomDraem(
-    # Severity Sub-Network settings
-    severity_input_mode="discriminative_only",  # 5 options available
+    # DRAEM-SevNet Architecture Settings
+    severity_head_mode="single_scale",           # "single_scale" or "multi_scale"
+    score_combination="simple_average",          # How to combine mask & severity scores
     
-    # Synthetic Fault Generation (enhanced)
-    anomaly_probability=0.5,          # 50% anomaly generation rate
-    patch_width_range=(32, 64),       # Patch size in pixels
-    patch_ratio_range=(0.1, 0.5),     # Patch aspect ratios
-    severity_max=8.0,                 # Maximum severity value
-    patch_count=1,                    # Single patch (recommended)
+    # Enhanced Additive Fault Generation
+    anomaly_probability=0.5,                     # 50% anomaly generation rate
+    patch_width_range=(16, 64),                  # Patch size in pixels
+    patch_ratio_range=(0.4, 0.67),               # Landscape patches (optimal for HDMAP)
+    severity_max=2.0,                            # Configurable severity range (no longer fixed)
+    patch_count=1,                               # Single patch (recommended)
     
-    # Loss configuration
-    reconstruction_weight=1.0,
-    segmentation_weight=1.0,
-    severity_weight=0.5,
+    # Multi-task Loss Configuration
+    severity_weight=1.0,                         # Weight for severity loss in multi-task learning
+    severity_loss_type="smooth_l1",              # "mse" or "smooth_l1"
     
-    # Adaptive loss (advanced feature)
-    use_adaptive_loss=True,           # Uncertainty-based weighting
-    warmup_epochs=5,                  # Reconstruction-focused warmup
-    
-    # DRAEM backbone options
-    sspcab=False,                     # Optional attention mechanism
-    
-    # Optimizer settings
-    optimizer="adam",
-    learning_rate=1e-4,
+    # Training Settings
+    optimizer="adamw",                           # AdamW optimizer
+    learning_rate=1e-4,                          # Learning rate
 )
 
 # Setup data
@@ -106,7 +102,30 @@ target_results = engine.test(model=model, dataloaders=datamodule.test_dataloader
 # AUROC, F1-Score, etc. plus custom severity prediction accuracy
 ```
 
-### 🔬 **Advanced Usage: Direct Comparison with Original DRAEM**
+#### 🔬 **Additive Fault Generation: Key Innovation**
+
+The latest implementation uses a **physics-inspired additive approach** instead of traditional cut-paste:
+
+```python
+# Traditional cut-paste (replaced)
+# synthetic_image[region] = modified_patch
+
+# New additive approach (current)
+fault_signature = source_patch * severity_value
+synthetic_image[region] = original_image[region] + fault_signature
+
+# Automatic range scaling if needed
+if synthetic_image.max() > 1.0:
+    synthetic_image = torch.clamp(synthetic_image, 0.0, 1.0)
+```
+
+**Benefits of Additive Approach**:
+- **Physical Accuracy**: Mimics real equipment failure patterns that add to normal signatures
+- **Severity Proportionality**: `severity=0` → no change, `severity>0` → proportional fault addition
+- **Flexible Range**: No longer limited to severity_max=1.0, supports any positive range
+- **Realistic Simulation**: Better represents actual industrial fault propagation
+
+## 🔬 **Advanced Usage: Direct Comparison with Original DRAEM**
 
 ```python
 # For research: compare Custom DRAEM vs Original DRAEM
@@ -153,9 +172,11 @@ full_custom_draem = CustomDraem(
 ### 📊 **Default Parameters**
 - **Batch Size**: 16 (adjustable based on GPU memory)
 - **Learning Rate**: 0.0001 (consistent with original DRAEM)
-- **Loss Weights**: 1.0:1.0:0.5 (reconstruction:segmentation:severity)
+- **Multi-task Loss**: DRAEM loss + λ * severity loss (λ=1.0 default)
+- **Severity Loss Type**: SmoothL1 (recommended) or MSE
 - **Anomaly Probability**: 0.5 (50% normal/anomaly ratio)
-- **Patch Width Range**: 20-80 pixels (relative to input size)
+- **Patch Configuration**: 16-64 pixels width, 0.4-0.67 ratio (landscape optimal)
+- **Severity Range**: 0 ~ user-defined max (configurable, supports high values)
 
 ## 📁 File Structure (Updated)
 

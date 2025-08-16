@@ -31,6 +31,8 @@ sys.path.insert(0, str(project_root))
 from anomalib.models.image.custom_draem.lightning_model import CustomDraem
 from anomalib.models.image.draem.lightning_model import Draem
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # 상세 출력을 위한 helper function
 def verbose_print(message: str, level: str = "INFO"):

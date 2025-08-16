@@ -3,18 +3,21 @@
 # DRAEM-SevNet 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
-# 설정
-AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10)
+# 설정 (12개 GPU + 패치 형태 중심 12개 실험)
+AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11)
 EXPERIMENT_CONDITIONS=(
-    "single_scale_simple_avg"
-    "multi_scale_simple_avg" 
-    "single_scale_weighted_avg"
-    "single_scale_maximum"
-    "single_scale_smoothl1"
-    "single_scale_weight_0p3"
-    "single_scale_weight_0p7"
-    "single_scale_large_patch"
-    "single_scale_landscape_patch"
+    "ultra_landscape_tiny"
+    "ultra_landscape_small"
+    "super_landscape"
+    "landscape_optimal"
+    "ultra_portrait_tiny"
+    "ultra_portrait_small"
+    "super_portrait"
+    "portrait_moderate"
+    "perfect_square_tiny"
+    "perfect_square_medium"
+    "perfect_square_large"
+    "giant_landscape"
 )
 NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
 

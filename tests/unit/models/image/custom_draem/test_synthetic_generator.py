@@ -325,10 +325,15 @@ def test_with_real_hdmap_data():
     
     # Try to find real HDMAP images
     possible_paths = [
-        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/test/fault/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_pad_224x224/domain_A/train/good/000000.png",
-        "./datasets/HDMAP/1000_8bit_resize_pad_224x224/domain_A/test/fault/000000.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000065.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000096.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_B/train/good/000067.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_B/train/good/000027.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_C/train/good/000081.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_C/train/good/000047.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_D/train/good/000071.png",
+        "./datasets/HDMAP/1000_8bit_resize_224x224/domain_D/train/good/000055.png",
+
     ]
     
     # Find all existing images
@@ -349,7 +354,8 @@ def test_with_real_hdmap_data():
                 patch_width_range=(64, 128),
                 patch_ratio_range=(0.1, 0.2),
                 severity_max=2.0,
-                patch_count=2
+                patch_count=1,
+                probability=1.0  # Always generate faults for testing
             )
             
             synthetic_image, fault_mask, severity_map, severity_label, patch_info = generator(image, return_patch_info=True)

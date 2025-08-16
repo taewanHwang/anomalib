@@ -530,164 +530,210 @@ def main():
     SOURCE_DOMAIN = "domain_A"
     TARGET_DOMAINS = "auto"
     BATCH_SIZE = 16
-    MAX_EPOCHS = 2  # Early stopping으로 효율적 학습
+    MAX_EPOCHS = 30  # Early stopping으로 효율적 학습
     
-    # 🧪 DRAEM-SevNet Ablation Study 실험 조건
+    # 📐 패치 형태 중심 Ablation Study (12개 조건)
+    # 핵심 가설: HDMAP 구조의 선형적 특성상 가로형 패치가 이상감지에 최적일 것
     EXPERIMENT_CONDITIONS = [
-        # === 🎯 Severity Head Mode 비교 ===
+        # === Group A: 극단적 Landscape 패치 (4개) ===
+        # patch_ratio_range < 1.0 (landscape = 가로형)
         {
-            "name": "single_scale_simple_avg",
-            "severity_head_mode": "single_scale",
-            "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
-
-            "patch_count": 1,
-            "optimizer": "adamw",
-            "learning_rate": 1e-4,
-            "early_stopping": True,
-            "patience": 3,
-            "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Simple Average"
-        },
-        {
-            "name": "multi_scale_simple_avg", 
-            "severity_head_mode": "multi_scale",
-            "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
-            "patch_count": 1,
-            "optimizer": "adamw",
-            "learning_rate": 1e-4,
-            "early_stopping": True,
-            "patience": 3,
-            "min_delta": 0.005,
-            "description": "Multi-scale SeverityHead + Simple Average"
-        },
-        
-        # === 🔗 Score Combination 비교 ===
-        {
-            "name": "single_scale_weighted_avg",
-            "severity_head_mode": "single_scale",
-            "score_combination": "weighted_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
-            "patch_count": 1,
-            "optimizer": "adamw",
-            "learning_rate": 1e-4,
-            "early_stopping": True,
-            "patience": 3,
-            "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Weighted Average"
-        },
-        {
-            "name": "single_scale_maximum",
-            "severity_head_mode": "single_scale",
-            "score_combination": "maximum",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
-            "patch_count": 1,
-            "optimizer": "adamw",
-            "learning_rate": 1e-4,
-            "early_stopping": True,
-            "patience": 3,
-            "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Maximum Score"
-        },
-        
-        # === 📉 Severity Loss Type 비교 ===
-        {
-            "name": "single_scale_smoothl1",
+            "name": "ultra_landscape_tiny",
             "severity_head_mode": "single_scale",
             "score_combination": "simple_average",
             "severity_loss_type": "smooth_l1",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
+            "severity_weight": 1.0,
+            "patch_width_range": (8, 16),      # 매우 작은 크기
+            "patch_ratio_range": (0.25, 0.33), # 1:3~1:4 비율 (극단적 가로)
             "patch_count": 1,
             "optimizer": "adamw",
             "learning_rate": 1e-4,
             "early_stopping": True,
             "patience": 3,
             "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + SmoothL1 Loss"
+            "description": "극도로 가늘고 긴 가로 패치 (Ultra landscape + tiny)"
+        },
+        {
+            "name": "ultra_landscape_small",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (16, 32),     # 작은 크기
+            "patch_ratio_range": (0.25, 0.33), # 1:3~1:4 비율
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "가늘고 긴 가로 패치 (Ultra landscape + small)"
+        },
+        {
+            "name": "super_landscape",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (32, 64),     # 중간 크기
+            "patch_ratio_range": (0.3, 0.4),   # 1:2.5~1:3.3 비율
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "매우 가로형 패치 (Super landscape)"
+        },
+        {
+            "name": "landscape_optimal",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (16, 32),     # 기존 최고 성능 크기
+            "patch_ratio_range": (0.4, 0.67),  # 1:1.5~1:2.5 비율
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "검증된 최적 landscape 패치 (기존 최고 성능 재현)"
         },
         
-        # === ⚖️ Severity Weight 비교 ===
+        # === Group B: 극단적 Portrait 패치 (4개) ===
+        # patch_ratio_range > 1.0 (portrait = 세로형)
         {
-            "name": "single_scale_weight_0p3",
+            "name": "ultra_portrait_tiny",
             "severity_head_mode": "single_scale",
             "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.3,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (8, 16),      # 매우 작은 크기
+            "patch_ratio_range": (3.0, 4.0),   # 3:1~4:1 비율 (극단적 세로)
             "patch_count": 1,
             "optimizer": "adamw",
             "learning_rate": 1e-4,
             "early_stopping": True,
             "patience": 3,
             "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Lower Severity Weight (0.3)"
+            "description": "극도로 가늘고 긴 세로 패치 (Ultra portrait + tiny)"
         },
         {
-            "name": "single_scale_weight_0p7",
+            "name": "ultra_portrait_small",
             "severity_head_mode": "single_scale",
             "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.7,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.8, 1.2),
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (16, 32),     # 작은 크기
+            "patch_ratio_range": (3.0, 4.0),   # 3:1~4:1 비율
             "patch_count": 1,
             "optimizer": "adamw",
             "learning_rate": 1e-4,
             "early_stopping": True,
             "patience": 3,
             "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Higher Severity Weight (0.7)"
+            "description": "가늘고 긴 세로 패치 (Ultra portrait + small)"
+        },
+        {
+            "name": "super_portrait",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (32, 64),     # 중간 크기
+            "patch_ratio_range": (2.5, 3.5),   # 2.5:1~3.5:1 비율
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "매우 세로형 패치 (Super portrait)"
+        },
+        {
+            "name": "portrait_moderate",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (16, 32),     # 중간 크기
+            "patch_ratio_range": (1.5, 2.5),   # 1.5:1~2.5:1 비율
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "중간 정도 세로형 패치 (Portrait moderate)"
         },
         
-        # === 📏 Patch Configuration 비교 ===
+        # === Group C: 정사각형 & 크기 변화 (4개) ===
         {
-            "name": "single_scale_large_patch",
+            "name": "perfect_square_tiny",
             "severity_head_mode": "single_scale",
             "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (64, 128),
-            "patch_ratio_range": (0.8, 1.2),
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (8, 16),      # 작은 크기
+            "patch_ratio_range": (0.95, 1.05), # 거의 정사각형
             "patch_count": 1,
             "optimizer": "adamw",
             "learning_rate": 1e-4,
             "early_stopping": True,
             "patience": 3,
             "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Large Patch Size (64-128)"
+            "description": "작은 정사각형 패치 (Perfect square tiny)"
         },
         {
-            "name": "single_scale_landscape_patch",
+            "name": "perfect_square_medium",
             "severity_head_mode": "single_scale",
             "score_combination": "simple_average",
-            "severity_loss_type": "mse",
-            "severity_weight": 0.5,
-            "patch_width_range": (32, 64),
-            "patch_ratio_range": (0.3, 0.7),  # Landscape patches
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (32, 48),     # 중간 크기
+            "patch_ratio_range": (0.95, 1.05), # 거의 정사각형
             "patch_count": 1,
             "optimizer": "adamw",
             "learning_rate": 1e-4,
             "early_stopping": True,
             "patience": 3,
             "min_delta": 0.005,
-            "description": "Single-scale SeverityHead + Landscape Patch Ratio (0.3-0.7)"
+            "description": "중간 크기 정사각형 패치 (Perfect square medium)"
         },
+        {
+            "name": "perfect_square_large",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (64, 96),     # 큰 크기
+            "patch_ratio_range": (0.95, 1.05), # 거의 정사각형
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "큰 정사각형 패치 (Perfect square large)"
+        },
+        {
+            "name": "giant_landscape",
+            "severity_head_mode": "single_scale",
+            "score_combination": "simple_average",
+            "severity_loss_type": "smooth_l1",
+            "severity_weight": 1.0,
+            "patch_width_range": (64, 128),    # 매우 큰 크기
+            "patch_ratio_range": (0.5, 0.75),  # 큰 가로형
+            "patch_count": 1,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "early_stopping": True,
+            "patience": 3,
+            "min_delta": 0.005,
+            "description": "거대한 landscape 패치 (Giant landscape)"
+        }
     ]
     
     # 실험 조건 검증

@@ -9,7 +9,6 @@ Run with: pytest tests/unit/models/image/custom_draem/test_score_calculation_rel
 """
 
 import torch
-import pytest
 from anomalib.models.image.draem.torch_model import DraemModel
 
 

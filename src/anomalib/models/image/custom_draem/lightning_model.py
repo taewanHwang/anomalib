@@ -88,6 +88,7 @@ class CustomDraem(AnomalibModule):
         anomaly_probability: float = 0.5,
         severity_weight: float = 0.5,
         severity_loss_type: str = "mse",
+        severity_max: float = 1.0,
         optimizer: str = "adam",
         learning_rate: float = 1e-4,
     ) -> None:
@@ -100,14 +101,15 @@ class CustomDraem(AnomalibModule):
         self.patch_width_range = patch_width_range
         self.patch_count = patch_count
         self.anomaly_probability = anomaly_probability
+        self.severity_max = severity_max
         self.optimizer_name = optimizer
         self.learning_rate = learning_rate
         
-        # Initialize synthetic fault generator (Note: severity_max=1.0 for DRAEM-SevNet)
+        # Initialize synthetic fault generator with configurable severity_max
         self.augmenter = HDMAPCutPasteSyntheticGenerator(
             patch_width_range=patch_width_range,
             patch_ratio_range=patch_ratio_range,
-            severity_max=1.0,  # Fixed to 1.0 for DRAEM-SevNet
+            severity_max=self.severity_max,
             patch_count=patch_count,
             probability=anomaly_probability,
         )
