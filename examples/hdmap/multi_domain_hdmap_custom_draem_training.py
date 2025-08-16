@@ -51,7 +51,7 @@ logging.getLogger("anomalib.visualization").setLevel(logging.ERROR)
 logging.getLogger("anomalib.callbacks").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
-os.environ["CUDA_VISIBLE_DEVICES"] = "14"
+os.environ["CUDA_VISIBLE_DEVICES"] = "9"
 
 
 def cleanup_gpu_memory():
@@ -345,7 +345,7 @@ def create_multi_domain_datamodule(
         validation_strategy="source_test",  # 소스 도메인 test를 validation으로 사용
         train_batch_size=batch_size,
         eval_batch_size=batch_size,
-        num_workers=4,  # 시스템에 맞게 조정
+        num_workers=16,  # 시스템에 맞게 조정
         # 🔑 3채널 RGB 이미지가 Custom DRAEM으로 직접 전달됨
         # 🔑 3-channel RGB images are passed directly to Custom DRAEM
     )
@@ -373,11 +373,15 @@ def train_custom_draem_model_multi_domain(
     experiment_name: str,
     max_epochs: int = 20,
     severity_input_mode: str = "discriminative_only",
-    anomaly_probability: float = 0.5,
     patch_width_range: tuple = (32, 64),
+    patch_ratio_range: tuple = (0.8, 1.2),
+    severity_max: float = 8.0,
+    patch_count: int = 1,
     use_adaptive_loss: bool = True,
     warmup_epochs: int = 5,
-    optimizer_name: str = "adam"
+    optimizer_name: str = "adam",
+    learning_rate: float = 1e-4,
+    sspcab: bool = False
 ) -> tuple[CustomDraem, Engine]:
     """MultiDomain DataModule을 사용한 Custom DRAEM 모델 훈련.
     
@@ -391,11 +395,14 @@ def train_custom_draem_model_multi_domain(
             - "with_reconstruction": Discriminative + Reconstruction 결합
             - "with_error_map": Discriminative + Error Map 결합
             - "multi_modal": 모든 입력 결합 (Discriminative + Original + Reconstruction + Error Map)
-        anomaly_probability: 학습 시 synthetic fault 생성 확률 (0.0~1.0)
         patch_width_range: 합성 고장 패치 크기 범위 (min_size, max_size)
+        patch_ratio_range: 패치 종횡비 범위 (기본값: (0.8, 1.2))
+        severity_max: 최대 심각도 값 (기본값: 8.0)
         use_adaptive_loss: 적응적 손실 함수 사용 여부 (기본값: True)
         warmup_epochs: 재구성 중심 워밍업 에포크 수 (기본값: 5)
         optimizer_name: 옵티마이저 종류 ("adam", "adamw", "sgd") (기본값: "adam")
+        learning_rate: 학습률 (기본값: 1e-4)
+        sspcab: SSPCAB 활성화 여부 (기본값: False)
         
     Returns:
         tuple: (훈련된 모델, Engine 객체)
@@ -415,16 +422,21 @@ def train_custom_draem_model_multi_domain(
         - 5가지 Severity Input Mode로 ablation study 가능
         - SSPCAB 옵션: 선택적 attention mechanism
     """
+    
     print(f"\n🤖 Custom DRAEM 모델 훈련 시작 - {experiment_name}")
     print(f"   Source Domain: {datamodule.source_domain}")
     print(f"   Validation Strategy: {datamodule.validation_strategy}")
     print(f"   Max Epochs: {max_epochs}")
     print(f"   Severity Input Mode: {severity_input_mode}")
-    print(f"   Anomaly Probability: {anomaly_probability}")
     print(f"   Patch Width Range: {patch_width_range}")
+    print(f"   Patch Ratio Range: {patch_ratio_range}")
+    print(f"   Patch Count: {patch_count}")
+    print(f"   Severity Max: {severity_max}")
     print(f"   Use Adaptive Loss: {use_adaptive_loss}")
-    print(f"   Warmup Epochs: {warmup_epochs}")
+    print(f"   Warmup Epochs: {warmup_epochs if use_adaptive_loss else 'N/A (Fixed Loss)'}")
     print(f"   Optimizer: {optimizer_name}")
+    print(f"   Learning Rate: {learning_rate}")
+    print(f"   SSPCAB: {sspcab}")
     
     # Custom DRAEM 모델 생성 (DRAEM backbone 통합)
     model = CustomDraem(
@@ -432,27 +444,26 @@ def train_custom_draem_model_multi_domain(
         severity_input_mode=severity_input_mode,
         
         # 🔧 Synthetic Fault Generation 설정
-        anomaly_probability=anomaly_probability,
         patch_width_range=patch_width_range,
-        patch_ratio_range=(0.1, 0.5),  # 패치 비율 범위
-        severity_max=8.0,  # 최대 severity 값
-        patch_count=1,  # 패치 개수를 1개로 제한
+        patch_ratio_range=patch_ratio_range,  # 실험 조건에서 전달받은 값
+        severity_max=severity_max,  # 실험 조건에서 전달받은 값
+        patch_count=patch_count,  # 실험 조건에서 전달받은 값
         
-        # 🔧 Loss 가중치 설정 (기본값 사용)
+        # 🔧 Loss 가중치 설정 (severity weight 감소로 주요 task에 집중)
         reconstruction_weight=1.0,
         segmentation_weight=1.0,
-        severity_weight=0.5,
+        severity_weight=0.1,  # 줄이면 original draem loss와 유사해짐
         
         # 🔧 적응적 손실 함수 설정
         use_adaptive_loss=use_adaptive_loss,
-        warmup_epochs=warmup_epochs,
+        warmup_epochs=warmup_epochs if use_adaptive_loss else 0,  # adaptive_loss=False이면 warmup 불필요
         
         # 🚀 DRAEM backbone 옵션
-        sspcab=False,  # SSPCAB attention block 사용 여부
+        sspcab=sspcab,  # 실험 조건에서 전달받은 값
         
         # 🔧 옵티마이저 설정
         optimizer=optimizer_name,
-        learning_rate=1e-4,
+        learning_rate=learning_rate,  # 실험 조건에서 전달받은 값
     )
     
     # TensorBoard 로거 설정
@@ -675,21 +686,20 @@ def run_single_experiment(
     multi_datamodule: MultiDomainHDMAPDataModule,
     condition: dict,
     source_domain: str,
-    max_epochs: int,
-    severity_input_mode: str,
-    anomaly_probability: float,
-    patch_width_range: tuple
+    max_epochs: int
 ) -> dict:
     """단일 실험 조건에 대한 실험 수행.
     
     Args:
         multi_datamodule: 멀티 도메인 데이터 모듈
-        condition: 실험 조건 딕셔너리
+        condition: 실험 조건 딕셔너리 (모든 모델 설정 포함)
+            - optimizer, learning_rate: 옵티마이저 설정
+            - sspcab: SSPCAB 활성화 여부
+            - severity_input_mode: 심각도 입력 모드
+            - patch_width_range, patch_ratio_range: 패치 생성 설정
+            - severity_max: 최대 심각도 값
         source_domain: 소스 도메인
         max_epochs: 최대 에포크 수
-        severity_input_mode: 심각도 입력 모드
-        anomaly_probability: 이상 생성 확률
-        patch_width_range: 패치 크기 범위
         
     Returns:
         dict: 실험 결과 딕셔너리
@@ -707,12 +717,16 @@ def run_single_experiment(
             datamodule=multi_datamodule,
             experiment_name=experiment_name,
             max_epochs=max_epochs,
-            severity_input_mode=severity_input_mode,
-            anomaly_probability=anomaly_probability,
-            patch_width_range=patch_width_range,
+            severity_input_mode=condition["severity_input_mode"],  # 실험 조건에서 추출
+            patch_width_range=condition["patch_width_range"],  # 실험 조건에서 추출
+            patch_ratio_range=condition["patch_ratio_range"],  # 실험 조건에서 추출
+            severity_max=condition["severity_max"],  # 실험 조건에서 추출
+            patch_count=condition.get("patch_count", 1),  # 실험 조건에서 추출 (기본값 1)
             use_adaptive_loss=condition["use_adaptive_loss"],
-            warmup_epochs=condition["warmup_epochs"],
-            optimizer_name=condition["optimizer"]
+            warmup_epochs=condition.get("warmup_epochs", 0),  # adaptive_loss=False이면 없음
+            optimizer_name=condition["optimizer"],
+            learning_rate=condition["learning_rate"],  # 실험 조건에서 추출
+            sspcab=condition["sspcab"]  # 실험 조건에서 추출
         )
         
         best_checkpoint = engine.trainer.checkpoint_callback.best_model_path
@@ -856,63 +870,304 @@ def main():
     SOURCE_DOMAIN = "domain_A"  # 훈련용 소스 도메인
     TARGET_DOMAINS = "auto"  # 자동으로 나머지 도메인들 선택
     BATCH_SIZE = 16  # DRAEM backbone의 큰 메모리 사용량 고려
-    MAX_EPOCHS = 30  # 충분한 학습을 위한 에포크 수
+    MAX_EPOCHS = 1  # 충분한 학습을 위한 에포크 수
     
     # 🎯 이미지 크기 선택 (성능 최적화)
     IMAGE_SIZE = "224x224"  # 224x224가 256x256 대비 22.6% 더 빠름
     
-    # Custom DRAEM 특화 설정
-    SEVERITY_INPUT_MODE = "discriminative_only"  # Discriminative network 출력만 사용
-    ANOMALY_PROBABILITY = 0.5  # 50% 확률로 synthetic fault 생성
-    PATCH_WIDTH_RANGE = (32, 64)  # 32x32 ~ 64x64 패치 크기
+    # Custom DRAEM 특화 설정 (이제 실험 조건에 포함됨)
     
-    # 🧪 다중 실험 조건 설정 - 모든 조합에 대해 실험 수행
+    # 🧪 실험 조건 설정 - 확장된 Ablation Study
     EXPERIMENT_CONDITIONS = [
-        # Condition 1: Baseline - 기존 Loss + Adam
+        # === 📐 Patch Ratio Ablation (5개) ===
+        # Condition 1: Ultra Landscape (매우 가로로 긴 패치)
         {
-            "name": "baseline_adam",
+            "name": "adamw_ultra_landscape",
             "use_adaptive_loss": False,
-            "warmup_epochs": 5,
-            "optimizer": "adam",
+            "optimizer": "adamw",
             "learning_rate": 1e-4,
-            "description": "기존 고정 가중치 손실함수 + Adam 옵티마이저"
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),  # height/width = 0.05-0.1 (매우 가로로 긴)
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Ultra landscape patch ratio (0.05-0.1)"
         },
-        # # Condition 2: Baseline - 기존 Loss + AdamW  
-        # {
-        #     "name": "baseline_adamw",
-        #     "use_adaptive_loss": False,
-        #     "warmup_epochs": 5,
-        #     "optimizer": "adamw",
-        #     "learning_rate": 1e-4,
-        #     "description": "기존 고정 가중치 손실함수 + AdamW 옵티마이저"
-        # },
-        # # Condition 3: Adaptive Loss + Adam
-        # {
-        #     "name": "adaptive_adam",
-        #     "use_adaptive_loss": True,
-        #     "warmup_epochs": 5,
-        #     "optimizer": "adam", 
-        #     "learning_rate": 1e-4,
-        #     "description": "적응적 손실함수 (불확실도 가중치) + Adam 옵티마이저"
-        # },
-        # # Condition 4: Adaptive Loss + AdamW
-        # {
-        #     "name": "adaptive_adamw",
-        #     "use_adaptive_loss": True,
-        #     "warmup_epochs": 5,
-        #     "optimizer": "adamw",
-        #     "learning_rate": 1e-4,
-        #     "description": "적응적 손실함수 (불확실도 가중치) + AdamW 옵티마이저"
-        # },
-        # # Condition 5: Adaptive Loss + SGD (실험적)
-        # {
-        #     "name": "adaptive_sgd",
-        #     "use_adaptive_loss": True,
-        #     "warmup_epochs": 8,  # SGD는 더 긴 warmup 필요
-        #     "optimizer": "sgd",
-        #     "learning_rate": 1e-3,  # SGD는 더 높은 학습률 필요
-        #     "description": "적응적 손실함수 (불확실도 가중치) + SGD 옵티마이저"
-        # },
+        # Condition 2: Landscape (가로로 긴 패치)
+        {
+            "name": "adamw_landscape",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.3, 0.7),  # height/width = 0.3-0.7 (가로로 긴)
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Landscape patch ratio (0.3-0.7)"
+        },
+        # Condition 3: Square (정사각형 패치)
+        {
+            "name": "adamw_square",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.8, 1.2),  # height/width = 0.8-1.2 (거의 정사각형)
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Square patch ratio (0.8-1.2)"
+        },
+        # Condition 4: Portrait (세로로 긴 패치)
+        {
+            "name": "adamw_portrait",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (1.5, 3.0),  # height/width = 1.5-3.0 (세로로 긴)
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Portrait patch ratio (1.5-3.0)"
+        },
+        # Condition 5: Ultra Portrait (매우 세로로 긴 패치)
+        {
+            "name": "adamw_ultra_portrait",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (5.0, 10.0),  # height/width = 5.0-10.0 (매우 세로로 긴)
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Ultra portrait patch ratio (5.0-10.0)"
+        },
+
+        # === 🎚️ Severity Max Ablation (5개) ===
+        # Condition 6: Ultra Low Severity
+        {
+            "name": "adamw_severity_0p2",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),  # 최고 성능 patch ratio 사용
+            "severity_max": 0.2,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Ultra low severity max (0.2)"
+        },
+        # Condition 7: Very Low Severity
+        {
+            "name": "adamw_severity_0p5",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 0.5,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Very low severity max (0.5)"
+        },
+        # Condition 8: Low Severity
+        {
+            "name": "adamw_severity_1p0",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 1.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Low severity max (1.0)"
+        },
+        # Condition 9: Medium Severity (baseline)
+        {
+            "name": "adamw_severity_2p0",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Medium severity max (2.0)"
+        },
+        # Condition 10: High Severity
+        {
+            "name": "adamw_severity_5p0",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 5.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + High severity max (5.0)"
+        },
+
+        # === 📏 Patch Size Ablation (5개) ===
+        # Condition 11: Tiny Patch
+        {
+            "name": "adamw_patch_tiny",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (16, 32),  # 매우 작은 패치
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Tiny patch size (16-32)"
+        },
+        # Condition 12: Small Patch
+        {
+            "name": "adamw_patch_small",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (32, 64),  # 작은 패치
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Small patch size (32-64)"
+        },
+        # Condition 13: Medium Patch (baseline)
+        {
+            "name": "adamw_patch_medium",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),  # 중간 패치
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Medium patch size (64-128)"
+        },
+        # Condition 14: Large Patch
+        {
+            "name": "adamw_patch_large",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (96, 160),  # 큰 패치
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Large patch size (96-160)"
+        },
+        # Condition 15: Extra Large Patch
+        {
+            "name": "adamw_patch_xlarge",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (128, 192),  # 매우 큰 패치
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + Extra large patch size (128-192)"
+        },
+
+        # === 🔧 SSPCAB Ablation (2개) ===
+        # Condition 16: SSPCAB Off (baseline)
+        {
+            "name": "adamw_sspcab_off",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,  # SSPCAB 비활성화
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + SSPCAB disabled (baseline)"
+        },
+        # Condition 17: SSPCAB On
+        {
+            "name": "adamw_sspcab_on",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": True,  # SSPCAB 활성화
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 기본값
+            "description": "AdamW + SSPCAB enabled"
+        },
+
+        # === 🔢 Patch Count Ablation (3개) ===
+        # Condition 18: Single Patch (baseline)
+        {
+            "name": "adamw_patch_count_1",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 1,  # 단일 패치
+            "description": "AdamW + Single patch count (1)"
+        },
+        # Condition 19: Double Patch
+        {
+            "name": "adamw_patch_count_2",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 2,  # 이중 패치
+            "description": "AdamW + Double patch count (2)"
+        },
+        # Condition 20: Triple Patch
+        {
+            "name": "adamw_patch_count_3",
+            "use_adaptive_loss": False,
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "sspcab": False,
+            "severity_input_mode": "discriminative_only",
+            "patch_width_range": (64, 128),
+            "patch_ratio_range": (0.05, 0.1),
+            "severity_max": 2.0,
+            "patch_count": 3,  # 삼중 패치
+            "description": "AdamW + Triple patch count (3)"
+        },
     ]
     
     # GPU 메모리 정리
@@ -939,6 +1194,7 @@ def main():
         print(f"   📐 이미지 크기: {IMAGE_SIZE}")
         print(f"   🔥 배치 크기: {BATCH_SIZE}")
         print(f"   📈 총 실험 조건: {len(EXPERIMENT_CONDITIONS)}개")
+        print(f"   🔬 실험 변수: Optimizer, Learning Rate, SSPCAB, Severity Mode, Patch Parameters")
         
         # ======================================================================================== 
         # 2단계: 다중 실험 조건별 순차 수행
@@ -957,10 +1213,7 @@ def main():
                 multi_datamodule=multi_datamodule,
                 condition=condition,
                 source_domain=SOURCE_DOMAIN,
-                max_epochs=MAX_EPOCHS,
-                severity_input_mode=SEVERITY_INPUT_MODE,
-                anomaly_probability=ANOMALY_PROBABILITY,
-                patch_width_range=PATCH_WIDTH_RANGE
+                max_epochs=MAX_EPOCHS
             )
             
             all_results.append(result)

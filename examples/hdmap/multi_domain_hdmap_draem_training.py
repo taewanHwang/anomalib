@@ -43,7 +43,7 @@ from anomalib.loggers import AnomalibTensorBoardLogger
 logging.getLogger("anomalib.visualization.image.item_visualizer").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
-os.environ["CUDA_VISIBLE_DEVICES"] = "14"
+os.environ["CUDA_VISIBLE_DEVICES"] = "11"
 
 
 def cleanup_gpu_memory():
@@ -278,7 +278,8 @@ def copy_target_domain_results(
 def create_multi_domain_datamodule(
     source_domain: str = "domain_A",
     target_domains: str | List[str] = "auto",
-    batch_size: int = 16
+    batch_size: int = 16,
+    image_size: str = "224x224"
 ) -> MultiDomainHDMAPDataModule:
     """MultiDomain HDMAP DataModule 생성.
     
@@ -286,6 +287,7 @@ def create_multi_domain_datamodule(
         source_domain: 훈련용 소스 도메인 (예: "domain_A")
         target_domains: 타겟 도메인들 ("auto" 또는 명시적 리스트)
         batch_size: 배치 크기
+        image_size: 이미지 크기 ("224x224" 또는 "256x256")
         
     Returns:
         MultiDomainHDMAPDataModule: 설정된 멀티 도메인 데이터 모듈
@@ -302,7 +304,7 @@ def create_multi_domain_datamodule(
     print(f"   Target Domains: {target_domains}")
     
     datamodule = MultiDomainHDMAPDataModule(
-        root="./datasets/HDMAP/1000_8bit_resize_256x256",
+        root=f"./datasets/HDMAP/1000_8bit_resize_{image_size}",
         source_domain=source_domain,
         target_domains=target_domains,  # "auto" 또는 ["domain_B", "domain_C"]
         validation_strategy="source_test",  # 소스 도메인 test를 validation으로 사용
@@ -333,6 +335,8 @@ def train_draem_model_multi_domain(
     datamodule: MultiDomainHDMAPDataModule, 
     experiment_name: str,
     max_epochs: int = 20,
+    optimizer_name: str = "adam",
+    learning_rate: float = 1e-4,
 ) -> tuple[Draem, Engine]:
     """MultiDomain DataModule을 사용한 DRAEM 모델 훈련.
     
@@ -340,6 +344,8 @@ def train_draem_model_multi_domain(
         datamodule: 멀티 도메인 데이터 모듈
         experiment_name: 실험 이름 (로그용)
         max_epochs: 최대 에포크 수 (기본값: 20)
+        optimizer_name: 옵티마이저 종류 ("adam", "adamw", "sgd") (기본값: "adam")
+        learning_rate: 학습률 (기본값: 1e-4)
         
     Returns:
         tuple: (훈련된 모델, Engine 객체)
@@ -359,10 +365,30 @@ def train_draem_model_multi_domain(
     print(f"   Source Domain: {datamodule.source_domain}")
     print(f"   Validation Strategy: {datamodule.validation_strategy}")
     print(f"   Max Epochs: {max_epochs}")
+    print(f"   Optimizer: {optimizer_name}")
+    print(f"   Learning Rate: {learning_rate}")
     
     # DRAEM 모델 생성 (기본 Evaluator 사용)
     # DRAEM은 자체적으로 최적화된 evaluator를 가지고 있음
     model = Draem()
+    
+    # 🔧 Optimizer 설정 (configure_optimizers 오버라이드)
+    def configure_optimizers_custom():
+        """Custom optimizer configuration."""
+        if optimizer_name.lower() == "adam":
+            optimizer = torch.optim.Adam(model.model.parameters(), lr=learning_rate)
+        elif optimizer_name.lower() == "adamw":
+            optimizer = torch.optim.AdamW(model.model.parameters(), lr=learning_rate)
+        elif optimizer_name.lower() == "sgd":
+            optimizer = torch.optim.SGD(model.model.parameters(), lr=learning_rate, momentum=0.9)
+        else:
+            raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+        
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[400, 600], gamma=0.1)
+        return [optimizer], [scheduler]
+    
+    # Optimizer 설정을 모델에 바인딩
+    model.configure_optimizers = configure_optimizers_custom
     
     # TensorBoard 로거 설정
     logger = AnomalibTensorBoardLogger(
@@ -518,6 +544,156 @@ def evaluate_target_domains(
     return target_results
 
 
+def run_single_experiment(
+    multi_datamodule: MultiDomainHDMAPDataModule,
+    condition: dict,
+    source_domain: str,
+    max_epochs: int,
+) -> dict:
+    """단일 실험 조건에 대한 실험 수행.
+    
+    Args:
+        multi_datamodule: 멀티 도메인 데이터 모듈
+        condition: 실험 조건 딕셔너리
+        source_domain: 소스 도메인
+        max_epochs: 최대 에포크 수
+        
+    Returns:
+        dict: 실험 결과 딕셔너리
+    """
+    experiment_name = f"multi_domain_draem_{source_domain}_{condition['name']}"
+    
+    print(f"\n{'='*80}")
+    print(f"🔬 실험 조건: {condition['name']}")
+    print(f"📝 설명: {condition['description']}")
+    print(f"{'='*80}")
+    
+    try:
+        # 모델 훈련
+        trained_model, engine = train_draem_model_multi_domain(
+            datamodule=multi_datamodule,
+            experiment_name=experiment_name,
+            max_epochs=max_epochs,
+            optimizer_name=condition["optimizer"],
+            learning_rate=condition["learning_rate"]
+        )
+        
+        best_checkpoint = engine.trainer.checkpoint_callback.best_model_path
+        
+        # Source Domain 성능 평가
+        print(f"\n📊 Source Domain 성능 평가 - {condition['name']}")
+        source_results = evaluate_source_domain(
+            model=trained_model,
+            engine=engine,
+            datamodule=multi_datamodule,
+            checkpoint_path=best_checkpoint
+        )
+        
+        # Target Domains 성능 평가
+        print(f"\n🎯 Target Domains 성능 평가 - {condition['name']}")
+        target_results = evaluate_target_domains(
+            model=trained_model,
+            engine=engine,
+            datamodule=multi_datamodule,
+            checkpoint_path=best_checkpoint,
+            save_samples=False  # 다중 실험에서는 샘플 저장 비활성화
+        )
+        
+        # 실험 결과 정리
+        experiment_result = {
+            "condition": condition,
+            "experiment_name": experiment_name,
+            "source_results": source_results,
+            "target_results": target_results,
+            "best_checkpoint": best_checkpoint,
+            "status": "success"
+        }
+        
+        print(f"✅ 실험 완료 - {condition['name']}")
+        print(f"   Source Domain AUROC: {source_results.get('image_AUROC', 'N/A'):.4f}")
+        
+        # Target Domain 평균 성능 계산
+        if target_results:
+            target_aurocs = [results.get('image_AUROC', 0) for results in target_results.values()]
+            avg_target_auroc = sum(target_aurocs) / len(target_aurocs) if target_aurocs else 0
+            print(f"   Target Domains Avg AUROC: {avg_target_auroc:.4f}")
+            experiment_result["avg_target_auroc"] = avg_target_auroc
+        
+        return experiment_result
+        
+    except Exception as e:
+        print(f"❌ 실험 실패 - {condition['name']}: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            "condition": condition,
+            "experiment_name": experiment_name,
+            "status": "failed",
+            "error": str(e)
+        }
+    finally:
+        # 메모리 정리
+        cleanup_gpu_memory()
+
+
+def analyze_multi_experiment_results(all_results: list, source_domain: str):
+    """다중 실험 결과 분석 및 비교."""
+    print(f"\n{'='*80}")
+    print(f"📈 다중 실험 결과 분석 및 비교")
+    print(f"Source Domain: {source_domain}")
+    print(f"{'='*80}")
+    
+    successful_results = [r for r in all_results if r["status"] == "success"]
+    failed_results = [r for r in all_results if r["status"] == "failed"]
+    
+    print(f"\n📊 실험 요약:")
+    print(f"   성공: {len(successful_results)}/{len(all_results)} 개")
+    print(f"   실패: {len(failed_results)}/{len(all_results)} 개")
+    
+    if failed_results:
+        print(f"\n❌ 실패한 실험들:")
+        for result in failed_results:
+            print(f"   - {result['condition']['name']}: {result['error']}")
+    
+    if successful_results:
+        print(f"\n🏆 실험 결과 순위 (Target Domain 평균 AUROC 기준):")
+        # Target Domain 평균 AUROC 기준으로 정렬
+        sorted_results = sorted(successful_results, 
+                              key=lambda x: x.get("avg_target_auroc", 0), 
+                              reverse=True)
+        
+        for i, result in enumerate(sorted_results, 1):
+            condition = result["condition"]
+            source_auroc = result["source_results"].get("image_AUROC", 0)
+            target_auroc = result.get("avg_target_auroc", 0)
+            
+            print(f"   {i}. {condition['name']} ({condition['optimizer']})")
+            print(f"      Source AUROC: {source_auroc:.4f}")
+            print(f"      Target Avg AUROC: {target_auroc:.4f}")
+            print(f"      Description: {condition['description']}")
+            print()
+        
+        # 최고 성능 실험 하이라이트
+        best_result = sorted_results[0]
+        print(f"🥇 최고 성능 실험: {best_result['condition']['name']}")
+        print(f"   Target Avg AUROC: {best_result.get('avg_target_auroc', 0):.4f}")
+        print(f"   Checkpoint: {best_result['best_checkpoint']}")
+        
+        # Optimizer별 비교
+        print(f"\n🚀 Optimizer별 평균 성능:")
+        optimizer_groups = {}
+        for result in successful_results:
+            opt = result["condition"]["optimizer"]
+            if opt not in optimizer_groups:
+                optimizer_groups[opt] = []
+            optimizer_groups[opt].append(result.get("avg_target_auroc", 0))
+        
+        for opt, aurocs in optimizer_groups.items():
+            avg_auroc = sum(aurocs) / len(aurocs)
+            print(f"   {opt.upper()}: {avg_auroc:.4f} (평균, {len(aurocs)}개 실험)")
+
+
 def analyze_domain_transfer_results(
     source_domain: str,
     source_results: Dict[str, Any],
@@ -572,17 +748,64 @@ def analyze_domain_transfer_results(
 
 
 def main():
-    """메인 실험 함수."""
+    """멀티 도메인 DRAEM 다중 실험 메인 함수."""
     print("="*80)
-    print("🚀 MultiDomain HDMAP DRAEM 도메인 전이 학습 실험")
-    print("MultiDomainHDMAPDataModule + DRAEM 모델 전용 도메인 전이 학습")
+    print("🚀 MultiDomain HDMAP DRAEM 다중 실험")
+    print("Optimizer 조합별 성능 비교 실험")
     print("="*80)
     
     # 실험 설정
     SOURCE_DOMAIN = "domain_A"  # 훈련용 소스 도메인
     TARGET_DOMAINS = "auto"  # 자동으로 나머지 도메인들 선택
     BATCH_SIZE = 16
-    MAX_EPOCHS = 30  # 충분한 학습을 위한 에포크 수
+    MAX_EPOCHS = 10  # Custom DRAEM과 동일한 10 epochs
+    
+    # 🧪 실험 조건 설정 - Custom DRAEM 결과 기반 최적화된 조건
+    EXPERIMENT_CONDITIONS = [
+        # 🥇 Baseline: AdamW 기본 조건 (Custom DRAEM 비교군)
+        {
+            "name": "draem_adamw_baseline",
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "description": "Original DRAEM baseline with AdamW"
+        },
+        
+        # 🔬 Learning Rate 비교 실험
+        {
+            "name": "draem_adamw_lr_high",
+            "optimizer": "adamw", 
+            "learning_rate": 2e-4,
+            "description": "Original DRAEM with higher learning rate"
+        },
+        {
+            "name": "draem_adamw_lr_low",
+            "optimizer": "adamw",
+            "learning_rate": 5e-5,
+            "description": "Original DRAEM with lower learning rate"
+        },
+        
+        # 📊 Optimizer 비교 실험
+        {
+            "name": "draem_adam",
+            "optimizer": "adam",
+            "learning_rate": 1e-4,
+            "description": "Original DRAEM with Adam optimizer"
+        },
+        {
+            "name": "draem_sgd",
+            "optimizer": "sgd",
+            "learning_rate": 1e-3,  # SGD는 더 높은 학습률 필요
+            "description": "Original DRAEM with SGD optimizer"
+        },
+        
+        # 🎯 최적화된 조건 (Custom DRAEM에서 발견한 패턴 적용)
+        {
+            "name": "draem_adamw_optimized",
+            "optimizer": "adamw",
+            "learning_rate": 1e-4,
+            "description": "Original DRAEM with optimized settings"
+        },
+    ]
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
@@ -598,81 +821,82 @@ def main():
         multi_datamodule = create_multi_domain_datamodule(
             source_domain=SOURCE_DOMAIN,
             target_domains=TARGET_DOMAINS,  # "auto" = 자동으로 나머지 도메인들
-            batch_size=BATCH_SIZE
+            batch_size=BATCH_SIZE,
+            image_size="224x224"  # Custom DRAEM과 동일한 이미지 크기
         )
         
-        # ========================================================================================
-        # 2단계: Source Domain에서 모델 훈련
+        # ======================================================================================== 
+        # 2단계: 다중 실험 조건별 순차 수행
         # ========================================================================================
         print(f"\n{'='*60}")
-        print(f"2단계: Source Domain ({multi_datamodule.source_domain})에서 모델 훈련")
+        print(f"2단계: 다중 실험 조건별 순차 수행")
+        print(f"📈 총 실험 조건: {len(EXPERIMENT_CONDITIONS)}개")
+        print(f"🔬 실험 변수: Optimizer (AdamW/Adam/SGD), Learning Rate (5e-5/1e-4/2e-4/1e-3)")
+        print(f"⏱️  예상 소요 시간: 약 {len(EXPERIMENT_CONDITIONS) * 25}분 (10 epochs × {len(EXPERIMENT_CONDITIONS)}개 조건, GPU 11)")
         print(f"{'='*60}")
         
-        trained_model, engine = train_draem_model_multi_domain(
-            datamodule=multi_datamodule,
-            experiment_name=f"multi_domain_draem_{SOURCE_DOMAIN}",
-            max_epochs=MAX_EPOCHS,
-        )
+        all_results = []
         
-        # 체크포인트 경로 저장
-        best_checkpoint = engine.trainer.checkpoint_callback.best_model_path
-        
-        # ========================================================================================
-        # 3단계: Source Domain 성능 평가 (베이스라인)
-        # ========================================================================================
-        print(f"\n{'='*60}")
-        print(f"3단계: Source Domain 성능 평가 (베이스라인)")
-        print(f"{'='*60}")
-        
-        source_results = evaluate_source_domain(
-            model=trained_model,
-            engine=engine,
-            datamodule=multi_datamodule,
-            checkpoint_path=best_checkpoint
-        )
+        for i, condition in enumerate(EXPERIMENT_CONDITIONS, 1):
+            print(f"\n⏱️  진행상황: {i}/{len(EXPERIMENT_CONDITIONS)} - {condition['name']}")
+            
+            result = run_single_experiment(
+                multi_datamodule=multi_datamodule,
+                condition=condition,
+                source_domain=SOURCE_DOMAIN,
+                max_epochs=MAX_EPOCHS,
+            )
+            
+            all_results.append(result)
+            
+            # 중간 결과 출력
+            if result["status"] == "success":
+                print(f"   📈 중간 결과: Source AUROC = {result['source_results'].get('image_AUROC', 0):.4f}, "
+                      f"Target Avg AUROC = {result.get('avg_target_auroc', 0):.4f}")
+            else:
+                print(f"   ❌ 실험 실패: {result.get('error', '알 수 없는 오류')}")
         
         # ========================================================================================
-        # 4단계: Target Domains 성능 평가 (도메인 전이)
+        # 3단계: 전체 실험 결과 분석 및 비교
         # ========================================================================================
-        print(f"\n{'='*60}")
-        print(f"4단계: Target Domains 성능 평가 (도메인 전이)")
-        print(f"{'='*60}")
-        
-        target_results = evaluate_target_domains(
-            model=trained_model,
-            engine=engine,
-            datamodule=multi_datamodule,
-            checkpoint_path=best_checkpoint,
-            save_samples=True  # Target Domain 전체 결과 복사 활성화
-        )
+        analyze_multi_experiment_results(all_results, SOURCE_DOMAIN)
         
         # ========================================================================================
-        # 5단계: 결과 분석 및 인사이트
+        # 4단계: 최고 성능 모델에 대한 상세 분석 (선택사항)
         # ========================================================================================
-        analyze_domain_transfer_results(
-            source_domain=multi_datamodule.source_domain,
-            source_results=source_results,
-            target_results=target_results
-        )
-        
-        # 6단계: Custom Visualization 생성
-        
-        custom_viz_path = create_custom_visualizations(
-            experiment_name=f"multi_domain_draem_{SOURCE_DOMAIN}",
-            source_domain=SOURCE_DOMAIN,
-            target_domains=list(target_results.keys()),
-            source_results=source_results,
-            target_results=target_results
-        )
-        
-        # 6-1단계: Source Domain 결과 재배치
-        organize_source_domain_results(
-            custom_viz_path=custom_viz_path,
-            source_domain=SOURCE_DOMAIN
-        )
-        
-        print(f"\n🎉 MultiDomain DRAEM 실험 완료!")
-        print(f"   🎨 결과: {custom_viz_path}")
+        successful_results = [r for r in all_results if r["status"] == "success"]
+        if successful_results:
+            # 최고 성능 모델 선택
+            best_result = max(successful_results, key=lambda x: x.get("avg_target_auroc", 0))
+            
+            print(f"\n{'='*60}")
+            print(f"4단계: 최고 성능 모델 상세 분석")
+            print(f"선택된 모델: {best_result['condition']['name']}")
+            print(f"{'='*60}")
+            
+            # 최고 성능 모델에 대해서만 상세 시각화 생성
+            best_condition = best_result['condition']
+            custom_viz_path = create_custom_visualizations(
+                experiment_name=f"multi_domain_draem_v2024_12_{SOURCE_DOMAIN}_BEST_{best_condition['name']}",
+                source_domain=SOURCE_DOMAIN,
+                target_domains=list(best_result['target_results'].keys()),
+                source_results=best_result['source_results'],
+                target_results=best_result['target_results']
+            )
+            
+            organize_source_domain_results(
+                custom_viz_path=custom_viz_path,
+                source_domain=SOURCE_DOMAIN
+            )
+            
+            print(f"\n🎉 다중 실험 완료!")
+            print(f"   🏆 최고 성능: {best_result['condition']['name']}")
+            print(f"   📊 Target Avg AUROC: {best_result.get('avg_target_auroc', 0):.4f}")
+            print(f"   🎨 상세 결과: {custom_viz_path}")
+            print(f"   📁 최고 성능 체크포인트: {best_result['best_checkpoint']}")
+            
+        else:
+            print(f"\n❌ 모든 실험이 실패했습니다.")
                 
         # 메모리 정리
         cleanup_gpu_memory()

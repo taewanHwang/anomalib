@@ -262,6 +262,74 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
         """
         return self.test_dataloader()
 
+    def get_target_test_dataloader(self, domain_name: str) -> DataLoader:
+        """특정 target domain의 test dataloader 반환.
+        
+        Target Domain Early Stopping Callback에서 사용하기 위한 메서드입니다.
+        
+        Args:
+            domain_name (str): Target domain 이름 (예: "domain_B", "domain_C", "domain_D")
+            
+        Returns:
+            DataLoader: 해당 domain의 test dataloader
+            
+        Raises:
+            ValueError: domain_name이 target_domains에 없는 경우
+            
+        Example:
+            >>> datamodule = MultiDomainHDMAPDataModule(source_domain="domain_A")
+            >>> test_loader_b = datamodule.get_target_test_dataloader("domain_B")
+        """
+        if domain_name not in self.target_domains:
+            raise ValueError(
+                f"Domain '{domain_name}' not found in target_domains {self.target_domains}. "
+                f"Available target domains: {self.target_domains}"
+            )
+        
+        # Target domain의 인덱스 찾기
+        domain_index = self.target_domains.index(domain_name)
+        
+        # 이미 setup된 test_data 사용 (transform이 이미 적용됨)
+        if hasattr(self, 'test_data') and self.test_data:
+            test_dataset = self.test_data[domain_index]
+        else:
+            # setup이 안된 경우 수동으로 dataset 생성
+            test_dataset = HDMAPDataset(
+                task=self.task,
+                transform=None,  # transform은 나중에 _update_augmentations에서 처리됨
+                root=self.root,
+                category=domain_name,
+                split=Split.TEST,
+            )
+        
+        # DataLoader 생성 (기존 test_dataloader와 동일한 설정 사용)
+        test_loader = DataLoader(
+            dataset=test_dataset,
+            batch_size=self.eval_batch_size,  # test_batch_size -> eval_batch_size
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=self.num_workers > 0,
+            collate_fn=self.external_collate_fn or test_dataset.collate_fn,
+        )
+        
+        return test_loader
+    
+    def get_all_target_test_dataloaders(self) -> dict[str, DataLoader]:
+        """모든 target domain의 test dataloader들을 딕셔너리로 반환.
+        
+        Returns:
+            dict[str, DataLoader]: domain_name을 키로 하는 test dataloader 딕셔너리
+            
+        Example:
+            >>> datamodule = MultiDomainHDMAPDataModule(source_domain="domain_A")
+            >>> target_loaders = datamodule.get_all_target_test_dataloaders()
+            >>> # {"domain_B": DataLoader, "domain_C": DataLoader, "domain_D": DataLoader}
+        """
+        target_loaders = {}
+        for domain_name in self.target_domains:
+            target_loaders[domain_name] = self.get_target_test_dataloader(domain_name)
+        return target_loaders
+
     def __repr__(self) -> str:
         """String representation of the datamodule / 데이터모듈의 문자열 표현."""
         return (

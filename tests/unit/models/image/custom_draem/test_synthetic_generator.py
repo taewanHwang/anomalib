@@ -2,6 +2,7 @@
 
 This script tests the synthetic fault generation functionality.
 
+Run with: pytest tests/unit/models/image/custom_draem/test_synthetic_generator.py -v -s
 Author: Taewan Hwang
 """
 
@@ -110,7 +111,7 @@ def test_different_patch_configurations():
     image = load_sample_hdmap_image()
     
     configurations = [
-        ("Landscape", (0.3, 0.7)),    # height/width < 1.0 (wider than tall)
+        ("Landscape", (0.1, 0.3)),    # height/width < 1.0 (wider than tall)
         ("Portrait", (1.5, 3.0)),     # height/width > 1.0 (taller than wide)
         ("Square", (1.0, 1.0)),       # height/width = 1.0 (equal dimensions)
         ("Mixed", (0.5, 2.0))         # height/width mixed range
@@ -120,7 +121,7 @@ def test_different_patch_configurations():
     
     for config_name, patch_ratio_range in configurations:
         generator = HDMAPCutPasteSyntheticGenerator(
-            patch_width_range=(40, 80),
+            patch_width_range=(32, 64),
             patch_ratio_range=patch_ratio_range,
             severity_max=10.0,
             patch_count=1
@@ -345,9 +346,9 @@ def test_with_real_hdmap_data():
             image = load_sample_hdmap_image(real_image_path)
             
             generator = HDMAPCutPasteSyntheticGenerator(
-                patch_width_range=(40, 90),
-                patch_ratio_range=(0.1, 0.5),
-                severity_max=8.0,
+                patch_width_range=(64, 128),
+                patch_ratio_range=(0.1, 0.2),
+                severity_max=2.0,
                 patch_count=2
             )
             
@@ -482,3 +483,25 @@ if __name__ == "__main__":
         plt.show()
     except:
         print("Note: matplotlib display not available in this environment")
+
+
+# pytest로 실행 시 자동으로 실행되는 테스트 함수
+def test_synthetic_generator_functionality():
+    """Synthetic generator 기능 통합 테스트"""
+    print("\n🧪 Synthetic Generator Test Suite")
+    print("=" * 60)
+    print("Testing HDMAPCutPasteSyntheticGenerator functionality...")
+    
+    # 메인 테스트 실행
+    main()
+    
+    print("\n✅ All synthetic generator tests passed!")
+
+
+if __name__ == "__main__":
+    print("\n🧪 Synthetic Generator Test Suite")
+    print("=" * 60)
+    print("To run as pytest:")
+    print("pytest tests/unit/models/image/custom_draem/test_synthetic_generator.py -v -s")
+    print("\nRunning direct execution...")
+    main()

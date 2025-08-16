@@ -6,82 +6,235 @@ Uses pretrained DRAEM backbone for fair comparison with custom severity predicti
 Author: Taewan Hwang
 """
 
+from dataclasses import dataclass
 import torch
 from torch import nn
 
 from anomalib.data import InferenceBatch
 from anomalib.models.components.layers import SSPCAB
-from anomalib.models.image.draem.torch_model import DraemModel
+from anomalib.models.image.draem.torch_model import DraemModel, ReconstructiveSubNetwork, DiscriminativeSubNetwork as OriginalDiscriminativeSubNetwork
+from anomalib.models.image.custom_draem.severity_head import SeverityHead
 
 
-class CustomDraemModel(nn.Module):
-    """Custom DRAEM model with severity prediction capability.
+@dataclass
+class DraemSevNetOutput:
+    """Output dataclass for DRAEM-SevNet inference.
+    
+    Contains all outputs from DRAEM-SevNet model including individual scores
+    and combined final score for comprehensive analysis.
+    
+    Attributes:
+        reconstruction (torch.Tensor): Reconstructed images
+        mask_logits (torch.Tensor): Raw mask prediction logits
+        severity_score (torch.Tensor): Severity prediction scores [0,1]
+        mask_score (torch.Tensor): Mask-based anomaly scores [0,1]
+        final_score (torch.Tensor): Combined final anomaly scores [0,1]
+        anomaly_map (torch.Tensor): Processed anomaly probability map
+    """
+    reconstruction: torch.Tensor
+    mask_logits: torch.Tensor
+    severity_score: torch.Tensor
+    mask_score: torch.Tensor  
+    final_score: torch.Tensor
+    anomaly_map: torch.Tensor
+
+
+class DiscriminativeSubNetwork(nn.Module):
+    """Enhanced Discriminative Sub-Network with encoder features exposure.
+    
+    Extends the original DRAEM DiscriminativeSubNetwork to expose encoder features
+    (act1~act6) for DRAEM-SevNet's SeverityHead usage.
     
     Args:
-        sspcab (bool, optional): Enable SSPCAB training. Defaults to ``False``.
-        severity_max (float, optional): Maximum severity value. Defaults to ``10.0``.
-        severity_input_mode (str, optional): Input mode for severity network.
-            Options: "discriminative_only", "with_original", "with_reconstruction", 
-            "with_error_map", "multi_modal". Defaults to ``"discriminative_only"``.
+        in_channels (int, optional): Number of input channels. Defaults to ``6``.
+        out_channels (int, optional): Number of output channels. Defaults to ``2``.
+        base_width (int, optional): Base dimensionality of layers. Defaults to ``64``.
+        expose_features (bool, optional): Whether to return encoder features. Defaults to ``True``.
     """
     
     def __init__(
         self, 
-        sspcab: bool = False, 
-        severity_max: float = 10.0,
-        severity_input_mode: str = "discriminative_only"
+        in_channels: int = 6, 
+        out_channels: int = 2, 
+        base_width: int = 64,
+        expose_features: bool = True
     ) -> None:
         super().__init__()
-        self.severity_max = severity_max
-        self.severity_input_mode = severity_input_mode
+        self.expose_features = expose_features
         
-        # Use pretrained DRAEM backbone components with SSPCAB option
+        # Use original DRAEM discriminative components
+        self.original_subnet = OriginalDiscriminativeSubNetwork(
+            in_channels=in_channels, 
+            out_channels=out_channels, 
+            base_width=base_width
+        )
+        
+        # Store references for direct access
+        self.encoder_segment = self.original_subnet.encoder_segment
+        self.decoder_segment = self.original_subnet.decoder_segment
+    
+    def forward(self, batch: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """Forward pass through discriminative network with optional feature exposure.
+        
+        Args:
+            batch (torch.Tensor): Concatenated original and reconstructed images of
+                shape ``(batch_size, channels*2, height, width)``
+                
+        Returns:
+            If expose_features=False:
+                torch.Tensor: Pixel-level class scores for normal and anomalous regions
+            If expose_features=True:
+                tuple: (mask_logits, encoder_features)
+                    - mask_logits: Same as above
+                    - encoder_features: Dict containing 'act1'~'act6' feature maps
+        """
+        # Extract encoder features
+        act1, act2, act3, act4, act5, act6 = self.encoder_segment(batch)
+        
+        # Generate mask logits using decoder
+        mask_logits = self.decoder_segment(act1, act2, act3, act4, act5, act6)
+        
+        if not self.expose_features:
+            # Backward compatibility: return only mask logits
+            return mask_logits
+        
+        # Return both mask logits and encoder features for SeverityHead
+        encoder_features = {
+            'act1': act1,
+            'act2': act2, 
+            'act3': act3,
+            'act4': act4,
+            'act5': act5,
+            'act6': act6
+        }
+        
+        return mask_logits, encoder_features
+
+
+class CustomDraemModel(nn.Module):
+    """DRAEM-SevNet: DRAEM with Severity Network.
+    
+    Unified severity-aware architecture that combines mask prediction and severity
+    prediction in a multi-task learning framework. Uses discriminative encoder 
+    features directly for severity prediction.
+    
+    Args:
+        sspcab (bool, optional): Enable SSPCAB training. Defaults to ``False``.
+        severity_head_mode (str, optional): SeverityHead mode.
+            Options: "single_scale" (act6 only), "multi_scale" (act2~act6).
+            Defaults to ``"single_scale"``.
+        severity_head_hidden_dim (int, optional): Hidden dimension for SeverityHead.
+            Defaults to ``128``.
+        score_combination (str, optional): Method to combine mask and severity scores.
+            Options: "simple_average", "weighted_average", "maximum".
+            Defaults to ``"simple_average"``.
+        severity_weight_for_combination (float, optional): Weight for severity score
+            in weighted_average combination. Defaults to ``0.5``.
+            
+    Example:
+        >>> model = CustomDraemModel(severity_head_mode="multi_scale")
+        >>> input_tensor = torch.randn(8, 3, 224, 224)
+        >>> # Training mode
+        >>> model.train()
+        >>> reconstruction, mask_logits, severity_score = model(input_tensor)
+        >>> # Inference mode
+        >>> model.eval()
+        >>> output = model(input_tensor)
+        >>> assert isinstance(output, DraemSevNetOutput)
+    """
+    
+    def __init__(
+        self, 
+        sspcab: bool = False,
+        severity_head_mode: str = "single_scale",
+        severity_head_hidden_dim: int = 128,
+        score_combination: str = "simple_average",
+        severity_weight_for_combination: float = 0.5
+    ) -> None:
+        super().__init__()
+        
+        self.severity_head_mode = severity_head_mode
+        self.score_combination = score_combination
+        self.severity_weight_for_combination = severity_weight_for_combination
+        
+        # DRAEM backbone components
         draem_backbone = DraemModel(sspcab=sspcab)
         self.reconstructive_subnetwork = draem_backbone.reconstructive_subnetwork
-        self.discriminative_subnetwork = draem_backbone.discriminative_subnetwork
-        
-        # Determine input channels for severity network based on mode
-        severity_input_channels = self._get_severity_input_channels()
-        self.fault_severity_subnetwork = FaultSeveritySubNetwork(
-            in_channels=severity_input_channels,
-            severity_max=severity_max
+        self.discriminative_subnetwork = DiscriminativeSubNetwork(
+            in_channels=6, 
+            out_channels=2, 
+            expose_features=True
         )
-    
-    def _get_severity_input_channels(self) -> int:
-        """Get number of input channels for severity network based on input mode."""
-        mode_channels = {
-            "discriminative_only": 2,    # discriminative result only (2)
-            "with_original": 5,          # discriminative + original (2 + 3 = 5)
-            "with_reconstruction": 5,    # discriminative + reconstruction (2 + 3 = 5)  
-            "with_error_map": 5,         # discriminative + error map (2 + 3 = 5)
-            "multi_modal": 11           # discriminative + original + reconstruction + error (2 + 3 + 3 + 3 = 11)
-        }
-        return mode_channels.get(self.severity_input_mode, 2)
-    
-    def _prepare_severity_input(
-        self, 
-        original: torch.Tensor, 
-        reconstruction: torch.Tensor, 
-        discriminative_result: torch.Tensor
-    ) -> torch.Tensor:
-        """Prepare input tensor for severity network based on input mode."""
-        if self.severity_input_mode == "discriminative_only":
-            return discriminative_result
-        elif self.severity_input_mode == "with_original":
-            return torch.cat([discriminative_result, original], dim=1)
-        elif self.severity_input_mode == "with_reconstruction":
-            return torch.cat([discriminative_result, reconstruction], dim=1)
-        elif self.severity_input_mode == "with_error_map":
-            error_map = torch.abs(original - reconstruction)
-            return torch.cat([discriminative_result, error_map], dim=1)
-        elif self.severity_input_mode == "multi_modal":
-            error_map = torch.abs(original - reconstruction)
-            return torch.cat([discriminative_result, original, reconstruction, error_map], dim=1)
+        
+        # Severity prediction head
+        if severity_head_mode == "single_scale":
+            # Use act6 features (512 channels for base_width=64)
+            self.severity_head = SeverityHead(
+                in_dim=512, 
+                hidden_dim=severity_head_hidden_dim,
+                mode="single_scale"
+            )
+        elif severity_head_mode == "multi_scale":
+            # Use act2~act6 features (base_width=64)
+            self.severity_head = SeverityHead(
+                mode="multi_scale",
+                base_width=64,
+                hidden_dim=severity_head_hidden_dim
+            )
         else:
-            raise ValueError(f"Unknown severity input mode: {self.severity_input_mode}")
+            raise ValueError(f"Unsupported severity_head_mode: {severity_head_mode}. "
+                           f"Choose from ['single_scale', 'multi_scale']")
     
-    def forward(self, batch: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor] | InferenceBatch:
-        """Forward pass through all sub-networks.
+    def _get_mask_score(self, mask_logits: torch.Tensor) -> torch.Tensor:
+        """Calculate reliable mask-based anomaly score.
+        
+        Uses manual softmax + amax calculation for consistent and reliable results,
+        avoiding the inconsistency found in original DRAEM's pred_score calculation.
+        
+        Args:
+            mask_logits: Raw mask prediction logits of shape (B, 2, H, W)
+            
+        Returns:
+            torch.Tensor: Mask-based anomaly scores of shape (B,) in range [0, 1]
+        """
+        # Apply softmax to get probabilities
+        anomaly_probabilities = torch.softmax(mask_logits, dim=1)[:, 1, ...]  # (B, H, W)
+        
+        # Take maximum probability as image-level score
+        mask_score = torch.amax(anomaly_probabilities, dim=(-2, -1))  # (B,)
+        
+        return mask_score
+    
+    def _combine_scores(
+        self, 
+        mask_score: torch.Tensor, 
+        severity_score: torch.Tensor
+    ) -> torch.Tensor:
+        """Combine mask and severity scores using specified combination method.
+        
+        Args:
+            mask_score: Mask-based anomaly scores of shape (B,)
+            severity_score: Severity prediction scores of shape (B,)
+            
+        Returns:
+            torch.Tensor: Combined final scores of shape (B,) in range [0, 1]
+        """
+        if self.score_combination == "simple_average":
+            return (mask_score + severity_score) / 2.0
+        elif self.score_combination == "weighted_average":
+            weight = self.severity_weight_for_combination
+            return (1 - weight) * mask_score + weight * severity_score
+        elif self.score_combination == "maximum":
+            return torch.maximum(mask_score, severity_score)
+        else:
+            raise ValueError(f"Unsupported score_combination: {self.score_combination}. "
+                           f"Choose from ['simple_average', 'weighted_average', 'maximum']")
+    
+    def forward(
+        self, 
+        batch: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | DraemSevNetOutput:
+        """Forward pass through DRAEM-SevNet architecture.
         
         Args:
             batch (torch.Tensor): Input batch of 3-channel RGB images of shape
@@ -90,134 +243,57 @@ class CustomDraemModel(nn.Module):
         Returns:
             During training:
                 tuple: Tuple containing:
-                    - Reconstructed images (batch_size, 3, H, W)
-                    - Predicted anomaly masks (batch_size, 2, H, W) 
-                    - Predicted severity values (batch_size, 1)
+                    - reconstruction: Reconstructed images (batch_size, 3, H, W)
+                    - mask_logits: Raw mask prediction logits (batch_size, 2, H, W)
+                    - severity_score: Severity prediction scores (batch_size,) in [0, 1]
             During inference:
-                InferenceBatch: Contains anomaly map, prediction score, and severity
+                DraemSevNetOutput: Complete output containing all scores and intermediate results
         """
-        # Reconstruction step
+        # 1. Reconstruction step
         reconstruction = self.reconstructive_subnetwork(batch)
         
-        # Discrimination step (concatenate original + reconstruction)
-        concatenated_inputs = torch.cat([batch, reconstruction], dim=1)  # (B, 6, H, W) = (B, 3, H, W) + (B, 3, H, W)
-        prediction = self.discriminative_subnetwork(concatenated_inputs)  # (B, 2, H, W)
+        # 2. Discriminative prediction + feature extraction
+        concatenated_inputs = torch.cat([batch, reconstruction], dim=1)  # (B, 6, H, W)
+        mask_logits, encoder_features = self.discriminative_subnetwork(concatenated_inputs)
         
-        # Severity prediction step
-        severity_input = self._prepare_severity_input(batch, reconstruction, prediction)
-        severity_prediction = self.fault_severity_subnetwork(severity_input)  # (B, 1)
+        # 3. Severity prediction from encoder features
+        if self.severity_head_mode == "single_scale":
+            # Use act6 features only
+            severity_score = self.severity_head(encoder_features['act6'])
+        elif self.severity_head_mode == "multi_scale":
+            # Use act2~act6 features
+            multi_scale_features = {
+                key: encoder_features[key] 
+                for key in ['act2', 'act3', 'act4', 'act5', 'act6']
+            }
+            severity_score = self.severity_head(multi_scale_features)
+        else:
+            raise ValueError(f"Unsupported severity_head_mode: {self.severity_head_mode}")
         
         if self.training:
-            return reconstruction, prediction, severity_prediction
+            # Training mode: return components for loss calculation
+            return reconstruction, mask_logits, severity_score
         
-        # Inference mode
-        anomaly_map = torch.softmax(prediction, dim=1)[:, 1, ...]  # (B, H, W) - channel 1 is anomaly probability
-        pred_score = torch.amax(anomaly_map, dim=(-2, -1))  # (B,)
-        severity_score = severity_prediction.squeeze(-1)  # (B,)
+        # 4. Inference mode: calculate final scores
         
-        return InferenceBatch(
-            pred_score=pred_score, 
-            anomaly_map=anomaly_map,
-            pred_label=severity_score  # Use pred_label field for severity scores
+        # Calculate reliable mask-based score
+        mask_score = self._get_mask_score(mask_logits)
+        
+        # Combine mask and severity scores
+        final_score = self._combine_scores(mask_score, severity_score)
+        
+        # Generate anomaly probability map for visualization
+        anomaly_map = torch.softmax(mask_logits, dim=1)[:, 1, ...]  # (B, H, W)
+        
+        return DraemSevNetOutput(
+            reconstruction=reconstruction,
+            mask_logits=mask_logits,
+            severity_score=severity_score,
+            mask_score=mask_score,
+            final_score=final_score,
+            anomaly_map=anomaly_map
         )
 
 
-class FaultSeveritySubNetwork(nn.Module):
-    """Fault severity prediction network.
-    
-    Predicts continuous severity values from discriminative features.
-    Uses CNN for feature extraction + Global Pooling + MLP for regression.
-    
-    Args:
-        in_channels (int, optional): Number of input channels. Defaults to ``2``.
-        severity_max (float, optional): Maximum severity value. Defaults to ``10.0``.
-        hidden_dim (int, optional): Hidden dimension for MLP. Defaults to ``128``.
-    """
-    
-    def __init__(
-        self, 
-        in_channels: int = 2, 
-        severity_max: float = 10.0,
-        hidden_dim: int = 128
-    ) -> None:
-        super().__init__()
-        self.severity_max = severity_max
-        
-        # Feature extraction (CNN backbone) - Input: 224x224 or 256x256
-        self.feature_extractor = nn.Sequential(
-            # First conv block: 224x224 -> 112x112 (or 256x256 -> 128x128)
-            nn.Conv2d(in_channels, 64, 3, 1, 1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2),
-            
-            # Second conv block: 112x112 -> 56x56 (or 128x128 -> 64x64)
-            nn.Conv2d(64, 128, 3, 1, 1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2),
-        )
-        
-        # Global pooling
-        self.global_pooling = nn.AdaptiveAvgPool2d(1)
-        
-        # MLP regressor
-        self.regressor = nn.Sequential(
-            nn.Linear(128, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            
-            nn.Linear(hidden_dim // 2, 1),
-            nn.Sigmoid()  # Output in [0, 1] range, then scale to [0, severity_max]
-        )
-        
-        # Initialize weights
-        self._initialize_weights()
-    
-    def _initialize_weights(self) -> None:
-        """Initialize network weights using Xavier/Kaiming initialization."""
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                # Kaiming initialization for Conv2d layers (good for ReLU)
-                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.BatchNorm2d):
-                # Standard initialization for BatchNorm
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.Linear):
-                # Xavier initialization for Linear layers
-                nn.init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-    
-    def forward(self, batch: torch.Tensor) -> torch.Tensor:
-        """Forward pass through severity prediction network.
-        
-        Args:
-            batch (torch.Tensor): Input batch of varying channels depending on input mode
-                                  Shape: (batch_size, in_channels, 224, 224) or (batch_size, in_channels, 256, 256)
-            
-        Returns:
-            torch.Tensor: Predicted severity values of shape (batch_size, 1)
-                         Values are in range [0, severity_max]
-        """
-        # Feature extraction
-        features = self.feature_extractor(batch)  # (B, 128, H', W')
-        
-        # Global pooling
-        pooled_features = self.global_pooling(features)  # (B, 128, 1, 1)
-        pooled_features = pooled_features.view(pooled_features.size(0), -1)  # (B, 128)
-        
-        # Regression
-        severity_raw = self.regressor(pooled_features)  # (B, 1)
-        
-        # Scale to [0, severity_max] range
-        severity_prediction = severity_raw * self.severity_max
-        
-        return severity_prediction
+# Export the main classes
+__all__ = ["CustomDraemModel", "DiscriminativeSubNetwork", "DraemSevNetOutput"]

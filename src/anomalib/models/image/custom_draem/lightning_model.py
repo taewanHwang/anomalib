@@ -22,45 +22,44 @@ from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
 
-from .loss import CustomDraemLoss
-from .adaptive_loss import AdaptiveCustomDraemLoss
+from .loss import DraemSevNetLoss, DraemSevNetLossFactory
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
-from .torch_model import CustomDraemModel
+from .torch_model import CustomDraemModel, DraemSevNetOutput
 
 __all__ = ["CustomDraem"]
 
 
 class CustomDraem(AnomalibModule):
-    """Custom DRAEM Lightning Model.
+    """DRAEM-SevNet Lightning Model.
     
-    Extended DRAEM model with fault severity prediction for HDMAP datasets.
+    DRAEM with Severity Network - unified severity-aware architecture for anomaly detection.
+    Combines mask prediction and severity prediction in a multi-task learning framework.
     
     Args:
         sspcab (bool, optional): Enable SSPCAB training. Defaults to ``False``.
-        severity_max (float, optional): Maximum severity value for prediction.
-            Defaults to ``10.0``.
-        severity_input_mode (str, optional): Input mode for severity network.
-            Options: "discriminative_only", "with_original", "with_reconstruction",
-            "with_error_map", "multi_modal". Defaults to ``"discriminative_only"``.
+        severity_head_mode (str, optional): SeverityHead mode.
+            Options: "single_scale" (act6 only), "multi_scale" (act2~act6).
+            Defaults to ``"single_scale"``.
+        severity_head_hidden_dim (int, optional): Hidden dimension for SeverityHead.
+            Defaults to ``128``.
+        score_combination (str, optional): Method to combine mask and severity scores.
+            Options: "simple_average", "weighted_average", "maximum".
+            Defaults to ``"simple_average"``.
+        severity_weight_for_combination (float, optional): Weight for severity score
+            in weighted_average combination. Defaults to ``0.5``.
         patch_ratio_range (tuple, optional): Range of patch aspect ratios.
             Values >1.0 for portrait, <1.0 for landscape, 1.0 for square.
             Defaults to ``(2.0, 4.0)``.
         patch_width_range (tuple, optional): Range of patch widths in pixels
-            (based on 256x256 image). Defaults to ``(20, 80)``.
+            (scales with input image size). Defaults to ``(20, 80)``.
         patch_count (int, optional): Number of patches to generate.
             Defaults to ``1``.
         anomaly_probability (float, optional): Probability of applying synthetic fault 
             generation. Value between 0.0 and 1.0. Defaults to ``0.5``.
-        reconstruction_weight (float, optional): Weight for reconstruction loss.
-            Defaults to ``1.0``.
-        segmentation_weight (float, optional): Weight for segmentation loss.
-            Defaults to ``1.0``.
-        severity_weight (float, optional): Weight for severity loss.
-            Defaults to ``0.5``.
-        use_adaptive_loss (bool, optional): Use adaptive multi-task loss with
-            uncertainty weighting and progressive training. Defaults to ``True``.
-        warmup_epochs (int, optional): Number of warmup epochs focusing on
-            reconstruction before ramping up other tasks. Defaults to ``5``.
+        severity_weight (float, optional): Weight λ for severity loss in
+            L = L_draem + λ * L_severity. Defaults to ``0.5``.
+        severity_loss_type (str, optional): Type of severity loss.
+            Options: "mse", "smooth_l1". Defaults to ``"mse"``.
         optimizer (str, optional): Optimizer type ("adam", "adamw", "sgd").
             Defaults to ``"adam"``.
         learning_rate (float, optional): Learning rate for optimizer.
@@ -79,67 +78,61 @@ class CustomDraem(AnomalibModule):
     def __init__(
         self,
         sspcab: bool = False,
-        severity_max: float = 10.0,
-        severity_input_mode: str = "discriminative_only",
+        severity_head_mode: str = "single_scale",
+        severity_head_hidden_dim: int = 128,
+        score_combination: str = "simple_average",
+        severity_weight_for_combination: float = 0.5,
         patch_ratio_range: tuple[float, float] = (2.0, 4.0),
         patch_width_range: tuple[int, int] = (20, 80),
         patch_count: int = 1,
         anomaly_probability: float = 0.5,
-        reconstruction_weight: float = 1.0,
-        segmentation_weight: float = 1.0,
         severity_weight: float = 0.5,
-        use_adaptive_loss: bool = True,
-        warmup_epochs: int = 5,
+        severity_loss_type: str = "mse",
         optimizer: str = "adam",
         learning_rate: float = 1e-4,
     ) -> None:
         super().__init__()
 
-        # Store configuration
-        self.severity_max = severity_max
-        self.severity_input_mode = severity_input_mode
+        # Store DRAEM-SevNet configuration
+        self.severity_head_mode = severity_head_mode
+        self.score_combination = score_combination
         self.patch_ratio_range = patch_ratio_range
         self.patch_width_range = patch_width_range
         self.patch_count = patch_count
         self.anomaly_probability = anomaly_probability
+        self.optimizer_name = optimizer
+        self.learning_rate = learning_rate
         
-        # Initialize synthetic fault generator
+        # Initialize synthetic fault generator (Note: severity_max=1.0 for DRAEM-SevNet)
         self.augmenter = HDMAPCutPasteSyntheticGenerator(
             patch_width_range=patch_width_range,
             patch_ratio_range=patch_ratio_range,
-            severity_max=severity_max,
+            severity_max=1.0,  # Fixed to 1.0 for DRAEM-SevNet
             patch_count=patch_count,
             probability=anomaly_probability,
         )
         
-        # Initialize model components
+        # Initialize DRAEM-SevNet model
         self.model = CustomDraemModel(
             sspcab=sspcab,
-            severity_max=severity_max,
-            severity_input_mode=severity_input_mode
+            severity_head_mode=severity_head_mode,
+            severity_head_hidden_dim=severity_head_hidden_dim,
+            score_combination=score_combination,
+            severity_weight_for_combination=severity_weight_for_combination
         )
         
-        # Initialize loss function
-        if use_adaptive_loss:
-            self.loss = AdaptiveCustomDraemLoss(
-                warmup_epochs=warmup_epochs,
-                initial_weights={
-                    "reconstruction": reconstruction_weight,
-                    "segmentation": segmentation_weight,
-                    "severity": severity_weight
-                },
-                use_uncertainty_weighting=True,
-                use_dwa=False  # Start with uncertainty weighting
-            )
-        else:
-            self.loss = CustomDraemLoss(
-                reconstruction_weight=reconstruction_weight,
-                segmentation_weight=segmentation_weight,
-                severity_weight=severity_weight
-            )
-        self.use_adaptive_loss = use_adaptive_loss
-        self.optimizer_name = optimizer
-        self.learning_rate = learning_rate
+        # Initialize DRAEM-SevNet loss function
+        self.loss = DraemSevNetLoss(
+            severity_weight=severity_weight,
+            severity_loss_type=severity_loss_type
+        )
+        
+        # Initialize collections for validation metrics
+        self._val_predictions = []
+        self._val_labels = []
+        self._val_mask_scores = []
+        self._val_severity_scores = []
+        self._val_final_scores = []
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
@@ -168,112 +161,135 @@ class CustomDraem(AnomalibModule):
         return LearningType.ONE_CLASS
 
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform the training step of Custom DRAEM."""
+        """Perform the training step of DRAEM-SevNet."""
         del args, kwargs  # These variables are not used.
         
         input_image = batch.image
-        
-        # No channel conversion needed - DRAEM backbone handles 3-channel input directly
         
         # Generate synthetic faults
         synthetic_image, fault_mask, severity_map, severity_label = self.augmenter(input_image)
         
-        # Forward pass through model
-        model_output = self.model(synthetic_image)
-        reconstruction, prediction, severity_pred = model_output
-        severity_pred = severity_pred.squeeze(-1)
+        # Forward pass through DRAEM-SevNet model
+        reconstruction, mask_logits, severity_score = self.model(synthetic_image)
         
-        # Compute multi-task loss
-        if self.use_adaptive_loss:
-            loss = self.loss(
-                input_image=input_image,
-                reconstruction=reconstruction,
-                anomaly_mask=fault_mask,
-                prediction=prediction,
-                severity_gt=severity_label,
-                severity_pred=severity_pred,
-                epoch=self.current_epoch
-            )
-        else:
-            loss = self.loss(
-                input_image=input_image,
-                reconstruction=reconstruction,
-                anomaly_mask=fault_mask,
-                prediction=prediction,
-                severity_gt=severity_label,
-                severity_pred=severity_pred
-            )
+        # Compute DRAEM-SevNet loss: L = L_draem + λ * L_severity
+        loss = self.loss(
+            input_image=input_image,
+            reconstruction=reconstruction,
+            anomaly_mask=fault_mask,
+            prediction=mask_logits,
+            severity_gt=severity_label,
+            severity_pred=severity_score
+        )
         
-        # Log metrics
-        # Both adaptive and standard loss return tensors
+        # Log training metrics
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
         
-        if self.use_adaptive_loss:
-            individual_losses = self.loss.get_individual_losses(
-                input_image, reconstruction, fault_mask, prediction, severity_label, severity_pred, self.current_epoch
-            )
-        else:
-            individual_losses = self.loss.get_individual_losses(
-                input_image, reconstruction, fault_mask, prediction, severity_label, severity_pred
-            )
+        # Log individual loss components for analysis
+        individual_losses = self.loss.get_individual_losses(
+            input_image, reconstruction, fault_mask, mask_logits, severity_label, severity_score
+        )
         self.log("train_l2_loss", individual_losses["l2_loss"].item(), on_epoch=True, logger=True)
         self.log("train_ssim_loss", individual_losses["ssim_loss"].item(), on_epoch=True, logger=True) 
         self.log("train_focal_loss", individual_losses["focal_loss"].item(), on_epoch=True, logger=True)
+        self.log("train_draem_loss", individual_losses["draem_loss"].item(), on_epoch=True, logger=True)
         self.log("train_severity_loss", individual_losses["severity_loss"].item(), on_epoch=True, logger=True)
-        
-        # Log adaptive weights if using adaptive loss
-        if self.use_adaptive_loss:
-            for key, value in individual_losses.items():
-                if key.startswith("weight_") or key.startswith("uncertainty_"):
-                    self.log(f"train_{key}", value.item() if hasattr(value, 'item') else value, on_epoch=True, logger=True)
         
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform the validation step of Custom DRAEM."""
+        """Perform the validation step of DRAEM-SevNet."""
         del args, kwargs  # These variables are not used.
         
         input_image = batch.image
+        labels = batch.gt_label
         
-        # No channel conversion needed - DRAEM backbone handles 3-channel input directly
-        
-        # Forward pass through model
+        # Forward pass through DRAEM-SevNet model (inference mode)
         model_output = self.model(input_image)
         
-        # Extract predictions
-        pred_score = model_output.pred_score
-        anomaly_map = model_output.anomaly_map
-        severity_pred = model_output.pred_label
+        # Extract all DRAEM-SevNet outputs
+        if isinstance(model_output, DraemSevNetOutput):
+            mask_score = model_output.mask_score
+            severity_score = model_output.severity_score  
+            final_score = model_output.final_score
+            anomaly_map = model_output.anomaly_map
+        else:
+            # Fallback for compatibility (shouldn't happen in inference mode)
+            reconstruction, mask_logits, severity_score = model_output
+            mask_score = torch.amax(torch.softmax(mask_logits, dim=1)[:, 1, ...], dim=(-2, -1))
+            final_score = (mask_score + severity_score) / 2.0
+            anomaly_map = torch.softmax(mask_logits, dim=1)[:, 1, ...]
         
-        # Log validation metrics
-        if hasattr(batch, 'mask') and batch.mask is not None:
-            mask_gt = batch.mask
-            mask_coverage = (mask_gt > 0).float().mean()
-            pred_coverage = (anomaly_map > 0.5).float().mean()
+        # Store predictions and labels for multi-AUROC calculation
+        self._val_mask_scores.extend(mask_score.cpu().numpy())
+        self._val_severity_scores.extend(severity_score.cpu().numpy())
+        self._val_final_scores.extend(final_score.cpu().numpy())
+        self._val_labels.extend(labels.cpu().numpy())
+        
+        # Log basic validation metrics
+        self.log("val_mask_score_mean", mask_score.mean().item(), on_epoch=True, logger=True)
+        self.log("val_severity_score_mean", severity_score.mean().item(), on_epoch=True, logger=True)
+        self.log("val_final_score_mean", final_score.mean().item(), on_epoch=True, logger=True)
+        
+        return {"final_score": final_score}
+
+    def on_validation_epoch_end(self) -> None:
+        """DRAEM-SevNet validation epoch 종료 시 multi-AUROC 계산 및 로깅.
+        
+        Mask AUROC, Severity AUROC, Combined AUROC를 각각 계산하여
+        early stopping 및 성능 분석에 활용합니다.
+        """
+        if (len(self._val_mask_scores) > 0 and len(self._val_severity_scores) > 0 and 
+            len(self._val_final_scores) > 0 and len(self._val_labels) > 0):
             
-            self.log("val_mask_coverage", mask_coverage.item(), on_epoch=True, logger=True)
-            self.log("val_pred_coverage", pred_coverage.item(), on_epoch=True, logger=True)
+            try:
+                from sklearn.metrics import roc_auc_score
+                import numpy as np
+                
+                # Convert to numpy arrays
+                mask_scores = np.array(self._val_mask_scores)
+                severity_scores = np.array(self._val_severity_scores)
+                final_scores = np.array(self._val_final_scores)
+                labels = np.array(self._val_labels)
+                
+                # Check if we have both classes for AUROC calculation
+                unique_labels = np.unique(labels)
+                
+                if len(unique_labels) >= 2:
+                    # Calculate individual AUROCs
+                    mask_auroc = roc_auc_score(labels, mask_scores)
+                    severity_auroc = roc_auc_score(labels, severity_scores)
+                    combined_auroc = roc_auc_score(labels, final_scores)
+                    
+                    # Log all AUROC metrics
+                    self.log("val_mask_AUROC", mask_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    self.log("val_severity_AUROC", severity_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    self.log("val_combined_AUROC", combined_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    
+                    # Keep val_image_AUROC for backward compatibility (use combined score)
+                    self.log("val_image_AUROC", combined_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    
+                else:
+                    # Single class case - set all to random performance
+                    default_auroc = 0.5
+                    self.log("val_mask_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    self.log("val_severity_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    self.log("val_combined_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    self.log("val_image_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                    
+            except Exception as e:
+                # AUROC calculation failed - use default values
+                default_auroc = 0.5
+                self.log("val_mask_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                self.log("val_severity_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                self.log("val_combined_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+                self.log("val_image_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
         
-        self.log("val_severity_mean", severity_pred.mean().item(), on_epoch=True, logger=True)
-        self.log("val_severity_std", severity_pred.std().item(), on_epoch=True, logger=True)
-        self.log("val_anomaly_score_mean", pred_score.mean().item(), on_epoch=True, logger=True)
-        
-        # Return predictions in anomalib format
-        class ValidationOutput:
-            def __init__(self, original_batch, predictions):
-                for attr_name in dir(original_batch):
-                    if not attr_name.startswith('_'):
-                        setattr(self, attr_name, getattr(original_batch, attr_name))
-                for key, value in predictions.items():
-                    setattr(self, key, value)
-        
-        prediction = {
-            "pred_score": pred_score,
-            "anomaly_map": anomaly_map,
-            "pred_label": severity_pred,
-        }
-        
-        return ValidationOutput(batch, prediction)
+        # Reset collections for next epoch
+        self._val_mask_scores = []
+        self._val_severity_scores = []
+        self._val_final_scores = []
+        self._val_labels = []
 
     def test_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform the test step of Custom DRAEM."""
@@ -287,8 +303,14 @@ class CustomDraem(AnomalibModule):
         model_output = self.model(input_image)
         
         # Update batch with model predictions
+        # DraemSevNetOutput uses final_score instead of pred_score
+        pred_score = getattr(model_output, 'final_score', getattr(model_output, 'pred_score', None))
+        
+        # Generate pred_label from pred_score (threshold will be applied by post_processor)
+        pred_label = (pred_score > 0.5).int() if pred_score is not None else None
+        
         return batch.update(
-            pred_score=model_output.pred_score,
+            pred_score=pred_score,
             anomaly_map=model_output.anomaly_map,
-            pred_label=model_output.pred_label
+            pred_label=pred_label
         )

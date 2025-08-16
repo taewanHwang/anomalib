@@ -11,7 +11,7 @@ a triple-branch architecture:
 Key Features:
 - Rectangular patch-based synthetic fault generation with probabilistic control
 - Multi-modal input combinations for severity prediction (5 modes)
-- Support for 256x256 grayscale HDMAP images
+- Support for any square RGB images (NxN dimensions)
 - Configurable severity range and patch parameters
 - Probabilistic anomaly generation (0-100% control)
 
@@ -103,12 +103,19 @@ See Also:
 """
 
 from .lightning_model import CustomDraem
-from .torch_model import CustomDraemModel, FaultSeveritySubNetwork
+from .torch_model import CustomDraemModel, DiscriminativeSubNetwork, DraemSevNetOutput
+from .severity_head import SeverityHead, SeverityHeadFactory
+from .loss import DraemSevNetLoss, DraemSevNetLossFactory
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
 
 __all__ = [
     "CustomDraem",
-    "CustomDraemModel", 
-    "FaultSeveritySubNetwork",
+    "CustomDraemModel",
+    "DiscriminativeSubNetwork", 
+    "DraemSevNetOutput",
+    "SeverityHead",
+    "SeverityHeadFactory",
+    "DraemSevNetLoss",
+    "DraemSevNetLossFactory",
     "HDMAPCutPasteSyntheticGenerator"
 ]

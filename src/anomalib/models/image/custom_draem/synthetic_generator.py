@@ -26,7 +26,7 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
             Values >1.0 create portrait patches (taller), <1.0 create landscape patches 
             (wider), 1.0 creates square patches. Defaults to ``(0.3, 3.0)``.
         severity_max (float, optional): Maximum severity value for continuous labels.
-            Defaults to ``10.0``.
+            Defaults to ``1.0``.
         patch_count (int, optional): Number of patches to generate per image.
             All patches use identical properties. Defaults to ``1``.
         probability (float, optional): Probability of applying synthetic fault generation.
@@ -39,7 +39,7 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         >>> generator = HDMAPCutPasteSyntheticGenerator(
         ...     patch_width_range=(40, 80),
         ...     patch_ratio_range=(1.5, 2.5),  # Portrait patches (taller)
-        ...     severity_max=5.0,
+        ...     severity_max=2.0,
         ...     patch_count=2
         ... )
         >>> synthetic_image, fault_mask, severity_map, severity_label = generator(image)
@@ -48,6 +48,7 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         - Patch dimensions are automatically validated to prevent boundary overflow
         - Multi-patch generation uses identical severity, ratio, and size for all patches
         - Severity values are sampled uniformly from [0, severity_max]
+        - Default severity_max=1.0 provides normalized severity range [0, 1]
         - Cut-paste locations are selected randomly within valid boundaries
     """
     
@@ -55,7 +56,7 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         self,
         patch_width_range: tuple[int, int] = (30, 100),
         patch_ratio_range: tuple[float, float] = (0.3, 3.0),
-        severity_max: float = 10.0,
+        severity_max: float = 1.0,
         patch_count: int = 1,
         probability: float = 0.5,
         validation_enabled: bool = True,
@@ -200,7 +201,7 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         # Probabilistic fault generation - same logic as DRAEM's PerlinAnomalyGenerator
         if torch.rand(1, device=image.device) > self.probability:
             # Return original image with empty masks (no fault generation)
-            empty_mask = torch.zeros_like(image)
+            empty_mask = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)
             zero_severity = torch.tensor(0.0, dtype=torch.float32, device=image.device)
             
             if return_patch_info:
@@ -233,8 +234,9 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
         
         # Initialize outputs
         synthetic_image = image.clone()
-        fault_mask = torch.zeros_like(image)
-        severity_map = torch.zeros_like(image)
+        # Create single-channel masks for anomaly detection (B, 1, H, W)
+        fault_mask = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)
+        severity_map = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)
         
         # Initialize patch info collection
         patch_positions = []
@@ -265,9 +267,9 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
             # 5. Paste modified patch to target location
             synthetic_image[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = modified_patch
             
-            # 6. Update masks
-            fault_mask[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = 1.0
-            severity_map[0, :, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = severity_value / self.severity_max
+            # 6. Update masks (single channel)
+            fault_mask[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = 1.0
+            severity_map[0, 0, tgt_y:tgt_y+patch_height, tgt_x:tgt_x+patch_width] = severity_value / self.severity_max
             
             # 7. Store patch position info
             patch_positions.append((src_x, src_y, tgt_x, tgt_y))
