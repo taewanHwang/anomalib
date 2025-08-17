@@ -665,7 +665,7 @@ def main():
             if not condition:
                 # 사용자 정의 조건 생성
                 condition = {
-                    "name": args.experiment_name or f"custom_draem_{timestamp}",
+                    "name": args.experiment_name,
                     "description": "사용자 정의 DRAEM 실험",
                     "config": {
                         "max_epochs": args.max_epochs,
