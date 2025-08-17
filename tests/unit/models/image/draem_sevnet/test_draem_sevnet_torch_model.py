@@ -1,6 +1,6 @@
-"""Test suite for DRAEM-SevNet CustomDraemModel.
+"""Test suite for DRAEM-SevNet DraemSevNetModel.
 
-DRAEM-SevNet 아키텍처로 완전 재작성된 CustomDraemModel의
+DRAEM-SevNet 아키텍처로 완전 재작성된 DraemSevNetModel의
 모든 기능과 통합성을 테스트합니다.
 
 Run with: pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py -v -s
@@ -9,7 +9,7 @@ Author: Taewan Hwang
 
 import pytest
 import torch
-from anomalib.models.image.custom_draem.torch_model import CustomDraemModel, DraemSevNetOutput
+from anomalib.models.image.draem_sevnet.torch_model import DraemSevNetModel, DraemSevNetOutput
 
 # 상세 출력을 위한 helper function
 def verbose_print(message: str, level: str = "INFO"):
@@ -18,15 +18,15 @@ def verbose_print(message: str, level: str = "INFO"):
     print(f"\n{symbols.get(level, 'ℹ️')} {message}")
 
 
-class TestCustomDraemModelRewrite:
-    """재작성된 CustomDraemModel 기본 기능 테스트"""
+class TestDraemSevNetModelRewrite:
+    """재작성된 DraemSevNetModel 기본 기능 테스트"""
     
     def test_model_initialization(self):
         """모델 초기화 테스트"""
         verbose_print("Testing DRAEM-SevNet model initialization...")
         
         # Default initialization
-        model = CustomDraemModel()
+        model = DraemSevNetModel()
         verbose_print(f"Default - severity_head_mode: {model.severity_head_mode}")
         verbose_print(f"Default - score_combination: {model.score_combination}")
         verbose_print(f"Default - severity_weight: {model.severity_weight_for_combination}")
@@ -39,7 +39,7 @@ class TestCustomDraemModelRewrite:
         assert hasattr(model, 'severity_head')
         
         # Custom initialization
-        custom_model = CustomDraemModel(
+        custom_model = DraemSevNetModel(
             severity_head_mode="multi_scale",
             score_combination="weighted_average",
             severity_weight_for_combination=0.3
@@ -58,10 +58,10 @@ class TestCustomDraemModelRewrite:
         """잘못된 파라미터 에러 테스트"""
         # Invalid severity_head_mode
         with pytest.raises(ValueError, match="Unsupported severity_head_mode"):
-            CustomDraemModel(severity_head_mode="invalid_mode")
+            DraemSevNetModel(severity_head_mode="invalid_mode")
             
         # Invalid score_combination (tested in forward pass)
-        model = CustomDraemModel(score_combination="invalid_combination")
+        model = DraemSevNetModel(score_combination="invalid_combination")
         model.eval()
         input_tensor = torch.randn(2, 3, 224, 224)
         
@@ -71,7 +71,7 @@ class TestCustomDraemModelRewrite:
     def test_training_mode_forward(self):
         """Training 모드 forward pass 테스트"""
         for mode in ["single_scale", "multi_scale"]:
-            model = CustomDraemModel(severity_head_mode=mode)
+            model = DraemSevNetModel(severity_head_mode=mode)
             model.train()
             
             batch_size = 4
@@ -96,7 +96,7 @@ class TestCustomDraemModelRewrite:
     def test_inference_mode_forward(self):
         """Inference 모드 forward pass 테스트"""
         for mode in ["single_scale", "multi_scale"]:
-            model = CustomDraemModel(severity_head_mode=mode)
+            model = DraemSevNetModel(severity_head_mode=mode)
             model.eval()
             
             batch_size = 4
@@ -131,7 +131,7 @@ class TestCustomDraemModelRewrite:
         ]
         
         for combination, weight in combinations:
-            model = CustomDraemModel(
+            model = DraemSevNetModel(
                 score_combination=combination,
                 severity_weight_for_combination=weight
             )
@@ -159,7 +159,7 @@ class TestCustomDraemModelRewrite:
                 
     def test_mask_score_calculation_reliability(self):
         """Mask score 계산 신뢰성 테스트"""
-        model = CustomDraemModel()
+        model = DraemSevNetModel()
         model.eval()
         
         batch_size = 4
@@ -186,7 +186,7 @@ class TestCustomDraemModelRewrite:
         
     def test_different_input_sizes(self):
         """다양한 입력 크기 테스트"""
-        model = CustomDraemModel()
+        model = DraemSevNetModel()
         
         input_sizes = [(224, 224), (256, 256), (512, 512)]
         
@@ -210,7 +210,7 @@ class TestCustomDraemModelRewrite:
             
     def test_gradient_flow(self):
         """Gradient 흐름 테스트"""
-        model = CustomDraemModel()
+        model = DraemSevNetModel()
         model.train()
         
         batch_size = 2
@@ -233,8 +233,8 @@ class TestCustomDraemModelRewrite:
                 
     def test_model_parameter_count(self):
         """모델 파라미터 수 확인"""
-        single_scale_model = CustomDraemModel(severity_head_mode="single_scale")
-        multi_scale_model = CustomDraemModel(severity_head_mode="multi_scale")
+        single_scale_model = DraemSevNetModel(severity_head_mode="single_scale")
+        multi_scale_model = DraemSevNetModel(severity_head_mode="multi_scale")
         
         single_params = sum(p.numel() for p in single_scale_model.parameters())
         multi_params = sum(p.numel() for p in multi_scale_model.parameters())
@@ -251,8 +251,8 @@ class TestCustomDraemModelRewrite:
         
     def test_sspcab_option(self):
         """SSPCAB 옵션 테스트"""
-        model_without_sspcab = CustomDraemModel(sspcab=False)
-        model_with_sspcab = CustomDraemModel(sspcab=True)
+        model_without_sspcab = DraemSevNetModel(sspcab=False)
+        model_with_sspcab = DraemSevNetModel(sspcab=True)
         
         # Both should work
         input_tensor = torch.randn(2, 3, 224, 224)
@@ -301,12 +301,12 @@ class TestDraemSevNetOutput:
         assert output.anomaly_map.shape == (batch_size, height, width)
 
 
-class TestCustomDraemModelIntegration:
+class TestDraemSevNetModelIntegration:
     """통합 테스트"""
     
     def test_end_to_end_workflow(self):
         """End-to-end 워크플로우 테스트"""
-        model = CustomDraemModel(severity_head_mode="multi_scale")
+        model = DraemSevNetModel(severity_head_mode="multi_scale")
         
         batch_size = 4
         input_tensor = torch.randn(batch_size, 3, 256, 256)
@@ -343,8 +343,8 @@ class TestCustomDraemModelIntegration:
         """다른 모드들 간 비교 테스트"""
         input_tensor = torch.randn(4, 3, 224, 224)
         
-        single_model = CustomDraemModel(severity_head_mode="single_scale")
-        multi_model = CustomDraemModel(severity_head_mode="multi_scale")
+        single_model = DraemSevNetModel(severity_head_mode="single_scale")
+        multi_model = DraemSevNetModel(severity_head_mode="multi_scale")
         
         single_model.eval()
         multi_model.eval()
@@ -362,7 +362,7 @@ class TestCustomDraemModelIntegration:
         
     def test_batch_size_flexibility(self):
         """다양한 배치 크기 유연성 테스트"""
-        model = CustomDraemModel()
+        model = DraemSevNetModel()
         
         for batch_size in [1, 2, 4, 8, 16]:
             input_tensor = torch.randn(batch_size, 3, 224, 224)
@@ -388,8 +388,8 @@ class TestCustomDraemModelIntegration:
 
 # pytest로 실행 시 자동으로 실행되는 통합 테스트
 def test_custom_draem_model_integration_summary():
-    """전체 DRAEM-SevNet CustomDraemModel 테스트 요약"""
-    verbose_print("🧪 DRAEM-SevNet CustomDraemModel Test Suite Integration Summary", "INFO")
+    """전체 DRAEM-SevNet DraemSevNetModel 테스트 요약"""
+    verbose_print("🧪 DRAEM-SevNet DraemSevNetModel Test Suite Integration Summary", "INFO")
     verbose_print("=" * 70)
     
     # 테스트 구성 요소 확인
@@ -415,17 +415,17 @@ def test_custom_draem_model_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestCustomDraemModelRewrite::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
     # 직접 실행 시에는 pytest 실행을 권장
-    print("\n🧪 DRAEM-SevNet CustomDraemModel Test Suite")
+    print("\n🧪 DRAEM-SevNet DraemSevNetModel Test Suite")
     print("=" * 60)
     print("To run tests with verbose output:")
     print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py -v -s")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestCustomDraemModelRewrite -v -s")
+    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestCustomDraemModelRewrite::test_model_initialization -v -s")
+    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite::test_model_initialization -v -s")
     print("\n" + "=" * 60)

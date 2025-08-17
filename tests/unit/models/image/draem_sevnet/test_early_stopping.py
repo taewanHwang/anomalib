@@ -52,7 +52,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 # Anomalib imports
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
-from anomalib.models.image.custom_draem import CustomDraem
+from anomalib.models.image.draem_sevnet import DraemSevNet
 from anomalib.engine import Engine
 from anomalib.loggers import AnomalibTensorBoardLogger
 
@@ -62,7 +62,7 @@ logging.getLogger("anomalib.visualization").setLevel(logging.ERROR)
 logging.getLogger("anomalib.callbacks").setLevel(logging.ERROR)
 
 # GPU 설정
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 def cleanup_gpu_memory():
@@ -183,7 +183,7 @@ def run_custom_draem_with_early_stopping(
         
         # 2. 모델 생성
         print(f"\n🤖 DRAEM-SevNet 모델 생성")
-        model = CustomDraem(
+        model = DraemSevNet(
             severity_head_mode="single_scale",  # DRAEM-SevNet 파라미터
             score_combination="simple_average",
             severity_loss_type="mse",

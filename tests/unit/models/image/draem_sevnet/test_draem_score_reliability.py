@@ -5,7 +5,7 @@ Score 계산 신뢰성 테스트
 DRAEM의 score 계산 불일치 문제를 테스트하고,
 DRAEM-SevNet에서 사용할 신뢰할 수 있는 계산 방식을 검증합니다.
 
-Run with: pytest tests/unit/models/image/custom_draem/test_score_calculation_reliability.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_score_calculation_reliability.py -v -s
 """
 
 import warnings
@@ -219,6 +219,6 @@ if __name__ == "__main__":
     print("\n🧪 Score Calculation Reliability Test Suite")
     print("=" * 60)
     print("To run as pytest:")
-    print("pytest tests/unit/models/image/custom_draem/test_score_calculation_reliability.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_score_calculation_reliability.py -v -s")
     print("\nRunning direct execution...")
     results = run_comprehensive_score_test()

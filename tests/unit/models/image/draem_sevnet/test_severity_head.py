@@ -4,8 +4,8 @@ SeverityHead의 single-scale/multi-scale 모드,
 GAP 기능, 출력 범위 등을 포괄적으로 테스트합니다.
 
 Run with: 
-pytest tests/unit/models/image/custom_draem/test_severity_head.py -v -s
-pytest tests/unit/models/image/custom_draem/test_severity_head.py
+pytest tests/unit/models/image/draem_sevnet/test_severity_head.py -v -s
+pytest tests/unit/models/image/draem_sevnet/test_severity_head.py
 
 Author: Taewan Hwang
 """
@@ -13,7 +13,7 @@ Author: Taewan Hwang
 import pytest
 import torch
 import time
-from anomalib.models.image.custom_draem.severity_head import SeverityHead, SeverityHeadFactory
+from anomalib.models.image.draem_sevnet.severity_head import SeverityHead, SeverityHeadFactory
 
 # 상세 출력을 위한 helper function
 def verbose_print(message: str, level: str = "INFO"):
@@ -382,7 +382,7 @@ def test_severity_head_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_severity_head.py::TestSeverityHead::test_<method_name> -v")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_severity_head.py::TestSeverityHead::test_<method_name> -v")
 
 
 if __name__ == "__main__":
@@ -390,9 +390,9 @@ if __name__ == "__main__":
     print("\n🧪 SeverityHead Test Suite")
     print("" * 50)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_severity_head.py -v")
+    print("pytest tests/unit/models/image/draem_sevnet/test_severity_head.py -v")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_severity_head.py::TestSeverityHead -v")
+    print("pytest tests/unit/models/image/draem_sevnet/test_severity_head.py::TestSeverityHead -v")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_severity_head.py::TestSeverityHead::test_single_scale_forward -v")
+    print("pytest tests/unit/models/image/draem_sevnet/test_severity_head.py::TestSeverityHead::test_single_scale_forward -v")
     print("\n" + "=" * 50)

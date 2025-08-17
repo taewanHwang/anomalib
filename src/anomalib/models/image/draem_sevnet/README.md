@@ -49,12 +49,12 @@ Custom DRAEM is an extended version of the original DRAEM model with **DRAEM bac
 ## 📊 Usage Example (Updated for Latest Implementation)
 
 ```python
-from anomalib.models.image.custom_draem import CustomDraem
+from anomalib.models.image.draem_sevnet import DraemSevNet
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
 from anomalib.engine import Engine
 
 # Initialize DRAEM-SevNet model
-model = CustomDraem(
+model = DraemSevNet(
     # DRAEM-SevNet Architecture Settings
     severity_head_mode="single_scale",           # "single_scale" or "multi_scale"
     score_combination="simple_average",          # How to combine mask & severity scores

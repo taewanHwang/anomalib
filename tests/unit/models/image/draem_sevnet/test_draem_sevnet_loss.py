@@ -3,13 +3,13 @@
 DRAEM-SevNet의 통합 Loss Function인 DraemSevNetLoss의
 L_draem + λ * L_severity 구조와 모든 기능을 테스트합니다.
 
-Run with: pytest tests/unit/models/image/custom_draem/test_draem_sevnet_loss.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_loss.py -v -s
 Author: Taewan Hwang
 """
 
 import pytest
 import torch
-from anomalib.models.image.custom_draem.loss import DraemSevNetLoss, DraemSevNetLossFactory
+from anomalib.models.image.draem_sevnet.loss import DraemSevNetLoss, DraemSevNetLossFactory
 from anomalib.models.image.draem.loss import DraemLoss
 
 # 상세 출력을 위한 helper function
@@ -398,7 +398,7 @@ def test_draem_sevnet_loss_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_draem_sevnet_loss.py::TestDraemSevNetLoss::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_loss.py::TestDraemSevNetLoss::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
@@ -406,9 +406,9 @@ if __name__ == "__main__":
     print("\n🧪 DraemSevNetLoss Test Suite")
     print("=" * 50)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_draem_sevnet_loss.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_loss.py -v -s")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_draem_sevnet_loss.py::TestDraemSevNetLoss -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_loss.py::TestDraemSevNetLoss -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_draem_sevnet_loss.py::TestDraemSevNetLoss::test_forward_pass_basic -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_loss.py::TestDraemSevNetLoss::test_forward_pass_basic -v -s")
     print("\n" + "=" * 50)

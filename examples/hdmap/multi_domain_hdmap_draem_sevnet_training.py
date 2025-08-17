@@ -36,7 +36,7 @@ import argparse
 
 # MultiDomain HDMAP import
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
-from anomalib.models.image.custom_draem import CustomDraem
+from anomalib.models.image.draem_sevnet import DraemSevNet
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -84,7 +84,7 @@ def train_draem_sevnet_model_multi_domain(
     early_stopping: bool = True,
     patience: int = 3,
     min_delta: float = 0.005
-) -> tuple[CustomDraem, Engine]:
+) -> tuple[DraemSevNet, Engine]:
     """MultiDomain DataModule을 사용한 DRAEM-SevNet 모델 훈련.
     
     Args:
@@ -133,7 +133,7 @@ def train_draem_sevnet_model_multi_domain(
     print(f"   Early Stopping: {early_stopping} (patience={patience}, min_delta={min_delta})")
     
     # DRAEM-SevNet 모델 생성
-    model = CustomDraem(
+    model = DraemSevNet(
         # 🎯 DRAEM-SevNet 아키텍처 설정
         severity_head_mode=severity_head_mode,  # single_scale 또는 multi_scale
         score_combination=score_combination,   # simple_average, weighted_average, maximum
@@ -324,8 +324,8 @@ def run_single_draem_sevnet_experiment(
             anomalib_image_paths = []
             base_search_path = Path(results_base_dir)
             
-            # CustomDraem/MultiDomainHDMAPDataModule 패턴 검색
-            for pattern in ["**/CustomDraem/MultiDomainHDMAPDataModule/**/images", "**/images"]:
+            # DraemSevNet/MultiDomainHDMAPDataModule 패턴 검색
+            for pattern in ["**/DraemSevNet/MultiDomainHDMAPDataModule/**/images", "**/images"]:
                 found_paths = list(base_search_path.glob(pattern))
                 anomalib_image_paths.extend(found_paths)
             

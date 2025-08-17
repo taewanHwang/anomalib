@@ -3,12 +3,14 @@
 DRAEM-SevNet을 위한 수정된 DiscriminativeSubNetwork의 
 encoder features 노출 기능을 테스트합니다.
 
-Run with: pytest tests/unit/models/image/custom_draem/test_discriminative_subnet_modification.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_discriminative_subnet_modification.py -v -s
 Author: Taewan Hwang
 """
 
 import torch
-from anomalib.models.image.custom_draem.torch_model import DiscriminativeSubNetwork
+from anomalib.models.image.draem_sevnet.torch_model import DiscriminativeSubNetwork
+from anomalib.models.image.draem_sevnet.severity_head import SeverityHead
+from anomalib.models.image.draem.torch_model import DiscriminativeSubNetwork as OriginalSubNet
 
 # 상세 출력을 위한 helper function
 def verbose_print(message: str, level: str = "INFO"):
@@ -243,7 +245,6 @@ class TestDiscriminativeSubNetworkIntegration:
     
     def test_compatibility_with_original_draem(self):
         """Original DRAEM과의 호환성 테스트"""
-        from anomalib.models.image.draem.torch_model import DiscriminativeSubNetwork as OriginalSubNet
         
         # 동일한 설정으로 생성
         original_subnet = OriginalSubNet(in_channels=6, out_channels=2, base_width=64)
@@ -268,7 +269,7 @@ class TestDiscriminativeSubNetworkIntegration:
         
     def test_severity_head_integration_compatibility(self):
         """SeverityHead와의 통합 호환성 테스트"""
-        from anomalib.models.image.custom_draem.severity_head import SeverityHead
+        
         
         # Enhanced subnet 생성
         subnet = DiscriminativeSubNetwork(expose_features=True)
@@ -290,7 +291,6 @@ class TestDiscriminativeSubNetworkIntegration:
         
     def test_multi_scale_severity_head_integration(self):
         """Multi-scale SeverityHead와의 통합 테스트"""
-        from anomalib.models.image.custom_draem.severity_head import SeverityHead
         
         # Enhanced subnet 생성
         subnet = DiscriminativeSubNetwork(expose_features=True)
@@ -345,7 +345,7 @@ def test_discriminative_subnet_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
@@ -353,9 +353,9 @@ if __name__ == "__main__":
     print("\n🧪 Enhanced DiscriminativeSubNetwork Test Suite")
     print("=" * 60)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_discriminative_subnet_modification.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_discriminative_subnet_modification.py -v -s")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement::test_feature_exposure_mode -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_discriminative_subnet_modification.py::TestDiscriminativeSubNetworkEnhancement::test_feature_exposure_mode -v -s")
     print("\n" + "=" * 60)

@@ -13,7 +13,7 @@ from torch import nn
 from anomalib.models.image.draem.loss import DraemLoss
 
 
-class CustomDraemLoss(nn.Module):
+class LegacyDraemLoss(nn.Module):
     """Multi-task loss function for Custom DRAEM model.
 
     The total loss consists of four components:
@@ -40,7 +40,7 @@ class CustomDraemLoss(nn.Module):
             Options: "mse", "smooth_l1". Defaults to ``"mse"``.
 
     Example:
-        >>> criterion = CustomDraemLoss(
+        >>> criterion = LegacyDraemLoss(
         ...     reconstruction_weight=1.0,
         ...     segmentation_weight=1.0,
         ...     severity_weight=0.5,

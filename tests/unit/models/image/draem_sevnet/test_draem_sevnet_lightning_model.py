@@ -8,7 +8,8 @@ Author: Taewan Hwang
 
 import torch
 from unittest.mock import MagicMock
-from anomalib.models.image.custom_draem import CustomDraem
+from anomalib.models.image.draem_sevnet import DraemSevNet
+from anomalib.models.image.draem_sevnet.loss import DraemSevNetLoss
 
 # 상세 출력을 위한 helper function
 def verbose_print(message: str, level: str = "INFO"):
@@ -25,7 +26,7 @@ class TestDraemSevNetLightningModel:
         verbose_print("Testing DRAEM-SevNet Lightning model initialization...")
         
         # Default initialization
-        model = CustomDraem()
+        model = DraemSevNet()
         verbose_print(f"Default - severity_head_mode: {model.severity_head_mode}")
         verbose_print(f"Default - score_combination: {model.score_combination}")
         verbose_print(f"Default - has model: {hasattr(model, 'model')}")
@@ -39,7 +40,7 @@ class TestDraemSevNetLightningModel:
         assert hasattr(model, 'augmenter')
         
         # Custom initialization 
-        custom_model = CustomDraem(
+        custom_model = DraemSevNet(
             severity_head_mode="multi_scale",
             score_combination="weighted_average",
             severity_weight_for_combination=0.3,
@@ -56,7 +57,7 @@ class TestDraemSevNetLightningModel:
         
     def test_training_step(self):
         """Training step 테스트"""
-        model = CustomDraem()
+        model = DraemSevNet()
         model.train()
         
         # Create mock batch
@@ -76,7 +77,7 @@ class TestDraemSevNetLightningModel:
         
     def test_validation_step(self):
         """Validation step 테스트"""
-        model = CustomDraem()
+        model = DraemSevNet()
         model.eval()
         
         # Initialize validation collections
@@ -106,7 +107,7 @@ class TestDraemSevNetLightningModel:
         
     def test_on_validation_epoch_end(self):
         """Validation epoch end 테스트"""
-        model = CustomDraem()
+        model = DraemSevNet()
         
         # Simulate collected validation data
         batch_size = 10
@@ -141,7 +142,7 @@ class TestDraemSevNetLightningModel:
         
     def test_single_class_validation(self):
         """단일 클래스 validation 테스트"""
-        model = CustomDraem()
+        model = DraemSevNet()
         
         # All labels are the same (single class)
         batch_size = 5
@@ -170,7 +171,7 @@ class TestDraemSevNetLightningModel:
         combinations = ["simple_average", "weighted_average", "maximum"]
         
         for combination in combinations:
-            model = CustomDraem(
+            model = DraemSevNet(
                 score_combination=combination,
                 severity_weight_for_combination=0.3
             )
@@ -190,7 +191,7 @@ class TestDraemSevNetLightningModel:
         modes = ["single_scale", "multi_scale"]
         
         for mode in modes:
-            model = CustomDraem(severity_head_mode=mode)
+            model = DraemSevNet(severity_head_mode=mode)
             
             batch = MagicMock()
             batch.image = torch.randn(2, 3, 224, 224)
@@ -209,13 +210,13 @@ class TestDraemSevNetLightningModel:
                 
     def test_loss_function_integration(self):
         """Loss function 통합 테스트"""
-        model = CustomDraem(
+        model = DraemSevNet(
             severity_weight=0.8,
             severity_loss_type="smooth_l1"
         )
         
         # Check loss type
-        from anomalib.models.image.custom_draem.loss import DraemSevNetLoss
+        
         assert isinstance(model.loss, DraemSevNetLoss)
         assert model.loss.severity_weight == 0.8
         assert model.loss.severity_loss_type == "smooth_l1"
@@ -225,7 +226,7 @@ class TestDraemSevNetLightningModel:
         optimizers = ["adam", "adamw", "sgd"]
         
         for opt_name in optimizers:
-            model = CustomDraem(
+            model = DraemSevNet(
                 optimizer=opt_name,
                 learning_rate=2e-4
             )
@@ -236,7 +237,7 @@ class TestDraemSevNetLightningModel:
             
     def test_synthetic_generator_integration(self):
         """Synthetic generator 통합 테스트"""
-        model = CustomDraem(
+        model = DraemSevNet(
             patch_ratio_range=(1.5, 3.0),
             patch_count=2,
             anomaly_probability=0.8
@@ -249,7 +250,7 @@ class TestDraemSevNetLightningModel:
         
     def test_backward_compatibility(self):
         """기존 코드와의 호환성 테스트"""
-        model = CustomDraem()
+        model = DraemSevNet()
         
         # Should have val_image_AUROC for backward compatibility
         model._val_mask_scores = [0.1, 0.8, 0.3, 0.9]

@@ -5,31 +5,23 @@ Lightning wrapper for Custom DRAEM model with fault severity prediction for HDMA
 Author: Taewan Hwang
 """
 
-from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from torch import nn
 
 
 from anomalib import LearningType
 from anomalib.data import Batch
-from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
-from anomalib.post_processing import PostProcessor
-from anomalib.pre_processing import PreProcessor
-from anomalib.visualization import Visualizer
-
-from .loss import DraemSevNetLoss, DraemSevNetLossFactory
+from .loss import DraemSevNetLoss
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
-from .torch_model import CustomDraemModel, DraemSevNetOutput
+from .torch_model import DraemSevNetModel, DraemSevNetOutput
 
-__all__ = ["CustomDraem"]
+__all__ = ["DraemSevNet"]
 
 
-class CustomDraem(AnomalibModule):
+class DraemSevNet(AnomalibModule):
     """DRAEM-SevNet Lightning Model.
     
     DRAEM with Severity Network - unified severity-aware architecture for anomaly detection.
@@ -66,8 +58,8 @@ class CustomDraem(AnomalibModule):
             Defaults to ``1e-4``.
             
     Example:
-        >>> from anomalib.models.image import CustomDraem
-        >>> model = CustomDraem(
+        >>> from anomalib.models.image import DraemSevNet
+        >>> model = DraemSevNet(
         ...     severity_max=10.0,
         ...     severity_head_mode="multi_scale",
         ...     score_combination="weighted_average",
@@ -116,7 +108,7 @@ class CustomDraem(AnomalibModule):
         )
         
         # Initialize DRAEM-SevNet model
-        self.model = CustomDraemModel(
+        self.model = DraemSevNetModel(
             sspcab=sspcab,
             severity_head_mode=severity_head_mode,
             severity_head_hidden_dim=severity_head_hidden_dim,

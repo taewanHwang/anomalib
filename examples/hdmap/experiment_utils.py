@@ -370,7 +370,7 @@ def find_anomalib_image_paths(base_search_path: Path) -> Optional[Path]:
     """
     # 다양한 모델 구조에 대응하는 패턴들
     search_patterns = [
-        "**/CustomDraem/MultiDomainHDMAPDataModule/**/images",  # DRAEM 계열
+        "**/DraemSevNet/MultiDomainHDMAPDataModule/**/images",  # DRAEM 계열
         "**/Padim/MultiDomainHDMAPDataModule/**/images",        # PaDiM 계열
         "**/*/MultiDomainHDMAPDataModule/**/images",            # 일반적인 패턴
         "**/images"                                              # 가장 일반적인 패턴

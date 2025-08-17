@@ -18,13 +18,13 @@ Key Features:
 Examples:
     Basic usage with default settings:
     
-    >>> from anomalib.models.image import CustomDraem
-    >>> model = CustomDraem()
+    >>> from anomalib.models.image import DraemSevNet
+    >>> model = DraemSevNet()
     >>> # Uses: severity_max=1.0, anomaly_probability=0.5, single_scale mode
     
     Conservative training setup (30% anomalies):
     
-    >>> model = CustomDraem(
+    >>> model = DraemSevNet(
     ...     severity_max=5.0,
     ...     severity_head_mode="single_scale",
     ...     score_combination="simple_average",
@@ -36,7 +36,7 @@ Examples:
     
     Intensive training setup (80% anomalies) with multi-scale severity:
     
-    >>> model = CustomDraem(
+    >>> model = DraemSevNet(
     ...     severity_max=15.0,
     ...     severity_head_mode="multi_scale",  # Uses multi-resolution features
     ...     score_combination="weighted_average",
@@ -51,33 +51,33 @@ Examples:
     Ablation study - testing different severity head configurations:
     
     >>> # Configuration 1: Single-scale with simple average
-    >>> model_baseline = CustomDraem(
+    >>> model_baseline = DraemSevNet(
     ...     severity_head_mode="single_scale",
     ...     score_combination="simple_average"
     ... )
     >>> 
     >>> # Configuration 2: Multi-scale with simple average
-    >>> model_multi_scale = CustomDraem(
+    >>> model_multi_scale = DraemSevNet(
     ...     severity_head_mode="multi_scale",
     ...     score_combination="simple_average"
     ... )
     >>> 
     >>> # Configuration 3: Single-scale with weighted combination
-    >>> model_weighted = CustomDraem(
+    >>> model_weighted = DraemSevNet(
     ...     severity_head_mode="single_scale",
     ...     score_combination="weighted_average",
     ...     severity_weight_for_combination=0.7
     ... )
     >>> 
     >>> # Configuration 4: Maximum information fusion
-    >>> model_maximum = CustomDraem(
+    >>> model_maximum = DraemSevNet(
     ...     severity_head_mode="multi_scale",
     ...     score_combination="maximum"
     ... )
     
     Synthetic fault generator usage:
     
-    >>> from anomalib.models.image.custom_draem import HDMAPCutPasteSyntheticGenerator
+    >>> from anomalib.models.image.draem_sevnet import HDMAPCutPasteSyntheticGenerator
     >>> generator = HDMAPCutPasteSyntheticGenerator(
     ...     patch_width_range=(30, 60),
     ...     patch_ratio_range=(0.5, 2.0),
@@ -105,23 +105,23 @@ Notes:
     All parameters support dynamic adjustment for hyperparameter tuning.
 
 See Also:
-    :class:`anomalib.models.image.custom_draem.lightning_model.CustomDraem`:
-        Lightning implementation of the Custom DRAEM model.
-    :class:`anomalib.models.image.custom_draem.synthetic_generator.HDMAPCutPasteSyntheticGenerator`:
+    :class:`anomalib.models.image.draem_sevnet.lightning_model.DraemSevNet`:
+        Lightning implementation of the DRAEM-SevNet model.
+    :class:`anomalib.models.image.draem_sevnet.synthetic_generator.HDMAPCutPasteSyntheticGenerator`:
         Synthetic fault generator for HDMAP data.
-    :class:`anomalib.models.image.custom_draem.torch_model.CustomDraemModel`:
-        PyTorch implementation of the Custom DRAEM model.
+    :class:`anomalib.models.image.draem_sevnet.torch_model.DraemSevNetModel`:
+        PyTorch implementation of the DRAEM-SevNet model.
 """
 
-from .lightning_model import CustomDraem
-from .torch_model import CustomDraemModel, DiscriminativeSubNetwork, DraemSevNetOutput
+from .lightning_model import DraemSevNet
+from .torch_model import DraemSevNetModel, DiscriminativeSubNetwork, DraemSevNetOutput
 from .severity_head import SeverityHead, SeverityHeadFactory
 from .loss import DraemSevNetLoss, DraemSevNetLossFactory
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
 
 __all__ = [
-    "CustomDraem",
-    "CustomDraemModel",
+    "DraemSevNet",
+    "DraemSevNetModel",
     "DiscriminativeSubNetwork", 
     "DraemSevNetOutput",
     "SeverityHead",

@@ -8,7 +8,7 @@ HDMAP 데이터셋에서 Original DRAEM과 DRAEM-SevNet의 성능을 비교합�
 - Early stopping: val_image_AUROC 기준
 - 4개 HDMAP 도메인별 성능 측정
 
-Run with: pytest tests/unit/models/image/custom_draem/test_baseline_vs_draem_sevnet.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_baseline_vs_draem_sevnet.py -v -s
 Author: Taewan Hwang
 """
 
@@ -28,7 +28,7 @@ from datetime import datetime
 project_root = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(project_root))
 
-from anomalib.models.image.custom_draem.lightning_model import CustomDraem
+from anomalib.models.image.draem_sevnet.lightning_model import DraemSevNet
 from anomalib.models.image.draem.lightning_model import Draem
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
 import os
@@ -76,7 +76,7 @@ class BaselineDraemSevNetComparison:
         """Create baseline Original DRAEM model"""
         return Draem()
     
-    def create_draem_sevnet(self, config: dict = None) -> CustomDraem:
+    def create_draem_sevnet(self, config: dict = None) -> DraemSevNet:
         """
         Create DRAEM-SevNet model with specified configuration.
         
@@ -95,7 +95,7 @@ class BaselineDraemSevNetComparison:
         if config:
             default_config.update(config)
         
-        return CustomDraem(**default_config)
+        return DraemSevNet(**default_config)
     
     def setup_data_module(self, source_domain: str, batch_size: int = 8) -> MultiDomainHDMAPDataModule:
         """
@@ -540,7 +540,7 @@ def test_model_initialization_comparison():
     assert hasattr(baseline_model, 'loss'), "Baseline should have loss attribute"
     
     # DRAEM-SevNet 초기화
-    sevnet_model = CustomDraem(
+    sevnet_model = DraemSevNet(
         severity_head_mode="single_scale",
         score_combination="simple_average",
         severity_weight=0.5
@@ -583,7 +583,7 @@ def test_comparison_framework_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_baseline_vs_draem_sevnet.py::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_baseline_vs_draem_sevnet.py::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
@@ -591,9 +591,9 @@ if __name__ == "__main__":
     print("\n🧪 Baseline DRAEM vs DRAEM-SevNet Comparison Test Suite")
     print("=" * 70)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_baseline_vs_draem_sevnet.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_baseline_vs_draem_sevnet.py -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_baseline_vs_draem_sevnet.py::test_baseline_vs_draem_sevnet_comparison -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_baseline_vs_draem_sevnet.py::test_baseline_vs_draem_sevnet_comparison -v -s")
     print("\nRunning direct execution...")
     try:
         results = run_comprehensive_comparison()

@@ -43,7 +43,7 @@ from anomalib.loggers import AnomalibTensorBoardLogger
 logging.getLogger("anomalib.visualization.image.item_visualizer").setLevel(logging.ERROR)
 
 # GPU 설정 - 사용할 GPU 번호를 수정하세요
-os.environ["CUDA_VISIBLE_DEVICES"] = "11"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def cleanup_gpu_memory():

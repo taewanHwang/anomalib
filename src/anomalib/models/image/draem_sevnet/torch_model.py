@@ -13,7 +13,7 @@ from torch import nn
 from anomalib.data import InferenceBatch
 from anomalib.models.components.layers import SSPCAB
 from anomalib.models.image.draem.torch_model import DraemModel, ReconstructiveSubNetwork, DiscriminativeSubNetwork as OriginalDiscriminativeSubNetwork
-from anomalib.models.image.custom_draem.severity_head import SeverityHead
+from .severity_head import SeverityHead
 
 
 @dataclass
@@ -111,7 +111,7 @@ class DiscriminativeSubNetwork(nn.Module):
         return mask_logits, encoder_features
 
 
-class CustomDraemModel(nn.Module):
+class DraemSevNetModel(nn.Module):
     """DRAEM-SevNet: DRAEM with Severity Network.
     
     Unified severity-aware architecture that combines mask prediction and severity
@@ -132,7 +132,7 @@ class CustomDraemModel(nn.Module):
             in weighted_average combination. Defaults to ``0.5``.
             
     Example:
-        >>> model = CustomDraemModel(severity_head_mode="multi_scale")
+        >>> model = DraemSevNetModel(severity_head_mode="multi_scale")
         >>> input_tensor = torch.randn(8, 3, 224, 224)
         >>> # Training mode
         >>> model.train()
@@ -296,4 +296,4 @@ class CustomDraemModel(nn.Module):
 
 
 # Export the main classes
-__all__ = ["CustomDraemModel", "DiscriminativeSubNetwork", "DraemSevNetOutput"]
+__all__ = ["DraemSevNetModel", "DiscriminativeSubNetwork", "DraemSevNetOutput"]
