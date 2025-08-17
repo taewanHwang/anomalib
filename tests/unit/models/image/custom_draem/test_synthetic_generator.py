@@ -81,7 +81,8 @@ def test_basic_generation():
         patch_width_range=(40, 80),        # Width 40-80 pixels
         patch_ratio_range=(0.5, 2.0),      # height/width ratio (landscape to portrait)
         severity_max=10.0,
-        patch_count=1
+        patch_count=1,
+        probability=1.0  # Always generate faults for testing
     )
     
     # Generate synthetic fault with detailed patch information
@@ -135,7 +136,8 @@ def test_different_patch_configurations():
             patch_width_range=(32, 64),
             patch_ratio_range=patch_ratio_range,
             severity_max=10.0,
-            patch_count=1
+            patch_count=1,
+            probability=1.0  # Always generate faults for testing
         )
         
         synthetic_image, fault_mask, severity_map, severity_label, patch_info = generator(image, return_patch_info=True)
@@ -162,7 +164,8 @@ def test_multi_patch_generation():
             patch_width_range=(30, 60),
             patch_ratio_range=(0.5, 2.0),
             severity_max=10.0,
-            patch_count=patch_count
+            patch_count=patch_count,
+            probability=1.0  # Always generate faults for testing
         )
         
         synthetic_image, fault_mask, severity_map, severity_label, patch_info = generator(image, return_patch_info=True)
@@ -191,7 +194,8 @@ def test_severity_levels():
             patch_width_range=(40, 80),
             patch_ratio_range=(0.5, 2.0),
             severity_max=severity_max,
-            patch_count=1
+            patch_count=1,
+            probability=1.0  # Always generate faults for testing
         )
         
         # Generate multiple samples to see severity variation
@@ -417,7 +421,8 @@ def main():
             patch_width_range=(40, 80),
             patch_ratio_range=(0.5, 2.0),
             severity_max=10.0,
-            patch_count=1
+            patch_count=1,
+            probability=1.0  # Always generate faults for testing
         )
         # generator() returns 4 values: synthetic_image, fault_mask, severity_map, severity_label
         synthetic, mask, severity_map, severity_label = generator(image)
@@ -440,7 +445,8 @@ def main():
                 patch_width_range=(30, 60),
                 patch_ratio_range=(0.5, 2.0),
                 severity_max=10.0,
-                patch_count=patch_count
+                patch_count=patch_count,
+                probability=1.0  # Always generate faults for testing
             )
             
             synthetic_image, fault_mask, severity_map, severity_label = generator(image)
@@ -454,11 +460,72 @@ def main():
         
         # Test 4: Severity levels
         print("\n📊 Running severity level tests...")
-        test_severity_levels()
+        severity_ranges = [("low", 3.0), ("medium", 6.0), ("high", 10.0)]
+        
+        for severity_name, severity_max in severity_ranges:
+            generator = HDMAPCutPasteSyntheticGenerator(
+                patch_width_range=(40, 80),
+                patch_ratio_range=(0.5, 2.0),
+                severity_max=severity_max,
+                patch_count=1,
+                probability=1.0  # Always generate faults for testing
+            )
+            
+            synthetic_image, fault_mask, severity_map, severity_label = generator(image)
+            
+            print(f"   {severity_name} severity (max={severity_max}): "
+                  f"actual={severity_label.item():.3f}")
+            
+            # Save severity test results
+            save_test_results(image, synthetic_image, fault_mask, severity_map, severity_label,
+                             output_dir, f"severity_{severity_name}")
         
         # Test 5: Real HDMAP data (if available)
         print("\n📊 Running real HDMAP data tests...")
-        test_with_real_hdmap_data()
+        possible_paths = [
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000065.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000096.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_B/train/good/000067.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_B/train/good/000027.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_C/train/good/000081.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_C/train/good/000047.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_D/train/good/000071.png",
+            "./datasets/HDMAP/1000_8bit_resize_224x224/domain_D/train/good/000055.png",
+        ]
+        
+        # Find existing images and save results
+        existing_paths = [path for path in possible_paths if Path(path).exists()]
+        
+        if existing_paths:
+            print(f"   Found {len(existing_paths)} real HDMAP images")
+            
+            for i, real_image_path in enumerate(existing_paths):  # Process all available HDMAP images
+                print(f"   📷 Processing image {i+1}: {Path(real_image_path).name}")
+                real_image = load_sample_hdmap_image(real_image_path)
+                
+                generator = HDMAPCutPasteSyntheticGenerator(
+                    patch_width_range=(64, 128),
+                    patch_ratio_range=(0.1, 0.2),
+                    severity_max=0.5,
+                    patch_count=1,
+                    probability=1.0  # Always generate faults for testing
+                )
+                
+                real_synthetic, real_mask, real_sev_map, real_sev_label = generator(real_image)
+                
+                # Create identifier from path
+                path_parts = Path(real_image_path).parts
+                identifier = f"{path_parts[-5]}_{path_parts[-4]}_{path_parts[-2]}"  # resize_domain_X_good
+                identifier = identifier.replace("1000_8bit_", "").replace("domain_", "")
+                
+                print(f"      Severity: {real_sev_label.item():.3f}, "
+                      f"Coverage: {real_mask.sum().item() / real_mask.numel() * 100:.2f}%")
+                
+                # Save real HDMAP results
+                save_test_results(real_image, real_synthetic, real_mask, real_sev_map, real_sev_label,
+                                 output_dir, f"real_hdmap_{identifier}_{Path(real_image_path).stem}")
+        else:
+            print("   No real HDMAP data found, skipping real data test")
         
         print("\n" + "=" * 60)
         print("✅ All tests completed successfully!")
