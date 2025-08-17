@@ -197,27 +197,27 @@ def train_draem_model_multi_domain(
     print(f"   ✅ DRAEM 모델 생성 완료 (validation loss 포함)")
     logger.info("✅ DRAEM 모델 생성 완료 (validation loss 포함)")
     
-    # Early stopping과 model checkpoint 설정
+    # Early stopping과 model checkpoint 설정 (val_image_AUROC 기반)
     early_stopping = EarlyStopping(
-        monitor="val_loss",
+        monitor="val_image_AUROC",
         patience=config["early_stopping_patience"],
-        mode="min",
+        mode="max",  # AUROC는 높을수록 좋음
         verbose=True
     )
     
     # 체크포인트 경로 설정
     checkpoint_callback = ModelCheckpoint(
-        filename=f"draem_multi_domain_{datamodule.source_domain}_" + "{epoch:02d}_{val_loss:.4f}",
-        monitor="val_loss",
-        mode="min",
+        filename=f"draem_multi_domain_{datamodule.source_domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+        monitor="val_image_AUROC",
+        mode="max",  # AUROC는 높을수록 좋음
         save_top_k=1,
         verbose=True
     )
     
-    print(f"   📊 Early Stopping: patience={config['early_stopping_patience']}, monitor=val_loss")
-    print(f"   💾 Model Checkpoint: monitor=val_loss, save_top_k=1")
-    logger.info(f"📊 Early Stopping 설정: patience={config['early_stopping_patience']}")
-    logger.info(f"💾 Model Checkpoint 설정: monitor=val_loss")
+    print(f"   📊 Early Stopping: patience={config['early_stopping_patience']}, monitor=val_image_AUROC (max)")
+    print(f"   💾 Model Checkpoint: monitor=val_image_AUROC (max), save_top_k=1")
+    logger.info(f"📊 Early Stopping 설정: patience={config['early_stopping_patience']}, monitor=val_image_AUROC")
+    logger.info(f"💾 Model Checkpoint 설정: monitor=val_image_AUROC")
     
     # TensorBoard 로거 설정 (DraemSevNet과 동일)
     tb_logger = TensorBoardLogger(
@@ -534,7 +534,7 @@ def run_single_draem_experiment(
         # 실험 결과 정리 (DraemSevNet과 동일한 구조)
         experiment_result = {
             "condition": condition,
-            "experiment_name": experiment_name, 
+            "experiment_name": experiment_name,
             "source_results": source_results,
             "target_results": target_results,
             "best_checkpoint": best_checkpoint,
@@ -688,7 +688,7 @@ def main():
             )
             
             all_results.append(result)
-        
+            
         # 다중 실험 분석 (2개 이상인 경우)
         if len(all_results) > 1:
             analyze_multi_experiment_results(all_results, args.source_domain)

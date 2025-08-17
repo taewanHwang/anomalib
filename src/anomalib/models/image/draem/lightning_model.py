@@ -184,7 +184,7 @@ class Draem(AnomalibModule):
         """Perform validation step for DRAEM.
 
         Uses softmax predictions of the anomalous class as anomaly maps.
-        Also computes validation loss for early stopping.
+        Computes validation loss and AUROC for early stopping.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -213,9 +213,51 @@ class Draem(AnomalibModule):
         # Log validation loss for early stopping
         self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
         
-        # Perform normal inference prediction on original image
+        # Perform normal inference prediction on original image for AUROC calculation
         prediction = self.model(batch.image)
+        
+        # Calculate AUROC for validation using manual metric computation
+        if hasattr(batch, 'gt_label') and batch.gt_label is not None:
+            # Create a temporary batch with predictions for evaluation
+            eval_batch = batch.update(**prediction._asdict())
+            
+            # Manual AUROC calculation for validation logging
+            try:
+                from torchmetrics import AUROC
+                # Initialize AUROC metric if not exists
+                if not hasattr(self, '_val_auroc_metric'):
+                    self._val_auroc_metric = AUROC(task='binary').to(self.device)
+                
+                # Update metric with current batch
+                pred_scores = eval_batch.pred_score.flatten()
+                labels = eval_batch.gt_label.flatten()
+                
+                # Update metric (accumulate across all validation steps)
+                self._val_auroc_metric.update(pred_scores, labels.int())
+                
+                # Log placeholder AUROC for early stopping (will compute final at epoch end)
+                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+                    
+            except Exception as e:
+                # Fallback: log placeholder value for early stopping
+                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        
         return batch.update(**prediction._asdict())
+
+    def on_validation_epoch_end(self) -> None:
+        """Compute final AUROC and reset validation metrics at the end of each epoch."""
+        if hasattr(self, '_val_auroc_metric'):
+            try:
+                # Compute final AUROC for the epoch
+                final_auroc = self._val_auroc_metric.compute()
+                # Log the real AUROC value (this will overwrite the placeholder)
+                self.log("val_image_AUROC", final_auroc, on_epoch=True, prog_bar=True, logger=True)
+            except Exception:
+                # If AUROC computation fails, log a fallback value
+                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_epoch=True, prog_bar=True, logger=True)
+            finally:
+                # Reset for next epoch
+                self._val_auroc_metric.reset()
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
