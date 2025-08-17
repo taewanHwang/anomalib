@@ -606,13 +606,8 @@ def evaluate_target_domains(
             # 모델 평가
             print(f"         📊 {domain} DataModule 설정 완료, test 시작...")
             
-            # Engine의 경로 설정 확인 (fit() 후에만 접근 가능)
-            try:
-                if hasattr(engine, 'trainer') and engine.trainer is not None:
-                    engine.trainer.default_root_dir = results_base_dir
-                    print(f"         🔧 Engine default_root_dir 재설정: {results_base_dir}")
-            except Exception as e:
-                print(f"         ⚠️ Warning: Engine 경로 재설정 실패: {e}")
+            # Note: Engine의 default_root_dir은 훈련 후 변경 불가능하므로 재설정하지 않음
+            # 결과는 각 실험의 tensorboard_logs 폴더에 정상적으로 저장됨
             
             result = engine.test(
                 model=model, 
