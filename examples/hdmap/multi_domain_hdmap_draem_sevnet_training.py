@@ -260,6 +260,7 @@ def run_single_draem_sevnet_experiment(
     condition: dict,
     source_domain: str,
     max_epochs: int,
+    log_dir: str = None,
     gpu_id: int = 0,
     experiment_id: int = 0
 ) -> dict:
@@ -267,9 +268,20 @@ def run_single_draem_sevnet_experiment(
     # 각 실험마다 고유한 results 경로 생성
     import time
     from datetime import datetime
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_folder = f"{condition['name']}_gpu{gpu_id}_{timestamp}"
-    results_base_dir = f"results/MultiDomainHDMAP/draem_sevnet/{experiment_folder}"
+    # run 스크립트에서 전달받은 log_dir 사용 (DRAEM과 동일하게)
+    if log_dir:
+        # run 스크립트에서 호출된 경우: 기존 timestamp 폴더 재사용
+        base_timestamp_dir = log_dir
+        timestamp_for_folder = datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_folder = f"{condition['name']}_{timestamp_for_folder}"
+    else:
+        # 직접 호출된 경우: 새로운 timestamp 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_timestamp_dir = f"results/draem_sevnet/{timestamp}"
+        experiment_folder = f"{condition['name']}_{timestamp}"
+    
+    # DRAEM과 동일한 구조: {base_timestamp_dir}/MultiDomainHDMAP/draem_sevnet/{experiment_name}/
+    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/draem_sevnet/{experiment_folder}"
     
     # 실험 이름 생성
     experiment_name = f"{source_domain}"
@@ -435,78 +447,6 @@ def run_single_draem_sevnet_experiment(
     finally:
         # 메모리 정리
         cleanup_gpu_memory()
-
-
-def analyze_multi_draem_sevnet_results(all_results: list, source_domain: str):
-    """다중 DRAEM-SevNet 실험 결과 분석 및 비교."""
-    print(f"\n{'='*80}")
-    print(f"📈 다중 DRAEM-SevNet 실험 결과 분석 및 비교")
-    print(f"Source Domain: {source_domain}")
-    print(f"{'='*80}")
-    
-    successful_results = [r for r in all_results if r["status"] == "success"]
-    failed_results = [r for r in all_results if r["status"] == "failed"]
-    
-    print(f"\n📊 실험 요약:")
-    print(f"   성공: {len(successful_results)}/{len(all_results)} 개")
-    print(f"   실패: {len(failed_results)}/{len(all_results)} 개")
-    
-    if failed_results:
-        print(f"\n❌ 실패한 실험들:")
-        for result in failed_results:
-            print(f"   - {result['condition']['name']}: {result['error']}")
-    
-    if successful_results:
-        print(f"\n🏆 실험 결과 순위 (Target Domain 평균 AUROC 기준):")
-        # Target Domain 평균 AUROC 기준으로 정렬
-        sorted_results = sorted(successful_results, 
-                              key=lambda x: x.get("avg_target_auroc", 0), 
-                              reverse=True)
-        
-        for i, result in enumerate(sorted_results, 1):
-            condition = result["condition"]
-            source_auroc = result["source_results"].get("image_AUROC", 0)
-            target_auroc = result.get("avg_target_auroc", 0)
-            
-            print(f"   {i}. {condition['name']}")
-            print(f"      Source AUROC: {source_auroc:.4f}")
-            print(f"      Target Avg AUROC: {target_auroc:.4f}")
-            print(f"      Architecture: {condition['severity_head_mode']} + {condition['score_combination']}")
-            print(f"      Description: {condition['description']}")
-            print()
-        
-        # 최고 성능 실험 하이라이트
-        best_result = sorted_results[0]
-        print(f"🥇 최고 성능 실험: {best_result['condition']['name']}")
-        print(f"   Target Avg AUROC: {best_result.get('avg_target_auroc', 0):.4f}")
-        print(f"   Checkpoint: {best_result['best_checkpoint']}")
-        
-        # Severity Head Mode별 비교
-        print(f"\n📊 Severity Head Mode별 평균 성능:")
-        single_scale_results = [r for r in successful_results if r["condition"]["severity_head_mode"] == "single_scale"]
-        multi_scale_results = [r for r in successful_results if r["condition"]["severity_head_mode"] == "multi_scale"]
-        
-        if single_scale_results:
-            single_avg = sum(r.get("avg_target_auroc", 0) for r in single_scale_results) / len(single_scale_results)
-            print(f"   Single Scale: {single_avg:.4f} (평균, {len(single_scale_results)}개 실험)")
-        
-        if multi_scale_results:
-            multi_avg = sum(r.get("avg_target_auroc", 0) for r in multi_scale_results) / len(multi_scale_results)
-            print(f"   Multi Scale: {multi_avg:.4f} (평균, {len(multi_scale_results)}개 실험)")
-        
-        # Score Combination별 비교
-        print(f"\n🔗 Score Combination별 평균 성능:")
-        combination_groups = {}
-        for result in successful_results:
-            comb = result["condition"]["score_combination"]
-            if comb not in combination_groups:
-                combination_groups[comb] = []
-            combination_groups[comb].append(result.get("avg_target_auroc", 0))
-        
-        for comb, aurocs in combination_groups.items():
-            avg_auroc = sum(aurocs) / len(aurocs)
-            print(f"   {comb}: {avg_auroc:.4f} (평균, {len(aurocs)}개 실험)")
-
 
 def main():
     """멀티 도메인 DRAEM-SevNet 실험 메인 함수."""
@@ -747,13 +687,13 @@ def main():
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     
-    # 로그 파일명 생성
+    # 로그 파일명 생성 (DRAEM 스타일로 단순화)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"draem_sevnet_exp_{args.experiment_id:02d}_{condition['name']}_gpu{args.gpu_id}_{timestamp}.log"
+    log_filename = f"draem_sevnet_experiment_{timestamp}.log"
     log_path = log_dir / log_filename
     
     # 로깅 설정 (공통 함수 사용)
-    logger = setup_experiment_logging(str(log_path), f"draem_sevnet_exp_{args.experiment_id}")
+    logger = setup_experiment_logging(str(log_path), f"draem_sevnet_{condition['name']}")
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
@@ -802,6 +742,7 @@ def main():
             condition=condition,
             source_domain=SOURCE_DOMAIN,
             max_epochs=MAX_EPOCHS,
+            log_dir=args.log_dir,  # run 스크립트에서 전달받은 timestamp 폴더 사용
             gpu_id=args.gpu_id,
             experiment_id=args.experiment_id
         )

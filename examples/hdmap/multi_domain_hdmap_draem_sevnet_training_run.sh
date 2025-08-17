@@ -4,27 +4,32 @@
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
 # 설정 (12개 GPU + 패치 형태 중심 12개 실험)
-AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11)
+AVAILABLE_GPUS=(6 7 8 9 10 11)
 EXPERIMENT_CONDITIONS=(
     "ultra_landscape_tiny"
     "ultra_landscape_small"
     "super_landscape"
-    "landscape_optimal"
-    "ultra_portrait_tiny"
-    "ultra_portrait_small"
-    "super_portrait"
-    "portrait_moderate"
-    "perfect_square_tiny"
-    "perfect_square_medium"
-    "perfect_square_large"
-    "giant_landscape"
+    # "landscape_optimal"
+    # "ultra_portrait_tiny"
+    # "ultra_portrait_small"
+    # "super_portrait"
+    # "portrait_moderate"
+    # "perfect_square_tiny"
+    # "perfect_square_medium"
+    # "perfect_square_large"
+    # "giant_landscape"
 )
 NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
 
-# 로그 디렉토리 생성 (results 폴더로 통합)
+# 로그 디렉토리 생성 (DRAEM과 동일한 구조)
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOG_DIR="results/exp_logs/${TIMESTAMP}"
+LOG_DIR="results/draem_sevnet/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
+
+echo "📁 DraemSevNet 실험 결과 구조:"
+echo "   - Base Directory: ${LOG_DIR}"
+echo "   - 실험별 경로: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/{experiment_name}/"
+echo ""
 
 SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_sevnet_training.py"
 
@@ -105,6 +110,8 @@ echo "   실패: ${FAILED_COUNT}/${NUM_EXPERIMENTS}"
 echo "   로그 디렉토리: ${LOG_DIR}"
 echo "=================================="
 
+
+
 # 실패한 실험이 있으면 경고
 if [ $FAILED_COUNT -gt 0 ]; then
     echo "⚠️  ${FAILED_COUNT}개 실험이 실패했습니다."
@@ -112,6 +119,10 @@ if [ $FAILED_COUNT -gt 0 ]; then
 fi
 
 echo ""
-echo "📁 생성된 파일들:"
-echo "   로그 파일: ${LOG_DIR}/*.log"
-echo "   결과 파일: ${LOG_DIR}/*.json"
+echo "📁 생성된 파일들 (DRAEM과 동일한 구조):"
+echo "   개별 로그: ${LOG_DIR}/draem_sevnet_experiment_*.log"
+echo "   출력 로그: ${LOG_DIR}/output_exp_*_gpu*.log"
+echo "   실험별 폴더: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/*/"
+echo "   체크포인트: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/*/tensorboard_logs/checkpoints/"
+echo "   시각화 결과: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/*/tensorboard_logs/visualize/"
+echo "   JSON 결과: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/*/tensorboard_logs/result_*.json"

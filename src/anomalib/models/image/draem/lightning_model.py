@@ -184,6 +184,7 @@ class Draem(AnomalibModule):
         """Perform validation step for DRAEM.
 
         Uses softmax predictions of the anomalous class as anomaly maps.
+        Also computes validation loss for early stopping.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -195,6 +196,24 @@ class Draem(AnomalibModule):
         """
         del args, kwargs  # These variables are not used.
 
+        input_image = batch.image
+        
+        # Compute validation loss using augmented data (temporarily set to training mode)
+        was_training = self.model.training
+        self.model.train()  # Temporarily set to training mode for loss calculation
+        
+        augmented_image, anomaly_mask = self.augmenter(input_image)
+        reconstruction, prediction_for_loss = self.model(augmented_image)
+        val_loss = self.loss(input_image, reconstruction, anomaly_mask, prediction_for_loss)
+        
+        # Restore original mode
+        if not was_training:
+            self.model.eval()
+        
+        # Log validation loss for early stopping
+        self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        
+        # Perform normal inference prediction on original image
         prediction = self.model(batch.image)
         return batch.update(**prediction._asdict())
 
