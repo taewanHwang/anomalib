@@ -407,7 +407,7 @@ def test_baseline_performance_reproduction():
     trainer.fit(draem_model, datamodule)
     
     # 3. CustomDraem 훈련 (같은 조건)
-    custom_model = CustomDraem(use_adaptive_loss=False)  # Baseline 비교용
+    custom_model = CustomDraem(severity_weight=0.0)  # Baseline 비교용 (severity head 비활성화)
     trainer.fit(custom_model, datamodule)
     
     # 4. Source domain 성능 비교
@@ -425,11 +425,11 @@ def test_baseline_performance_reproduction():
     assert abs(draem_auroc - custom_auroc) < 0.05, "Performance gap too large"
 
 def test_ablation_study():
-    """Severity + Adaptive Loss 기여도 측정"""
+    """Severity Head 기여도 측정"""
     configs = [
-        {"use_adaptive_loss": False, "severity_weight": 0.0, "name": "backbone_only"},
-        {"use_adaptive_loss": False, "severity_weight": 0.5, "name": "backbone_+_severity"},
-        {"use_adaptive_loss": True, "severity_weight": 0.5, "name": "full_custom"}
+        {"severity_weight": 0.0, "severity_head_mode": "single_scale", "name": "backbone_only"},
+        {"severity_weight": 0.5, "severity_head_mode": "single_scale", "name": "backbone_+_single_scale"},
+        {"severity_weight": 0.5, "severity_head_mode": "multi_scale", "name": "backbone_+_multi_scale"}
     ]
     
     results = {}

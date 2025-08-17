@@ -20,51 +20,60 @@ Examples:
     
     >>> from anomalib.models.image import CustomDraem
     >>> model = CustomDraem()
-    >>> # Uses: severity_max=10.0, anomaly_probability=0.5, discriminative_only mode
+    >>> # Uses: severity_max=1.0, anomaly_probability=0.5, single_scale mode
     
     Conservative training setup (30% anomalies):
     
     >>> model = CustomDraem(
     ...     severity_max=5.0,
-    ...     severity_input_mode="discriminative_only",
+    ...     severity_head_mode="single_scale",
+    ...     score_combination="simple_average",
     ...     anomaly_probability=0.3,
     ...     patch_ratio_range=(1.5, 3.0),  # Portrait patches
     ...     patch_width_range=(20, 40),    # Small patches
-    ...     reconstruction_weight=1.0,
-    ...     segmentation_weight=1.0,
     ...     severity_weight=0.3
     ... )
     
-    Intensive training setup (80% anomalies) with multi-modal severity:
+    Intensive training setup (80% anomalies) with multi-scale severity:
     
     >>> model = CustomDraem(
     ...     severity_max=15.0,
-    ...     severity_input_mode="multi_modal",  # Uses all 5 channels
+    ...     severity_head_mode="multi_scale",  # Uses multi-resolution features
+    ...     score_combination="weighted_average",
+    ...     severity_weight_for_combination=0.7,
     ...     anomaly_probability=0.8,
     ...     patch_ratio_range=(0.3, 0.8),  # Landscape patches  
     ...     patch_width_range=(40, 80),    # Larger patches
     ...     patch_count=2,                 # Multiple patches
-    ...     reconstruction_weight=0.8,
-    ...     segmentation_weight=1.2,
     ...     severity_weight=0.7
     ... )
     
-    Ablation study - testing different severity input modes:
+    Ablation study - testing different severity head configurations:
     
-    >>> # Mode 1: Baseline (discriminative only)
-    >>> model_baseline = CustomDraem(severity_input_mode="discriminative_only")
+    >>> # Configuration 1: Single-scale with simple average
+    >>> model_baseline = CustomDraem(
+    ...     severity_head_mode="single_scale",
+    ...     score_combination="simple_average"
+    ... )
     >>> 
-    >>> # Mode 2: With original image information
-    >>> model_with_orig = CustomDraem(severity_input_mode="with_original")
+    >>> # Configuration 2: Multi-scale with simple average
+    >>> model_multi_scale = CustomDraem(
+    ...     severity_head_mode="multi_scale",
+    ...     score_combination="simple_average"
+    ... )
     >>> 
-    >>> # Mode 3: With reconstruction information  
-    >>> model_with_recon = CustomDraem(severity_input_mode="with_reconstruction")
+    >>> # Configuration 3: Single-scale with weighted combination
+    >>> model_weighted = CustomDraem(
+    ...     severity_head_mode="single_scale",
+    ...     score_combination="weighted_average",
+    ...     severity_weight_for_combination=0.7
+    ... )
     >>> 
-    >>> # Mode 4: With explicit error map
-    >>> model_with_error = CustomDraem(severity_input_mode="with_error_map")
-    >>> 
-    >>> # Mode 5: Maximum information fusion
-    >>> model_multimodal = CustomDraem(severity_input_mode="multi_modal")
+    >>> # Configuration 4: Maximum information fusion
+    >>> model_maximum = CustomDraem(
+    ...     severity_head_mode="multi_scale",
+    ...     score_combination="maximum"
+    ... )
     
     Synthetic fault generator usage:
     
@@ -82,9 +91,11 @@ The model can be used with HDMAP datasets and supports various domain transfer
 learning scenarios. All examples above support both training and inference modes.
 
 Training Tips:
-    - Start with discriminative_only mode for baseline performance
+    - Start with single_scale mode for baseline performance
+    - Use multi_scale mode for maximum feature information
     - Use anomaly_probability=0.5 for balanced training  
     - Adjust severity_weight (0.3-0.7) based on your task importance
+    - Try weighted_average score combination for flexible control
     - Portrait patches (ratio > 1.0) work well for road defects
     - Landscape patches (ratio < 1.0) work well for lane anomalies
 

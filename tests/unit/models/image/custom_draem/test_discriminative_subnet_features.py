@@ -7,7 +7,6 @@ Run with: pytest tests/unit/models/image/custom_draem/test_discriminative_subnet
 Author: Taewan Hwang
 """
 
-import pytest
 import torch
 from anomalib.models.image.custom_draem.torch_model import DiscriminativeSubNetwork
 

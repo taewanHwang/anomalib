@@ -30,7 +30,6 @@ import torch
 import gc
 import json
 import warnings
-from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
 import logging
@@ -42,6 +41,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchmetrics")
 warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
 warnings.filterwarnings("ignore", message=".*Importing from timm.models.layers.*")
 warnings.filterwarnings("ignore", message=".*multi-threaded.*fork.*")
+warnings.filterwarnings("ignore", message=".*'mode' parameter is deprecated.*")
+warnings.filterwarnings("ignore", message=".*The `compute` method of metric.*")
+warnings.filterwarnings("ignore", message=".*Trying to infer the `batch_size`.*")
+warnings.filterwarnings("ignore", message=".*The number of training batches.*")
+warnings.filterwarnings("ignore", message=".*You are trying to `self.log.*")
 
 # Lightning imports
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -404,7 +408,10 @@ def test_target_domain_early_stopping():
         print(f"✅ 정상 완료 확인")
     
     print("\n✅ Target Domain Early Stopping 테스트 통과!")
-    return results  # 🔧 중요: 결과를 반환해야 함!
+    
+    # 테스트 완료 검증
+    assert isinstance(results, dict), "Results should be a dictionary"
+    assert "training_info" in results, "Training info should be in results"
 
 
 def test_early_stopping_ablation_study():

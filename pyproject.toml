@@ -420,6 +420,24 @@ markers = [
     "gpu: marks tests that require GPU",
     "cpu: marks tests that can run on CPU only (default)",
 ]
+filterwarnings = [
+    # Ignore timm deprecation warnings
+    "ignore:.*Importing from timm.models.layers.*:FutureWarning",
+    # Ignore torchvision deprecation warnings
+    "ignore:.*'mode' parameter is deprecated.*:DeprecationWarning",
+    # Ignore PyTorch Lightning warnings
+    "ignore:.*The `compute` method of metric.*:UserWarning",
+    "ignore:.*Trying to infer the `batch_size`.*:UserWarning",
+    "ignore:.*The number of training batches.*:UserWarning",
+    "ignore:.*You are trying to `self.log()` but the `self.trainer` reference.*:UserWarning",
+    # Ignore test return value warnings (pytest specific)
+    "ignore:.*Test functions should return None.*:pytest.PytestReturnNotNoneWarning",
+    # Ignore multiprocessing warnings
+    "ignore:.*multi-threaded.*fork.*:UserWarning",
+    # Ignore general warnings during tests
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning:timm.*",
+]
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #

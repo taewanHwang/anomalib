@@ -8,12 +8,18 @@ Author: Taewan Hwang
 
 import os
 import shutil
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
+
+# Suppress warnings for cleaner test output
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*'mode' parameter is deprecated.*")
 
 try:
     # Try direct import first (for uv run)
@@ -101,7 +107,12 @@ def test_basic_generation():
     for i, (src_x, src_y, tgt_x, tgt_y) in enumerate(patch_info['patch_positions']):
         print(f"      Patch {i+1}: Cut({src_x},{src_y}) → Paste({tgt_x},{tgt_y})")
     
-    return image, synthetic_image, fault_mask, severity_map, severity_label
+    # 기본 검증
+    assert isinstance(image, torch.Tensor), "Input image should be tensor"
+    assert isinstance(synthetic_image, torch.Tensor), "Synthetic image should be tensor"
+    assert isinstance(fault_mask, torch.Tensor), "Fault mask should be tensor"
+    assert isinstance(severity_map, torch.Tensor), "Severity map should be tensor"
+    assert isinstance(severity_label, torch.Tensor), "Severity label should be tensor"
 
 
 def test_different_patch_configurations():
@@ -134,7 +145,10 @@ def test_different_patch_configurations():
               f"coverage={fault_mask.sum().item() / fault_mask.numel() * 100:.2f}%, "
               f"ratio={patch_info['patch_ratio']:.2f}, size={patch_info['patch_size']}")
     
-    return results
+    # 결과 검증
+    assert len(results) == len(configurations), "Should have results for all configurations"
+    for config_name, _, _, _ in results:
+        assert config_name in [c[0] for c in configurations], f"Unexpected config name: {config_name}"
 
 
 def test_multi_patch_generation():
@@ -195,7 +209,10 @@ def test_severity_levels():
         print(f"      Sample: ratio={patch_info['patch_ratio']:.2f}, size={patch_info['patch_size']}")
         results.append((severity_name, synthetic_image, fault_mask, severity_label))
     
-    return results
+    # 결과 검증
+    assert len(results) == len(severity_ranges), "Should have results for all severity ranges"
+    for severity_name, _, _, _ in results:
+        assert severity_name in [s[0] for s in severity_ranges], f"Unexpected severity name: {severity_name}"
 
 
 def save_test_results(
@@ -344,7 +361,6 @@ def test_with_real_hdmap_data():
     
     if existing_paths:
         print(f"   Found {len(existing_paths)} real HDMAP images")
-        results = []
         
         for i, real_image_path in enumerate(existing_paths):
             print(f"   📷 Processing image {i+1}/{len(existing_paths)}: {Path(real_image_path).name}")
@@ -366,18 +382,13 @@ def test_with_real_hdmap_data():
                   f"Size: {patch_info['patch_size']}, "
                   f"Type: {patch_info['patch_type']}")
             
-            # Store result with unique identifier
-            path_parts = Path(real_image_path).parts
-            # Create identifier from path like "resize_224x224_domainA_train_good"
-            identifier = f"{path_parts[-5]}_{path_parts[-4]}_{path_parts[-3]}_{path_parts[-2]}"
-            identifier = identifier.replace("1000_8bit_", "").replace("domain_", "")
-            
-            results.append((identifier, image, synthetic_image, fault_mask, severity_map, severity_label))
+            # 각 이미지 처리 완료 확인
+            assert isinstance(severity_label, torch.Tensor), "Severity label should be tensor"
+            assert isinstance(fault_mask, torch.Tensor), "Fault mask should be tensor"
         
-        return results
+        print(f"   ✅ Successfully processed {len(existing_paths)} real HDMAP images")
     else:
         print("   No real HDMAP data found, skipping real data test")
-        return None
 
 
 def main():
@@ -398,7 +409,19 @@ def main():
     try:
         # Test 1: Basic generation
         print("\n📊 Running basic generation test...")
-        original, synthetic, mask, severity_map, severity_label = test_basic_generation()
+        test_basic_generation()
+        
+        # Create sample data for further tests
+        image = load_sample_hdmap_image()
+        generator = HDMAPCutPasteSyntheticGenerator(
+            patch_width_range=(40, 80),
+            patch_ratio_range=(0.5, 2.0),
+            severity_max=10.0,
+            patch_count=1
+        )
+        # generator() returns 4 values: synthetic_image, fault_mask, severity_map, severity_label
+        synthetic, mask, severity_map, severity_label = generator(image)
+        original = image  # Use original input image
         
         # Save basic test results
         save_test_results(original, synthetic, mask, severity_map, severity_label, 
@@ -406,14 +429,7 @@ def main():
         
         # Test 2: Different patch configurations
         print("\n📊 Running patch configuration tests...")
-        config_results = test_different_patch_configurations()
-        
-        # Save configuration test results
-        for config_name, synth_img, fault_mask, sev_label in config_results:
-            # Create severity map (assuming uniform severity across mask)
-            severity_map_config = fault_mask * (sev_label.item() / 10.0)  # Normalize to [0,1]
-            save_test_results(original, synth_img, fault_mask, severity_map_config, sev_label,
-                             output_dir, f"config_{config_name.lower()}")
+        test_different_patch_configurations()
         
         # Test 3: Multi-patch generation
         print("\n📊 Running multi-patch tests...")
@@ -438,32 +454,11 @@ def main():
         
         # Test 4: Severity levels
         print("\n📊 Running severity level tests...")
-        severity_ranges = [("low", 3.0), ("medium", 6.0), ("high", 10.0)]
-        
-        for severity_name, severity_max in severity_ranges:
-            generator = HDMAPCutPasteSyntheticGenerator(
-                patch_width_range=(40, 80),
-                patch_ratio_range=(0.5, 2.0),
-                severity_max=severity_max,
-                patch_count=1
-            )
-            
-            synthetic_image, fault_mask, severity_map, severity_label = generator(image)
-            
-            print(f"   {severity_name} severity (max={severity_max}): "
-                  f"actual={severity_label.item():.3f}")
-            
-            # Save severity test results
-            save_test_results(image, synthetic_image, fault_mask, severity_map, severity_label,
-                             output_dir, f"severity_{severity_name}")
+        test_severity_levels()
         
         # Test 5: Real HDMAP data (if available)
-        real_data_results = test_with_real_hdmap_data()
-        if real_data_results:
-            for identifier, real_orig, real_synth, real_mask, real_sev_map, real_sev_label in real_data_results:
-                save_test_results(real_orig, real_synth, real_mask, real_sev_map, real_sev_label,
-                                 output_dir, f"real_hdmap_{identifier}")
-                print(f"   💾 Results saved to: {output_dir}/real_hdmap_{identifier}_*.png")
+        print("\n📊 Running real HDMAP data tests...")
+        test_with_real_hdmap_data()
         
         print("\n" + "=" * 60)
         print("✅ All tests completed successfully!")
@@ -472,13 +467,14 @@ def main():
         print("   01: Original, 02: Synthetic, 03: Difference")
         print("   04: Fault Mask, 05: Severity Map, 06: Overlay")
         
-        return output_dir
+        # 테스트 완료 검증
+        assert Path(output_dir).exists(), "Output directory should exist"
         
     except Exception as e:
         print(f"\n❌ Test failed with error: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        raise  # re-raise to fail the test
 
 
 if __name__ == "__main__":

@@ -31,12 +31,14 @@ Custom DRAEM is an extended version of the original DRAEM model with **DRAEM bac
   - Multi-patch support: 1-3 patches with identical properties
   - Anomaly probability: 0.5 (default), adjustable for normal/anomaly ratio
 
-### 🧠 Severity Prediction Modes (5 Ablation Options)
-1. `discriminative_only`: Baseline (2 channels) - Pure discriminative output
-2. `with_original`: + Original image (5 channels) - Original context information  
-3. `with_reconstruction`: + Reconstruction (5 channels) - Reconstruction quality
-4. `with_error_map`: + Reconstruction error (5 channels) - Explicit error information
-5. `multi_modal`: All information combined (11 channels) - Maximum information fusion
+### 🧠 Severity Head Configuration Options
+1. **`severity_head_mode`**: 
+   - `"single_scale"`: Uses act6 features only (512 channels) - Focused high-level features
+   - `"multi_scale"`: Uses act2~act6 features (1920 channels) - Multi-resolution information
+2. **`score_combination`**: How to combine mask and severity scores:
+   - `"simple_average"`: (mask_score + severity_score) / 2 - Balanced approach
+   - `"weighted_average"`: Weighted combination with configurable weight - Flexible weighting
+   - `"maximum"`: max(mask_score, severity_score) - Conservative approach
 
 ### 🚀 Implementation Features
 - **Flexible Image Size**: Supports any square input (NxN) via AdaptiveAvgPool2d
@@ -136,16 +138,16 @@ original_draem = Draem()
 
 # 2. Custom DRAEM (same backbone + custom features)
 custom_draem = CustomDraem(
-    severity_input_mode="discriminative_only",  # Fair comparison
-    use_adaptive_loss=False,                    # Disable custom loss
+    severity_head_mode="single_scale",          # Fair comparison with focused features
+    score_combination="simple_average",         # Balanced score combination
     severity_weight=0.0,                        # Disable severity head
     # Now both models have identical 97.4M backbone
 )
 
 # 3. Full Custom DRAEM (all features enabled)  
 full_custom_draem = CustomDraem(
-    severity_input_mode="multi_modal",          # Maximum information
-    use_adaptive_loss=True,                     # Adaptive loss enabled
+    severity_head_mode="multi_scale",           # Maximum multi-resolution information
+    score_combination="weighted_average",       # Flexible score combination
     severity_weight=0.5,                        # Severity head enabled
 )
 
@@ -163,8 +165,9 @@ full_custom_draem = CustomDraem(
 3. **Domain Transfer Analysis**: Source vs Target domain adaptation
 
 ### 🧪 **Ablation Studies**
-- **Severity Input Modes**: 5 different input combinations (2, 5, 11 channels)
-- **Loss Functions**: Fixed weights vs Adaptive uncertainty-based weighting
+- **Severity Head Modes**: Single-scale (512 channels) vs Multi-scale (1920 channels) features
+- **Score Combination**: Simple average vs Weighted average vs Maximum approaches
+- **Loss Functions**: Fixed weights vs Multi-task loss weighting
 - **Patch Configurations**: Landscape vs Portrait vs Square
 - **Multi-patch**: 1 vs 2 vs 3 patches
 - **Image Size Flexibility**: Any square NxN input supported
@@ -186,7 +189,6 @@ custom_draem/
 ├── lightning_model.py          # Lightning wrapper (AnomalibModule) - Updated for DRAEM backbone
 ├── torch_model.py             # Core PyTorch model - DRAEM integration + Severity head  
 ├── loss.py                    # Multi-task loss function - Standard weighted loss
-├── adaptive_loss.py           # Advanced adaptive loss with uncertainty weighting
 ├── synthetic_generator.py      # HDMAP synthetic fault generator - Enhanced probabilistic
 └── README.md                  # This file (Updated)
 

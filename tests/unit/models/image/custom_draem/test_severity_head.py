@@ -12,7 +12,6 @@ Author: Taewan Hwang
 
 import pytest
 import torch
-import numpy as np
 import time
 from anomalib.models.image.custom_draem.severity_head import SeverityHead, SeverityHeadFactory
 

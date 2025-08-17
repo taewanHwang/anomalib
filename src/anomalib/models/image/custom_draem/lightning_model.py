@@ -69,7 +69,8 @@ class CustomDraem(AnomalibModule):
         >>> from anomalib.models.image import CustomDraem
         >>> model = CustomDraem(
         ...     severity_max=10.0,
-        ...     severity_input_mode="with_original",
+        ...     severity_head_mode="multi_scale",
+        ...     score_combination="weighted_average",
         ...     patch_ratio_range=(2.0, 4.0),
         ...     patch_count=2
         ... )
