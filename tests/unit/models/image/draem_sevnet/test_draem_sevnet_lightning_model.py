@@ -2,7 +2,7 @@
 
 DRAEM-SevNet으로 업데이트된 Lightning Model의 모든 기능을 테스트합니다.
 
-Run with: pytest tests/unit/models/image/custom_draem/test_lightning_model_update.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_lightning_model.py -v -s
 Author: Taewan Hwang
 """
 
@@ -298,7 +298,7 @@ def test_lightning_model_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_lightning_model_update.py::TestDraemSevNetLightningModel::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_lightning_model.py::TestDraemSevNetLightningModel::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
@@ -306,9 +306,9 @@ if __name__ == "__main__":
     print("\n🧪 DRAEM-SevNet Lightning Model Test Suite")
     print("=" * 60)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_lightning_model_update.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_lightning_model.py -v -s")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_lightning_model_update.py::TestDraemSevNetLightningModel -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_lightning_model.py::TestDraemSevNetLightningModel -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_lightning_model_update.py::TestDraemSevNetLightningModel::test_model_initialization -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_lightning_model.py::TestDraemSevNetLightningModel::test_model_initialization -v -s")
     print("\n" + "=" * 60)

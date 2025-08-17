@@ -3,7 +3,7 @@
 DRAEM-SevNet 아키텍처로 완전 재작성된 DraemSevNetModel의
 모든 기능과 통합성을 테스트합니다.
 
-Run with: pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_torch_model.py -v -s
 Author: Taewan Hwang
 """
 
@@ -387,7 +387,7 @@ class TestDraemSevNetModelIntegration:
 
 
 # pytest로 실행 시 자동으로 실행되는 통합 테스트
-def test_custom_draem_model_integration_summary():
+def test_draem_sevnet_model_integration_summary():
     """전체 DRAEM-SevNet DraemSevNetModel 테스트 요약"""
     verbose_print("🧪 DRAEM-SevNet DraemSevNetModel Test Suite Integration Summary", "INFO")
     verbose_print("=" * 70)
@@ -415,7 +415,7 @@ def test_custom_draem_model_integration_summary():
         verbose_print(f"  {i:2d}. {component}")
     
     verbose_print(f"\n🎯 Total {len(test_components)} test categories covered!", "SUCCESS")
-    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite::test_<method_name> -v -s")
+    verbose_print("\nRun individual tests with: pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_torch_model.py::TestDraemSevNetModelRewrite::test_<method_name> -v -s")
 
 
 if __name__ == "__main__":
@@ -423,9 +423,9 @@ if __name__ == "__main__":
     print("\n🧪 DRAEM-SevNet DraemSevNetModel Test Suite")
     print("=" * 60)
     print("To run tests with verbose output:")
-    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_torch_model.py -v -s")
     print("\nTo run specific test class:")
-    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_torch_model.py::TestDraemSevNetModelRewrite -v -s")
     print("\nTo run specific test method:")
-    print("pytest tests/unit/models/image/custom_draem/test_custom_draem_model_rewrite.py::TestDraemSevNetModelRewrite::test_model_initialization -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_draem_sevnet_torch_model.py::TestDraemSevNetModelRewrite::test_model_initialization -v -s")
     print("\n" + "=" * 60)

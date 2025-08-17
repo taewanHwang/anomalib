@@ -22,7 +22,7 @@ Early Stopping 설정:
 3. 성능 개선이 없으면 early stopping 실행
 4. Best checkpoint로 final test evaluation
 
-Run with: pytest tests/unit/models/image/custom_draem/test_early_stopping.py -v -s
+Run with: pytest tests/unit/models/image/draem_sevnet/test_early_stopping.py -v -s
 """
 
 import os
@@ -73,7 +73,7 @@ def cleanup_gpu_memory():
         print(f"GPU 메모리 사용량: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
 
 
-def run_custom_draem_with_early_stopping(
+def run_draem_sevnet_with_early_stopping(
     source_domain: str = "domain_A",
     target_domains: str = "auto",
     max_epochs: int = 2,  # 초고속 테스트 (2 epochs만)
@@ -213,7 +213,7 @@ def run_custom_draem_with_early_stopping(
             mode=mode,
             save_top_k=1,
             save_last=True,
-            filename=f"custom_draem_early_stop_{source_domain}_" + "{epoch:02d}_{target_avg_auroc:.4f}",
+            filename=f"draem_sevnet_early_stop_{source_domain}_" + "{epoch:02d}_{target_avg_auroc:.4f}",
         )
         
         callbacks = [early_stopping, checkpoint]
@@ -222,7 +222,7 @@ def run_custom_draem_with_early_stopping(
         print(f"✅ ModelCheckpoint: monitor={monitor}, mode={mode}")
         
         # 4. Logger 설정
-        experiment_name = f"custom_draem_early_stopping_{source_domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        experiment_name = f"draem_sevnet_early_stopping_{source_domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         logger = AnomalibTensorBoardLogger(
             save_dir="logs/hdmap_early_stopping",
             name=experiment_name,
@@ -343,7 +343,7 @@ def run_early_stopping_ablation_study():
     for config in early_stopping_configs:
         print(f"\n🧪 실험: {config['name']} (patience={config['patience']}, min_delta={config['min_delta']})")
         
-        results = run_custom_draem_with_early_stopping(
+        results = run_draem_sevnet_with_early_stopping(
             source_domain="domain_A",
             target_domains="auto",
             max_epochs=3,  # 빠른 테스트를 위해 대폭 단축
@@ -379,7 +379,7 @@ def test_target_domain_early_stopping():
     print("=" * 80)
     
     # 기본 설정으로 테스트 실행
-    results = run_custom_draem_with_early_stopping(
+    results = run_draem_sevnet_with_early_stopping(
         source_domain="domain_A",
         target_domains="auto",
         max_epochs=2,  # 초고속 테스트
@@ -436,6 +436,6 @@ if __name__ == "__main__":
     print("\n🧪 Early Stopping Test Suite")
     print("=" * 50)
     print("To run as pytest:")
-    print("pytest tests/unit/models/image/custom_draem/test_early_stopping.py -v -s")
+    print("pytest tests/unit/models/image/draem_sevnet/test_early_stopping.py -v -s")
     print("\nRunning direct execution...")
     test_target_domain_early_stopping()
