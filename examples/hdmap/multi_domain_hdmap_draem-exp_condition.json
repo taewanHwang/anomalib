@@ -1,0 +1,191 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "DRAEM_quick_3epochs",
+      "description": "DRAEM 간단 테스트 (3 에포크)",
+      "config": {
+        "max_epochs": 3,
+        "early_stopping_patience": 1,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_baseline_50epochs",
+      "description": "DRAEM 기본 설정 (50 에포크)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_lower_lr",
+      "description": "DRAEM 낮은 학습률 (0.00005)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.00005,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_higher_lr",
+      "description": "DRAEM 높은 학습률 (0.0005)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0005,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_adaptive_lr",
+      "description": "DRAEM 적응형 학습률 (cosine annealing)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "scheduler": "cosine",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_gradient_clip_01",
+      "description": "DRAEM Gradient Clipping 0.1",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "gradient_clip_val": 0.1,
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_gradient_clip_05",
+      "description": "DRAEM Gradient Clipping 0.5",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "gradient_clip_val": 0.5,
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_warmup_cosine",
+      "description": "DRAEM Warmup + Cosine 스케줄러",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "scheduler": "warmup_cosine",
+        "warmup_epochs": 5,
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_weight_decay_001",
+      "description": "DRAEM Weight Decay 0.001 (AdamW)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "weight_decay": 0.001,
+        "optimizer": "adamw",
+        "source_domain": "domain_A",
+        "target_domains": "auto"
+      }
+    },
+    {
+      "name": "DRAEM_adam_vs_adamw",
+      "description": "DRAEM Adam 비교 (기본 설정)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "optimizer": "adam",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_dropout_01",
+      "description": "DRAEM Dropout 0.1",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "dropout": 0.1,
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw",
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "name": "DRAEM_combo_regularized",
+      "description": "DRAEM 정규화 조합 (weight decay + dropout)",
+      "config": {
+        "max_epochs": 50,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "weight_decay": 0.001,
+        "dropout": 0.1,
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "optimizer": "adamw"
+      }
+    }
+  ]
+}

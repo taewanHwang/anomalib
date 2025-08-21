@@ -199,7 +199,11 @@ def make_hdmap_dataset(
     # 도메인 내 파일 스캔 (domain_X/split/label/image.png 패턴)
     # Scan files within domain (domain_X/split/label/image.png pattern)
     samples_list = []
-    for file_path in domain_path.glob("**/*"):
+    
+    # 파일 경로를 정렬하여 스캔
+    all_files = sorted(domain_path.glob("**/*")) 
+    
+    for file_path in all_files:
         if file_path.suffix in extensions:
             # 파일 경로에서 정보 추출: domain_X/split/label/filename.png
             # Extract info from file path: domain_X/split/label/filename.png

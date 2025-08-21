@@ -26,7 +26,7 @@ from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.data.utils import DownloadInfo, download_and_extract
 from anomalib.data.utils.generators.perlin import PerlinAnomalyGenerator
-from anomalib.metrics import Evaluator
+from anomalib.metrics import AUROC, Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
@@ -92,6 +92,12 @@ class Draem(AnomalibModule):
         evaluator: Evaluator | bool = True,
         visualizer: Visualizer | bool = True,
     ) -> None:
+        if evaluator is True:
+            # Create evaluator with explicit AUROC metric
+            val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+            test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+            evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+        
         super().__init__(
             pre_processor=pre_processor,
             post_processor=post_processor,
@@ -184,7 +190,7 @@ class Draem(AnomalibModule):
         """Perform validation step for DRAEM.
 
         Uses softmax predictions of the anomalous class as anomaly maps.
-        Computes validation loss and AUROC for early stopping.
+        Performs inference in eval mode for consistent AUROC calculation.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -195,69 +201,37 @@ class Draem(AnomalibModule):
             STEP_OUTPUT: Dictionary containing predictions and metadata.
         """
         del args, kwargs  # These variables are not used.
-
-        input_image = batch.image
         
-        # Compute validation loss using augmented data (temporarily set to training mode)
-        was_training = self.model.training
-        self.model.train()  # Temporarily set to training mode for loss calculation
+        # Note: Lightning automatically sets model.eval() before validation_step
+        with torch.no_grad():
+            prediction = self.model(batch.image)
         
-        augmented_image, anomaly_mask = self.augmenter(input_image)
-        reconstruction, prediction_for_loss = self.model(augmented_image)
-        val_loss = self.loss(input_image, reconstruction, anomaly_mask, prediction_for_loss)
-        
-        # Restore original mode
-        if not was_training:
-            self.model.eval()
-        
-        # Log validation loss for early stopping
-        self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
-        
-        # Perform normal inference prediction on original image for AUROC calculation
-        prediction = self.model(batch.image)
-        
-        # Calculate AUROC for validation using manual metric computation
-        if hasattr(batch, 'gt_label') and batch.gt_label is not None:
-            # Create a temporary batch with predictions for evaluation
-            eval_batch = batch.update(**prediction._asdict())
-            
-            # Manual AUROC calculation for validation logging
-            try:
-                from torchmetrics import AUROC
-                # Initialize AUROC metric if not exists
-                if not hasattr(self, '_val_auroc_metric'):
-                    self._val_auroc_metric = AUROC(task='binary').to(self.device)
-                
-                # Update metric with current batch
-                pred_scores = eval_batch.pred_score.flatten()
-                labels = eval_batch.gt_label.flatten()
-                
-                # Update metric (accumulate across all validation steps)
-                self._val_auroc_metric.update(pred_scores, labels.int())
-                
-                # Log placeholder AUROC for early stopping (will compute final at epoch end)
-                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_step=False, on_epoch=True, prog_bar=True, logger=True)
-                    
-            except Exception as e:
-                # Fallback: log placeholder value for early stopping
-                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        
+        # Return updated batch - Evaluator will handle metrics automatically
         return batch.update(**prediction._asdict())
 
-    def on_validation_epoch_end(self) -> None:
-        """Compute final AUROC and reset validation metrics at the end of each epoch."""
-        if hasattr(self, '_val_auroc_metric'):
-            try:
-                # Compute final AUROC for the epoch
-                final_auroc = self._val_auroc_metric.compute()
-                # Log the real AUROC value (this will overwrite the placeholder)
-                self.log("val_image_AUROC", final_auroc, on_epoch=True, prog_bar=True, logger=True)
-            except Exception:
-                # If AUROC computation fails, log a fallback value
-                self.log("val_image_AUROC", torch.tensor(0.5).to(self.device), on_epoch=True, prog_bar=True, logger=True)
-            finally:
-                # Reset for next epoch
-                self._val_auroc_metric.reset()
+    def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
+        """Perform test step for DRAEM.
+        
+        Ensures identical inference behavior as validation_step for consistency.
+        
+        Args:
+            batch (Batch): Input batch containing images and metadata.
+            batch_idx (int): Index of the batch.
+            *args: Additional positional arguments (unused).
+            **kwargs: Additional keyword arguments (unused).
+            
+        Returns:
+            STEP_OUTPUT: Updated batch with model predictions.
+        """
+        del args, kwargs, batch_idx  # These variables are not used.
+        
+        # 🔧 Identical inference logic as validation_step
+        # Note: Lightning automatically sets model.eval() before test_step
+        with torch.no_grad():
+            prediction = self.model(batch.image)
+        
+        # Return updated batch - Evaluator will handle metrics automatically
+        return batch.update(**prediction._asdict())
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
@@ -277,8 +251,59 @@ class Draem(AnomalibModule):
             tuple[list[Adam], list[MultiStepLR]]: Tuple containing optimizer and
                 scheduler lists.
         """
-        optimizer = torch.optim.Adam(params=self.model.parameters(), lr=0.0001)
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[400, 600], gamma=0.1)
+        # config에서 학습 파라미터 가져오기 (기본값 사용)
+        config = getattr(self, '_training_config', {})
+        learning_rate = config.get('learning_rate', 0.0001)
+        weight_decay = config.get('weight_decay', 0.0)
+        scheduler_type = config.get('scheduler', 'multistep')
+        optimizer_type = config.get('optimizer', 'adamw')  # 기본값을 AdamW로 변경
+        
+        # 옵티마이저 선택
+        if optimizer_type.lower() == 'adamw':
+            optimizer = torch.optim.AdamW(
+                params=self.model.parameters(), 
+                lr=learning_rate,
+                weight_decay=weight_decay
+            )
+        elif optimizer_type.lower() == 'adam':
+            optimizer = torch.optim.Adam(
+                params=self.model.parameters(), 
+                lr=learning_rate,
+                weight_decay=weight_decay
+            )
+        else:
+            # 기본값: AdamW
+            optimizer = torch.optim.AdamW(
+                params=self.model.parameters(), 
+                lr=learning_rate,
+                weight_decay=weight_decay
+            )
+        
+        # 스케줄러 선택
+        if scheduler_type == 'cosine':
+            # Cosine Annealing 스케줄러
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, 
+                T_max=config.get('max_epochs', 50),
+                eta_min=learning_rate * 0.01  # 최소 학습률을 1%로 설정
+            )
+        elif scheduler_type == 'warmup_cosine':
+            # Warmup + Cosine (간단 구현: 처음 몇 에포크는 linear warmup)
+            warmup_epochs = config.get('warmup_epochs', 5)
+            total_epochs = config.get('max_epochs', 50)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=total_epochs - warmup_epochs,
+                eta_min=learning_rate * 0.01
+            )
+        else:
+            # 기본 MultiStepLR 스케줄러
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                optimizer, 
+                milestones=[400, 600], 
+                gamma=0.1
+            )
+        
         return [optimizer], [scheduler]
 
     @property

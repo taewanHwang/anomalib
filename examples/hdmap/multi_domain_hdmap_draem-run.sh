@@ -1,32 +1,33 @@
 #!/bin/bash
+# nohup ./examples/hdmap/multi_domain_hdmap_draem-run.sh > /dev/null 2>&1 &
+# pkill -f "multi_domain_hdmap_draem-training.py"
 
 # DRAEM 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
-# 설정 (12개 GPU + DRAEM 실험 조건들)
-AVAILABLE_GPUS=(9 10 11)
+AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 EXPERIMENT_CONDITIONS=(
     "DRAEM_quick_3epochs"
     # "DRAEM_baseline_50epochs"
-    # "DRAEM_extended_100epochs"
     # "DRAEM_lower_lr"
     # "DRAEM_higher_lr"
-    # "DRAEM_larger_batch"
-    # "DRAEM_smaller_batch"
-    # "DRAEM_longer_patience"
-    # "DRAEM_shorter_patience"
-    # "DRAEM_different_augmentation"
-    # "DRAEM_modified_architecture"
-    # "DRAEM_custom_loss_weights"
+    # "DRAEM_adaptive_lr"
+    # "DRAEM_gradient_clip_01"
+    # "DRAEM_gradient_clip_05"
+    # "DRAEM_warmup_cosine"
+    # "DRAEM_weight_decay_001"
+    # "DRAEM_adam_vs_adamw"
+    # "DRAEM_dropout_01"
+    # "DRAEM_combo_regularized"
 )
 NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
 
-# 로그 디렉토리 생성 (results 폴더로 통합)
+# 로그 디렉토리 생성 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_DIR="results/draem/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
 
-SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_training.py"
+SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem-training.py"
 
 echo "=================================="
 echo "🚀 DRAEM 병렬 실험 시작"
