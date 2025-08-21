@@ -1,37 +1,34 @@
 #!/bin/bash
+# nohup ./examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh > /dev/null 2>&1 &
 
 # DRAEM-SevNet 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
-# 설정 (12개 GPU + 패치 형태 중심 12개 실험)
-AVAILABLE_GPUS=(6 7 8 9 10 11)
+AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 EXPERIMENT_CONDITIONS=(
-    "ultra_landscape_tiny"
-    "ultra_landscape_small"
-    "super_landscape"
-    # "landscape_optimal"
-    # "ultra_portrait_tiny"
-    # "ultra_portrait_small"
-    # "super_portrait"
-    # "portrait_moderate"
-    # "perfect_square_tiny"
-    # "perfect_square_medium"
-    # "perfect_square_large"
-    # "giant_landscape"
+    "DRAEM_SEVNET_quick_3epochs"
+    # "DRAEM_SEVNET_baseline_50epochs"
+    # "DRAEM_SEVNET_ultra_landscape_tiny"
+    # "DRAEM_SEVNET_ultra_landscape_small"
+    # "DRAEM_SEVNET_super_landscape"
+    # "DRAEM_SEVNET_landscape_optimal"
+    # "DRAEM_SEVNET_ultra_portrait_tiny"
+    # "DRAEM_SEVNET_ultra_portrait_small"
+    # "DRAEM_SEVNET_super_portrait"
+    # "DRAEM_SEVNET_portrait_moderate"
+    # "DRAEM_SEVNET_perfect_square_tiny"
+    # "DRAEM_SEVNET_perfect_square_medium"
+    # "DRAEM_SEVNET_perfect_square_large"
+    # "DRAEM_SEVNET_giant_landscape"
 )
 NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
 
-# 로그 디렉토리 생성 (DRAEM과 동일한 구조)
+# 로그 디렉토리 생성 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_DIR="results/draem_sevnet/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
 
-echo "📁 DraemSevNet 실험 결과 구조:"
-echo "   - Base Directory: ${LOG_DIR}"
-echo "   - 실험별 경로: ${LOG_DIR}/MultiDomainHDMAP/draem_sevnet/{experiment_name}/"
-echo ""
-
-SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_sevnet_training.py"
+SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
 
 echo "=================================="
 echo "🚀 DRAEM-SevNet 병렬 실험 시작"
@@ -61,7 +58,6 @@ for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
     echo "[$(date +%H:%M:%S)] 시작: GPU ${GPU_ID} - ${EXP_NAME}"
     
     # 백그라운드로 실험 실행
-    cd /home/disk5/taewan/study/anomalib
     uv run "${SCRIPT_PATH}" \
         --gpu-id "${GPU_ID}" \
         --experiment-id "${i}" \
@@ -72,6 +68,9 @@ for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
     PID=$!
     PIDS+=($PID)
     echo "   PID: ${PID}"
+
+    # GPU 간격을 두어 초기화 충돌 방지
+    sleep 2
 done
 
 echo ""
@@ -104,7 +103,7 @@ done
 
 echo ""
 echo "=================================="
-echo "🎉 모든 실험 완료!"
+echo "🎉 모든 DRAEM SEVNET 실험 완료!"
 echo "   성공: ${SUCCESS_COUNT}/${NUM_EXPERIMENTS}"
 echo "   실패: ${FAILED_COUNT}/${NUM_EXPERIMENTS}"
 echo "   로그 디렉토리: ${LOG_DIR}"
