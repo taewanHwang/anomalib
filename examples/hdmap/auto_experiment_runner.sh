@@ -1,5 +1,6 @@
 #!/bin/bash
 # nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/multi_domain_hdmap_draem-run.sh 3 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+# nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh 10 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 
 # GPU 모니터링 기반 자동 실험 실행 스크립트
 # GPU가 모두 유휴 상태가 되면 자동으로 다음 실험을 시작합니다

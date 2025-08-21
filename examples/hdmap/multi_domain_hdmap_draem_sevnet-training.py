@@ -66,7 +66,7 @@ from experiment_utils import (
 
 
 # JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition.json")
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition1.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -120,9 +120,10 @@ def train_draem_sevnet_model_multi_domain(
     print(f"      • Patch Width Range: {config['patch_width_range']}")
     print(f"      • Patch Ratio Range: {config['patch_ratio_range']}")
     print(f"      • Patch Count: {config['patch_count']}")
+    print(f"      • Severity Max: {config['severity_max']}")
     
     logger.info("✅ DRAEM-SevNet 모델 생성 완료")
-    logger.info(f"🔧 Config 설정: optimizer={config['optimizer']}, lr={config['learning_rate']}")
+    logger.info(f"🔧 Config 설정: optimizer={config['optimizer']}, lr={config['learning_rate']}, severity_max={config['severity_max']}")
     
     # DRAEM-SevNet 모델 생성
     model = DraemSevNet(
@@ -135,6 +136,7 @@ def train_draem_sevnet_model_multi_domain(
         patch_width_range=config["patch_width_range"],
         patch_ratio_range=config["patch_ratio_range"],
         patch_count=config["patch_count"],
+        severity_max=config["severity_max"],
         
         # 🔧 Loss 가중치 설정
         severity_weight=config["severity_weight"],

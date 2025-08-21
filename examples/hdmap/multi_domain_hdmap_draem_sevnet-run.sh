@@ -1,5 +1,7 @@
 #!/bin/bash
 # nohup ./examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh > /dev/null 2>&1 &
+# pkill -f "multi_domain_hdmap_draem_sevnet-run.sh"
+# pkill -f "examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
 
 # DRAEM-SevNet 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
@@ -7,19 +9,19 @@
 AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 EXPERIMENT_CONDITIONS=(
     "DRAEM_SEVNET_quick_3epochs"
-    # "DRAEM_SEVNET_baseline_50epochs"
-    # "DRAEM_SEVNET_ultra_landscape_tiny"
-    # "DRAEM_SEVNET_ultra_landscape_small"
-    # "DRAEM_SEVNET_super_landscape"
-    # "DRAEM_SEVNET_landscape_optimal"
-    # "DRAEM_SEVNET_ultra_portrait_tiny"
-    # "DRAEM_SEVNET_ultra_portrait_small"
-    # "DRAEM_SEVNET_super_portrait"
-    # "DRAEM_SEVNET_portrait_moderate"
-    # "DRAEM_SEVNET_perfect_square_tiny"
-    # "DRAEM_SEVNET_perfect_square_medium"
-    # "DRAEM_SEVNET_perfect_square_large"
-    # "DRAEM_SEVNET_giant_landscape"
+    "DRAEM_SEVNET_baseline_50epochs"
+    "DRAEM_SEVNET_ultra_landscape_tiny"
+    "DRAEM_SEVNET_ultra_landscape_small"
+    "DRAEM_SEVNET_super_landscape"
+    "DRAEM_SEVNET_landscape_optimal"
+    "DRAEM_SEVNET_ultra_portrait_tiny"
+    "DRAEM_SEVNET_ultra_portrait_small"
+    "DRAEM_SEVNET_super_portrait"
+    "DRAEM_SEVNET_portrait_moderate"
+    "DRAEM_SEVNET_perfect_square_tiny"
+    "DRAEM_SEVNET_perfect_square_medium"
+    "DRAEM_SEVNET_perfect_square_large"
+    "DRAEM_SEVNET_giant_landscape"
 )
 NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
 

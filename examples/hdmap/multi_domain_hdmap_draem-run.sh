@@ -1,6 +1,7 @@
 #!/bin/bash
 # nohup ./examples/hdmap/multi_domain_hdmap_draem-run.sh > /dev/null 2>&1 &
-# pkill -f "multi_domain_hdmap_draem-training.py"
+# pkill -f "multi_domain_hdmap_draem-run.sh"
+# pkill -f "examples/hdmap/multi_domain_hdmap_draem-training.py"
 
 # DRAEM 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행

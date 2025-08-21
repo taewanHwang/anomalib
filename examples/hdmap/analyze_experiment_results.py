@@ -8,7 +8,8 @@ image_AUROC의 평균과 표준편차를 계산합니다.
 사용법:
     python analyze_experiment_results.py --results_dir /path/to/results/draem
     python analyze_experiment_results.py --results_dir /path/to/results/draem --experiment_name "DRAEM_baseline_50epochs"
-    uv run examples/hdmap/analyze_experiment_results.py --results_dir results/draem
+    uv run examples/hdmap/analyze_experiment_results.py --results_dir results/draem_sevnet
+    uv run examples/hdmap/analyze_experiment_results.py --results_dir results2/draem
 """
 
 import argparse
@@ -271,6 +272,13 @@ class ExperimentResultsAnalyzer:
         ]
         
         summary_df = df[summary_cols].copy()
+        
+        # 정렬: source_auroc_mean 높은 순, 같다면 avg_target_auroc_mean 높은 순
+        summary_df = summary_df.sort_values(
+            by=['source_auroc_mean', 'avg_target_auroc_mean'], 
+            ascending=[False, False]
+        )
+        
         summary_df['source_auroc_mean'] = summary_df['source_auroc_mean'].round(4)
         summary_df['source_auroc_std'] = summary_df['source_auroc_std'].round(4)
         summary_df['avg_target_auroc_mean'] = summary_df['avg_target_auroc_mean'].round(4)
