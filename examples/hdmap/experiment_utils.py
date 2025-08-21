@@ -21,12 +21,314 @@ import logging
 import torch
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 # Anomalib imports
 from anomalib.engine import Engine
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+
+
+def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
+    """
+    JSON 파일에서 실험 조건을 로드합니다.
+    
+    Args:
+        json_filename: 로드할 JSON 파일명 (확장자 포함)
+        
+    Returns:
+        실험 조건 리스트
+        
+    Raises:
+        FileNotFoundError: JSON 파일을 찾을 수 없는 경우
+        json.JSONDecodeError: JSON 파싱 오류가 발생한 경우
+    """
+    # 현재 스크립트가 있는 디렉토리 기준으로 JSON 파일 경로 생성
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(current_dir, json_filename)
+    
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"실험 조건 파일을 찾을 수 없습니다: {json_path}")
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise json.JSONDecodeError(f"JSON 파싱 오류: {e}")
+    
+    # JSON에서 로드한 데이터의 유효성 검사
+    if 'experiment_conditions' not in data:
+        raise ValueError("JSON 파일에 'experiment_conditions' 키가 없습니다.")
+    
+    experiment_conditions = data['experiment_conditions']
+    
+    # JSON에서는 tuple이 list로 저장되므로, 필요한 필드들을 다시 tuple로 변환
+    for condition in experiment_conditions:
+        if 'config' not in condition:
+            continue
+            
+        config = condition['config']
+        
+        # range 타입의 필드들을 tuple로 변환
+        range_fields = ['patch_width_range', 'patch_ratio_range']
+        for field in range_fields:
+            if field in config and isinstance(config[field], list):
+                config[field] = tuple(config[field])
+    
+    return experiment_conditions
+
+
+def get_experiment_by_name(experiment_conditions: List[Dict[str, Any]], 
+                          experiment_name: str) -> Dict[str, Any]:
+    """
+    실험 이름으로 특정 실험 조건을 찾습니다.
+    
+    Args:
+        experiment_conditions: 전체 실험 조건 리스트
+        experiment_name: 찾을 실험 이름
+        
+    Returns:
+        해당 실험 조건 딕셔너리
+        
+    Raises:
+        ValueError: 해당 이름의 실험을 찾을 수 없는 경우
+    """
+    for condition in experiment_conditions:
+        if condition.get('name') == experiment_name:
+            return condition
+    
+    available_names = [c.get('name', 'Unknown') for c in experiment_conditions]
+    raise ValueError(f"실험 '{experiment_name}'을 찾을 수 없습니다. "
+                    f"사용 가능한 실험: {available_names}")
+
+
+def validate_experiment_config(config: Dict[str, Any]) -> bool:
+    """
+    실험 설정의 유효성을 검사합니다.
+    
+    Args:
+        config: 검사할 실험 설정 딕셔너리
+        
+    Returns:
+        설정이 유효하면 True, 그렇지 않으면 False
+    """
+    required_fields = [
+        'max_epochs', 'learning_rate', 'batch_size', 'image_size',
+        'source_domain', 'target_domains'
+    ]
+    
+    for field in required_fields:
+        if field not in config:
+            print(f"필수 설정 '{field}'가 누락되었습니다.")
+            return False
+    
+    # 값의 유효성 검사
+    if config['max_epochs'] <= 0:
+        print("max_epochs는 0보다 커야 합니다.")
+        return False
+        
+    if config['learning_rate'] <= 0:
+        print("learning_rate는 0보다 커야 합니다.")
+        return False
+        
+    if config['batch_size'] <= 0:
+        print("batch_size는 0보다 커야 합니다.")
+        return False
+    
+    return True
+
+
+def print_experiment_summary(experiment_conditions: List[Dict[str, Any]]) -> None:
+    """
+    실험 조건들의 요약 정보를 출력합니다.
+    
+    Args:
+        experiment_conditions: 실험 조건 리스트
+    """
+    print(f"\n=== 실험 조건 요약 (총 {len(experiment_conditions)}개) ===")
+    
+    for i, condition in enumerate(experiment_conditions, 1):
+        name = condition.get('name', 'Unknown')
+        description = condition.get('description', 'No description')
+        config = condition.get('config', {})
+        
+        epochs = config.get('max_epochs', 'Unknown')
+        lr = config.get('learning_rate', 'Unknown')
+        
+        print(f"{i:2d}. {name}")
+        print(f"    설명: {description}")
+        print(f"    에포크: {epochs}, 학습률: {lr}")
+        
+        if 'patch_width_range' in config and 'patch_ratio_range' in config:
+            width_range = config['patch_width_range']
+            ratio_range = config['patch_ratio_range']
+            print(f"    패치 크기: {width_range}, 비율: {ratio_range}")
+        
+        print()
+
+
+def extract_target_domains_from_config(config: Dict[str, Any]) -> List[str]:
+    """
+    실험 설정에서 target domains를 추출합니다.
+    
+    Args:
+        config: 실험 설정 딕셔너리
+        
+    Returns:
+        List[str]: target domain 리스트
+    """
+    target_domains = config['target_domains']
+    
+    if target_domains == 'auto':
+        # 기본 HDMAP 도메인 (source_domain 제외)
+        source_domain = config['source_domain']
+        all_domains = ['domain_A', 'domain_B', 'domain_C', 'domain_D']
+        target_domains = [d for d in all_domains if d != source_domain]
+    elif isinstance(target_domains, str):
+        target_domains = [target_domains]
+    elif not isinstance(target_domains, list):
+        target_domains = ['domain_B', 'domain_C', 'domain_D']
+    
+    return target_domains
+
+
+def analyze_experiment_results(
+    source_results: Dict[str, Any],
+    target_results: Dict[str, Dict[str, Any]],
+    training_info: Dict[str, Any],
+    condition: Dict[str, Any],
+    model_type: str = "Model"
+) -> Dict[str, Any]:
+    """
+    실험 결과를 분석합니다 (모든 모델에서 공통 사용 가능).
+    
+    Args:
+        source_results: 소스 도메인 평가 결과
+        target_results: 타겟 도메인 평가 결과
+        training_info: 훈련 정보
+        condition: 실험 조건
+        model_type: 모델 타입 (출력용)
+        
+    Returns:
+        Dict[str, Any]: 분석된 결과 딕셔너리
+    """
+    print(f"\n📊 {model_type} 실험 결과 분석")
+    
+    # 타겟 도메인 평균 AUROC 계산
+    target_aurocs = []
+    for domain, result in target_results.items():
+        if isinstance(result.get('image_AUROC'), (int, float)):
+            target_aurocs.append(result['image_AUROC'])
+    
+    avg_target_auroc = sum(target_aurocs) / len(target_aurocs) if target_aurocs else 0.0
+    
+    # 소스 도메인 AUROC
+    source_auroc = source_results.get('image_AUROC', 0.0) if source_results else 0.0
+    
+    # 도메인 전이 효과 계산
+    transfer_ratio = avg_target_auroc / source_auroc if source_auroc > 0 else 0.0
+    
+    # 성능 평가
+    if transfer_ratio > 0.9:
+        transfer_grade = "우수"
+    elif transfer_ratio > 0.8:
+        transfer_grade = "양호"
+    elif transfer_ratio > 0.7:
+        transfer_grade = "보통"
+    else:
+        transfer_grade = "개선필요"
+    
+    # 결과 요약
+    analysis = {
+        "experiment_name": condition["name"],
+        "source_auroc": source_auroc,
+        "avg_target_auroc": avg_target_auroc,
+        "transfer_ratio": transfer_ratio,
+        "transfer_grade": transfer_grade,
+        "target_domain_count": len(target_results),
+        "training_epochs": training_info.get("last_trained_epoch", 0),
+        "early_stopped": training_info.get("early_stopped", False),
+        "best_val_auroc": training_info.get("best_val_auroc", 0.0)
+    }
+    
+    # 도메인별 상세 성능
+    domain_performances = {}
+    for domain, result in target_results.items():
+        domain_performances[domain] = {
+            "auroc": result.get('image_AUROC', 0.0),
+            "f1_score": result.get('image_F1Score', 0.0)
+        }
+    
+    analysis["domain_performances"] = domain_performances
+    
+    # 로깅
+    print(f"   📈 Source AUROC: {source_auroc:.4f}")
+    print(f"   🎯 Target 평균 AUROC: {avg_target_auroc:.4f}")
+    print(f"   🔄 전이 비율: {transfer_ratio:.3f} ({transfer_grade})")
+    print(f"   📚 훈련 에포크: {analysis['training_epochs']}")
+    
+    for domain, perf in domain_performances.items():
+        print(f"   └─ {domain}: AUROC={perf['auroc']:.4f}")
+    
+    return analysis
+
+
+def create_common_experiment_result(
+    condition: Dict[str, Any],
+    status: str = "success",
+    experiment_path: str = None,
+    source_results: Dict[str, Any] = None,
+    target_results: Dict[str, Dict[str, Any]] = None,
+    training_info: Dict[str, Any] = None,
+    best_checkpoint: str = None,
+    error: str = None
+) -> Dict[str, Any]:
+    """
+    공통 실험 결과 딕셔너리를 생성합니다.
+    
+    Args:
+        condition: 실험 조건
+        status: 실험 상태 ("success" 또는 "failed")
+        experiment_path: 실험 경로
+        source_results: 소스 도메인 결과
+        target_results: 타겟 도메인 결과들
+        training_info: 훈련 정보
+        best_checkpoint: 최고 체크포인트 경로
+        error: 에러 메시지 (실패 시)
+        
+    Returns:
+        Dict[str, Any]: 실험 결과 딕셔너리
+    """
+    result = {
+        "condition": condition,
+        "status": status,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "experiment_path": experiment_path,
+        "source_results": source_results or {},
+        "target_results": target_results or {},
+        "training_info": training_info or {},
+        "best_checkpoint": best_checkpoint,
+    }
+    
+    if status == "failed":
+        result["error"] = error
+    else:
+        # Target domain 평균 AUROC 계산
+        if target_results:
+            target_aurocs = []
+            for domain, domain_result in target_results.items():
+                auroc = domain_result.get('image_AUROC')
+                if isinstance(auroc, (int, float)):
+                    target_aurocs.append(auroc)
+            
+            if target_aurocs:
+                result["avg_target_auroc"] = sum(target_aurocs) / len(target_aurocs)
+            else:
+                result["avg_target_auroc"] = 0.0
+        else:
+            result["avg_target_auroc"] = 0.0
+    
+    return result
 
 
 def create_experiment_visualization(
@@ -188,8 +490,11 @@ def evaluate_source_domain(
     """
     print(f"\n📊 Source Domain 성능 평가 - {datamodule.source_domain}")
     print("   💡 평가 데이터: Source domain test (validation으로 사용된 데이터)")
+    print("   🎯 재현성을 위해 훈련에 사용된 동일한 DataModule의 val_dataloader 사용")
+    print(f"   📋 검증 데이터셋 크기: {len(datamodule.val_data)} 샘플")
     
-    # Validation DataLoader를 수동으로 가져와서 engine.test()로 평가
+    # 훈련에 사용된 동일한 DataModule의 validation DataLoader 사용
+    # 이렇게 하면 완전히 동일한 데이터셋 인스턴스와 순서를 보장
     val_dataloader = datamodule.val_dataloader()
     
     # Engine의 경로 설정 확인 (fit() 후에만 접근 가능)
@@ -213,7 +518,15 @@ def evaluate_source_domain(
     
     if results and len(results) > 0:
         source_metrics = results[0]
+        
+        # test_image_AUROC -> image_AUROC 키 변환 (표준화)
+        if 'test_image_AUROC' in source_metrics:
+            source_metrics['image_AUROC'] = source_metrics['test_image_AUROC']
+        if 'test_image_F1Score' in source_metrics:
+            source_metrics['image_F1Score'] = source_metrics['test_image_F1Score']
+        
         print(f"   ✅ Source Domain 평가 완료:")
+        print(f"   📝 주요 메트릭 (Validation과 동일해야 함):")
         
         # 주요 메트릭 출력
         for key, value in source_metrics.items():
@@ -479,7 +792,8 @@ def organize_source_domain_results(
 def copy_target_domain_results(
     domain: str,
     results_base_dir: str = None,
-    specific_version_path: str = None
+    specific_version_path: str = None,
+    visualization_base_path: str = None
 ) -> bool:
     """Target Domain 평가 결과 전체 복사 및 보존 (모든 모델에서 공통 사용 가능).
     
@@ -493,6 +807,7 @@ def copy_target_domain_results(
         domain: 타겟 도메인 이름
         results_base_dir: 기본 결과 디렉토리 경로 (선택적)
         specific_version_path: 특정 버전 경로 (선택적)
+        visualization_base_path: 시각화 저장 기본 경로 (선택적)
         
     Returns:
         bool: 성공 여부
@@ -507,9 +822,14 @@ def copy_target_domain_results(
             print(f"         ❌ Error: 경로가 지정되지 않았습니다")
             return False
         
+        # 시각화 경로 결정
+        if visualization_base_path:
+            viz_base_path = Path(visualization_base_path)
+        else:
+            viz_base_path = base_path / "visualize"
+        
         # 타겟 경로 (visualize/target_domains/{domain}/)
-        sevnet_viz_path = base_path / "visualize"
-        target_domain_path = sevnet_viz_path / "target_domains" / domain
+        target_domain_path = viz_base_path / "target_domains" / domain
         target_domain_path.mkdir(parents=True, exist_ok=True)
         
         # Source에서 images 폴더 찾기
@@ -563,6 +883,8 @@ def evaluate_target_domains(
     datamodule: Any,
     checkpoint_path: str,
     results_base_dir: str,
+    target_domains: List[str] = None,
+    datamodule_class = None,
     save_samples: bool = True,
     current_version_path: str = None
 ) -> Dict[str, Dict[str, Any]]:
@@ -574,30 +896,44 @@ def evaluate_target_domains(
         datamodule: Multi-domain 데이터모듈 (source용)
         checkpoint_path: 모델 체크포인트 경로
         results_base_dir: 결과 저장 기본 경로
+        target_domains: 평가할 target domain 리스트 (None이면 datamodule에서 추출)
+        datamodule_class: DataModule 클래스 (None이면 자동 감지)
         save_samples: 샘플 이미지 저장 여부
         current_version_path: 현재 버전 경로 (시각화 저장용)
         
     Returns:
         Dict[str, Dict[str, Any]]: 각 target domain별 평가 결과
     """
-    from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+    # DataModule 클래스 자동 감지
+    if datamodule_class is None:
+        datamodule_class = type(datamodule)
+    
+    # Target domains 자동 추출
+    if target_domains is None:
+        if hasattr(datamodule, 'target_domains'):
+            target_domains = datamodule.target_domains
+        else:
+            # 기본값으로 HDMAP 도메인 사용
+            target_domains = ["domain_B", "domain_C", "domain_D"]
+            print(f"   ⚠️ Warning: target_domains를 자동 감지할 수 없어 기본값 사용: {target_domains}")
+    
+    print(f"   🎯 평가할 Target Domains: {target_domains}")
     
     target_results = {}
-    target_domains = ["domain_B", "domain_C", "domain_D"]
     
     for domain in target_domains:
         print(f"      🎯 Target Domain 평가: {domain}")
         
         try:
-            # 개별 Target Domain용 DataModule 생성
-            target_datamodule = MultiDomainHDMAPDataModule(
+            # 개별 Target Domain용 DataModule 생성 (동적 클래스 사용)
+            target_datamodule = datamodule_class(
                 root=datamodule.root,
-                source_domain="domain_A",  # 원래 source domain 유지
+                source_domain=getattr(datamodule, 'source_domain', "domain_A"),  # 원래 source domain 유지
                 target_domains=[domain],   # 평가할 domain을 target으로 설정
                 validation_strategy=getattr(datamodule, 'validation_strategy', "source_test"),
-                train_batch_size=datamodule.train_batch_size,
-                eval_batch_size=datamodule.eval_batch_size,
-                num_workers=datamodule.num_workers
+                train_batch_size=getattr(datamodule, 'train_batch_size', 16),
+                eval_batch_size=getattr(datamodule, 'eval_batch_size', 16),
+                num_workers=getattr(datamodule, 'num_workers', 16)
             )
             
             # Test 단계 설정
@@ -620,7 +956,15 @@ def evaluate_target_domains(
             
             # 결과 저장
             if result:
-                target_results[domain] = result[0] if isinstance(result, list) else result
+                domain_result = result[0] if isinstance(result, list) else result
+                
+                # test_image_AUROC -> image_AUROC 키 변환 (표준화)
+                if 'test_image_AUROC' in domain_result:
+                    domain_result['image_AUROC'] = domain_result['test_image_AUROC']
+                if 'test_image_F1Score' in domain_result:
+                    domain_result['image_F1Score'] = domain_result['test_image_F1Score']
+                
+                target_results[domain] = domain_result
                 print(f"         ✅ {domain} 평가 완료 - AUROC: {target_results[domain].get('image_AUROC', 'N/A')}")
                 if isinstance(target_results[domain].get('image_AUROC'), (int, float)):
                     print(f"         📊 {domain} 상세 성능: AUROC={target_results[domain].get('image_AUROC'):.4f}, F1={target_results[domain].get('image_F1Score', 'N/A')}")
@@ -649,7 +993,8 @@ def save_experiment_results(
     result: Dict[str, Any], 
     result_filename: str, 
     log_dir: Path, 
-    logger: logging.Logger
+    logger: logging.Logger,
+    model_type: str = "Model"
 ) -> Path:
     """실험 결과를 JSON 파일로 저장 (모든 모델에서 공통 사용 가능).
     
@@ -658,6 +1003,7 @@ def save_experiment_results(
         result_filename: 저장할 파일명
         log_dir: 로그 디렉토리 (실패 시 사용)
         logger: 로거 객체
+        model_type: 모델 타입 (로깅용)
         
     Returns:
         Path: 실제 저장된 파일 경로
@@ -679,8 +1025,21 @@ def save_experiment_results(
     # 결과 요약 로깅
     if result["status"] == "success":
         logger.info("✅ 실험 성공!")
-        logger.info(f"   Source Domain AUROC: {result['source_results'].get('image_AUROC', 'N/A'):.4f}")
-        logger.info(f"   Target Domains Avg AUROC: {result.get('avg_target_auroc', 'N/A'):.4f}")
+        
+        # Source Domain AUROC 안전한 포맷팅
+        source_auroc = result['source_results'].get('image_AUROC', None)
+        if isinstance(source_auroc, (int, float)):
+            logger.info(f"   Source Domain AUROC: {source_auroc:.4f}")
+        else:
+            logger.info(f"   Source Domain AUROC: {source_auroc or 'N/A'}")
+        
+        # Target Domains Avg AUROC 안전한 포맷팅
+        avg_target_auroc = result.get('avg_target_auroc', None)
+        if isinstance(avg_target_auroc, (int, float)):
+            logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc:.4f}")
+        else:
+            logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc or 'N/A'}")
+        
         logger.info(f"   체크포인트: {result.get('best_checkpoint', 'N/A')}")
         
         # 학습 과정 정보 로깅
@@ -693,7 +1052,12 @@ def save_experiment_results(
             logger.info(f"   Early Stopping 적용: {training_info.get('early_stopped', 'N/A')}")
             if training_info.get('early_stopped'):
                 logger.info(f"   Early Stopping 사유: {training_info.get('early_stop_reason', 'N/A')}")
-            logger.info(f"   최고 Validation AUROC: {training_info.get('best_val_auroc', 'N/A')}")
+            # 최고 Validation AUROC 안전한 포맷팅
+            best_val_auroc = training_info.get('best_val_auroc', None)
+            if isinstance(best_val_auroc, (int, float)):
+                logger.info(f"   최고 Validation AUROC: {best_val_auroc:.4f}")
+            else:
+                logger.info(f"   최고 Validation AUROC: {best_val_auroc or 'N/A'}")
             logger.info(f"   학습 완료 방식: {training_info.get('completion_description', 'N/A')}")
         
         # Target Domain별 상세 성능 로깅
