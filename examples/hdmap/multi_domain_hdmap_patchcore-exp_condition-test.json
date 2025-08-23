@@ -1,0 +1,19 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "patchcore_quick_test",
+      "description": "PatchCore 빠른 테스트용 - 기본 설정으로 작은 배치",
+      "config": {
+        "batch_size": 16,
+        "image_size": "224x224",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    }
+  ]
+}

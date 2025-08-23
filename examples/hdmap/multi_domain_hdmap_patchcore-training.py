@@ -64,7 +64,7 @@ from experiment_utils import (
 
 
 # JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_patchcore-exp_condition.json")
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_patchcore-exp_condition-test.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -130,9 +130,6 @@ def train_patchcore_model_multi_domain(
     print(f"   📊 특징: 학습 불필요, 메모리 뱅크 기반, 1-epoch 피팅")
     logger.info("📊 PatchCore 특징: 학습 불필요, 메모리 뱅크 기반")
     
-    # 콜백 설정 (PatchCore는 학습이 없으므로 early stopping 불필요)
-    callbacks = []
-    
     # TensorBoard 로거 설정
     tb_logger = TensorBoardLogger(
         save_dir=results_base_dir,
@@ -140,13 +137,13 @@ def train_patchcore_model_multi_domain(
         version=""  # 빈 버전으로 version_x 폴더 방지
     )
     
-    # Engine 설정 (PatchCore 특화)
+    # Engine 설정 (PatchCore 특화 - 학습 불필요하지만 Anomalib Engine 호환성을 위해 체크포인트 허용)
     engine_kwargs = {
         "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
         "devices": [0] if torch.cuda.is_available() else 1,
         "logger": tb_logger,
-        "callbacks": callbacks,
-        "enable_checkpointing": False,  # PatchCore는 체크포인트 불필요
+        "callbacks": [],  # 빈 콜백 리스트 (Anomalib이 자동으로 ModelCheckpoint 추가)
+        "enable_checkpointing": True,  # Anomalib Engine 호환성을 위해 True로 설정
         "log_every_n_steps": 10,
         "enable_model_summary": True,
         "max_epochs": 1,  # PatchCore는 1 epoch만 실행

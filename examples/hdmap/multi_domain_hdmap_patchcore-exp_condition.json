@@ -5,7 +5,7 @@
       "description": "PatchCore 빠른 테스트용 - 기본 설정으로 작은 배치",
       "config": {
         "batch_size": 16,
-        "image_size": [224, 224],
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -20,7 +20,7 @@
       "description": "PatchCore baseline with Wide ResNet-50-2 backbone (논문 기본 설정)",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -35,7 +35,7 @@
       "description": "경량화된 ResNet-18 backbone으로 빠른 처리 테스트",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "resnet18",
@@ -50,7 +50,7 @@
       "description": "표준 ResNet-50 backbone으로 성능 비교",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "resnet50",
@@ -65,7 +65,7 @@
       "description": "3개 layer 조합으로 더 풍부한 feature 추출",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -80,7 +80,7 @@
       "description": "높은 coreset sampling ratio (0.25)로 메모리 뱅크 풍부화",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -95,7 +95,7 @@
       "description": "낮은 coreset sampling ratio (0.01)로 메모리 효율성 테스트",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -110,7 +110,7 @@
       "description": "단일 최근접 이웃 (num_neighbors=1)으로 빠른 추론",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -125,7 +125,7 @@
       "description": "많은 최근접 이웃 (num_neighbors=15)으로 정확도 향상",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -140,7 +140,7 @@
       "description": "큰 배치 사이즈 (64)로 메모리 뱅크 구축 효율성 테스트",
       "config": {
         "batch_size": 64,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -155,7 +155,7 @@
       "description": "작은 배치 사이즈 (16)로 메모리 제약 환경 테스트",
       "config": {
         "batch_size": 16,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -170,7 +170,7 @@
       "description": "고해상도 입력 (384x384)로 세밀한 anomaly detection",
       "config": {
         "batch_size": 16,
-        "image_size": [384, 384],
+        "image_size": "384x384",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -185,7 +185,7 @@
       "description": "저해상도 입력 (128x128)로 빠른 처리 테스트",
       "config": {
         "batch_size": 64,
-        "image_size": [128, 128],
+        "image_size": "128x128",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -200,7 +200,7 @@
       "description": "최적화된 파라미터 조합 (중간 coreset + 적당한 neighbors)",
       "config": {
         "batch_size": 32,
-        "image_size": [256, 256],
+        "image_size": "256x256",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -215,7 +215,7 @@
       "description": "메모리 효율 최우선 설정 (작은 backbone + 낮은 coreset)",
       "config": {
         "batch_size": 32,
-        "image_size": [224, 224],
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "resnet18",
@@ -230,7 +230,7 @@
       "description": "정확도 최우선 설정 (큰 backbone + 높은 coreset + 많은 neighbors)",
       "config": {
         "batch_size": 16,
-        "image_size": [320, 320],
+        "image_size": "320x320",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
