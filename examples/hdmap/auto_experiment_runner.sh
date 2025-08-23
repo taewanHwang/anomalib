@@ -167,9 +167,19 @@ run_single_experiment() {
     local start_time=$(date +%s)
     
     # 실험 스크립트 실행 (subshell에서 안전하게 실행)
-    log "INFO" "🔍 디버그: 실험 스크립트 실행 시작"
     (
         # subshell에서 실행하여 메인 shell에 영향 없도록 함
+        cd "$(dirname "$0")/../.."
+        
+        # CUDA 환경변수 설정
+        export LD_LIBRARY_PATH="/usr/local/cuda-12.4/targets/x86_64-linux/lib:$LD_LIBRARY_PATH"
+        export PATH="/usr/local/cuda-12.4/bin:$PATH"
+        export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+        
+        # 가상환경 활성화
+        source .venv/bin/activate
+        
+        # 실험 스크립트 실행
         bash "$EXPERIMENT_SCRIPT"
     )
     local exit_code=$?
@@ -179,11 +189,9 @@ run_single_experiment() {
     
     if [[ $exit_code -eq 0 ]]; then
         log "INFO" "✅ 실험 ${experiment_num} 완료 (소요시간: ${duration}초)"
-        log "INFO" "🔍 디버그: run_single_experiment 함수 정상 반환"
         return 0
     else
         log "ERROR" "❌ 실험 ${experiment_num} 실패 (소요시간: ${duration}초, exit_code: $exit_code)"
-        log "INFO" "🔍 디버그: run_single_experiment 함수 오류 반환"
         return 1
     fi
 }
@@ -327,7 +335,7 @@ for ((i=1; i<=NUM_EXPERIMENTS; i++)); do
     log "INFO" "=========================================="
     log "INFO" "📋 실험 $i/$NUM_EXPERIMENTS 준비"
     log "INFO" "=========================================="
-    log "INFO" "🔍 디버그: 반복문 시작 - 현재 i=$i, NUM_EXPERIMENTS=$NUM_EXPERIMENTS"
+
     
     # 첫 번째 실험이 아니면 GPU 유휴 상태 대기
     if [[ $i -gt 1 ]]; then
@@ -345,21 +353,13 @@ for ((i=1; i<=NUM_EXPERIMENTS; i++)); do
     fi
     
     # 실험 실행
-    log "INFO" "🔍 디버그: run_single_experiment 호출 전"
     if run_single_experiment "$i" "$NUM_EXPERIMENTS"; then
-        log "INFO" "🔍 디버그: run_single_experiment 성공 반환"
-        log "INFO" "🔍 디버그: successful_experiments 증가 전: $successful_experiments"
         successful_experiments=$((successful_experiments + 1))
-        log "INFO" "🔍 디버그: successful_experiments 증가 후: $successful_experiments"
         log "INFO" "🎉 실험 $i 성공!"
     else
-        log "INFO" "🔍 디버그: run_single_experiment 실패 반환"
-        log "INFO" "🔍 디버그: failed_experiments 증가 전: $failed_experiments"
         failed_experiments=$((failed_experiments + 1))
-        log "INFO" "🔍 디버그: failed_experiments 증가 후: $failed_experiments"
         log "ERROR" "💥 실험 $i 실패!"
     fi
-    log "INFO" "🔍 디버그: 실험 실행 블록 완료"
     
     # 중간 상태 출력
     total_completed=$((successful_experiments + failed_experiments))
