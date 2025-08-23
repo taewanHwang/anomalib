@@ -82,66 +82,42 @@ warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
 # ========================================================================================
 
 def train_reverse_distillation_model_multi_domain(
-    datamodule: MultiDomainHDMAPDataModule, 
+    datamodule: MultiDomainHDMAPDataModule,
     config: Dict[str, Any],
     results_base_dir: str,
     logger: logging.Logger
-) -> tuple[ReverseDistillation, Engine, str]:
-    """Reverse Distillation 모델 훈련 수행.
+) -> tuple:
+    """Reverse Distillation 모델을 Multi-Domain 설정으로 훈련합니다."""
     
-    Args:
-        datamodule: 설정된 MultiDomainHDMAPDataModule
-        config: 훈련 설정 딕셔너리
-        results_base_dir: 결과 저장 기본 경로
-        logger: 로거 객체
-        
-    Returns:
-        tuple: (훈련된 모델, Engine 객체, 체크포인트 경로)
-        
-    Note:
-        Reverse Distillation 특징:
-        - Encoder-Decoder 구조: Teacher-Student knowledge distillation
-        - Feature Reconstruction: Encoder-Decoder feature cosine distance loss
-        - Multi-scale Features: 3개 layer 조합으로 다양한 특징 학습
-        - Stable Training: Pre-trained backbone으로 안정적 수렴
-        - Input Size Required: image size를 tuple로 변환 필요
-    """
+    print(f"🤖 Reverse Distillation 모델 생성 중...")
+    logger.info("🤖 Reverse Distillation 모델 생성 중...")
     
-    print(f"\n🚀 Reverse Distillation 모델 훈련 시작")
-    logger.info("🚀 Reverse Distillation 모델 훈련 시작")
+    # image_size 문자열을 튜플로 변환 (예: "224x224" -> (224, 224))
+    if isinstance(config["image_size"], str):
+        height, width = map(int, config["image_size"].split("x"))
+        image_size = (height, width)
+    else:
+        image_size = tuple(config["image_size"])
     
     # anomaly_map_mode 문자열을 enum으로 변환
-    anomaly_map_mode_str = config["anomaly_map_mode"]
-    if anomaly_map_mode_str.lower() == "multiply":
-        anomaly_map_mode = AnomalyMapGenerationMode.MULTIPLY
+    if isinstance(config["anomaly_map_mode"], str):
+        anomaly_map_mode = AnomalyMapGenerationMode.MULTIPLY if config["anomaly_map_mode"].lower() == "multiply" else AnomalyMapGenerationMode.ADD
     else:
-        anomaly_map_mode = AnomalyMapGenerationMode.ADD
+        anomaly_map_mode = config["anomaly_map_mode"]
     
-    print(f"   🔧 Config 설정:")
-    print(f"      • Backbone: {config['backbone']}")
-    print(f"      • Layers: {config['layers']}")
-    print(f"      • Anomaly Map Mode: {anomaly_map_mode}")
-    print(f"      • Pre-trained: {config['pre_trained']}")
-    print(f"      • Learning Rate: {config['learning_rate']}")
-    print(f"      • Max Epochs: {config['max_epochs']}")
-    
-    logger.info("✅ Reverse Distillation 모델 생성 완료 (학습 필요)")
-    logger.info(f"🔧 Config 설정: backbone={config['backbone']}, layers={config['layers']}, anomaly_map_mode={anomaly_map_mode}")
-    
-    # Reverse Distillation 모델 생성 (input_size는 datamodule에서 자동으로 설정됨)
+    # Reverse Distillation 모델 생성
     model = ReverseDistillation(
-        # 🎯 Reverse Distillation 핵심 설정
         backbone=config["backbone"],
         layers=config["layers"],
         pre_trained=config["pre_trained"],
-        anomaly_map_mode=anomaly_map_mode
+        anomaly_map_mode=anomaly_map_mode,
     )
     
     print(f"   ✅ Reverse Distillation 모델 생성 완료")
     print(f"   📊 특징: Teacher-Student 구조, Feature Reconstruction 기반")
     logger.info("📊 Reverse Distillation 특징: Encoder-Decoder, Feature Reconstruction")
     
-    # 콜백 설정 (학습이 필요한 모델) - Reverse Distillation은 val_image_AUROC 사용
+    # Early Stopping 및 Checkpoint 설정
     early_stopping = EarlyStopping(
         monitor="val_image_AUROC",
         patience=config["early_stopping_patience"],
@@ -169,45 +145,46 @@ def train_reverse_distillation_model_multi_domain(
         version=""  # 빈 버전으로 version_x 폴더 방지
     )
     
-    # Engine 설정 (Reverse Distillation 특화)
-    engine_kwargs = {
-        "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
-        "devices": [0] if torch.cuda.is_available() else 1,
-        "logger": tb_logger,
-        "max_epochs": config["max_epochs"],
-        "callbacks": [early_stopping, checkpoint_callback],
-        "check_val_every_n_epoch": 1,
-        "enable_checkpointing": True,
-        "log_every_n_steps": 10,
-        "enable_model_summary": True,
-        "num_sanity_val_steps": 0,  # Reverse Distillation trainer_arguments 반영
-        "gradient_clip_val": 0,     # Reverse Distillation trainer_arguments 반영
-        "default_root_dir": results_base_dir
-    }
+    # Engine 설정
+    engine = Engine(
+        max_epochs=config["max_epochs"],
+        callbacks=[early_stopping, checkpoint_callback],
+        logger=tb_logger,
+        accelerator="auto",
+        devices=1,
+        enable_checkpointing=True,
+        log_every_n_steps=10,
+        check_val_every_n_epoch=1,
+        default_root_dir=results_base_dir,  # 모든 결과를 동일한 기본 디렉터리에 저장
+    )
     
-    engine = Engine(**engine_kwargs)
+    print(f"⚙️ Engine 설정:")
+    print(f"   📊 Max Epochs: {config['max_epochs']}")
+    print(f"   🔧 Device: auto")
+    print(f"   📝 Check Validation: 매 에폭")
+    logger.info(f"⚙️ Engine 설정: max_epochs={config['max_epochs']}")
     
-    print(f"   🔧 Engine 설정 완료 - max_epochs: {config['max_epochs']}")
-    print(f"   📁 결과 저장 경로: {results_base_dir}")
-    logger.info(f"🔧 Engine 설정 완료 - max_epochs: {config['max_epochs']}")
-    logger.info(f"📁 결과 저장 경로: {results_base_dir}")
-    
-    # 모델 훈련
-    print(f"   🎯 모델 훈련 시작...")
-    logger.info("🎯 모델 훈련 시작...")
+    # 훈련 실행
+    print(f"🚀 Reverse Distillation 모델 훈련 시작...")
+    logger.info("🚀 Reverse Distillation 모델 훈련 시작")
     
     engine.fit(
         model=model,
         datamodule=datamodule
     )
     
-    print(f"   ✅ 모델 훈련 완료!")
-    logger.info("✅ 모델 훈련 완료!")
+    # 최적 체크포인트 경로 가져오기
+    best_checkpoint = None
+    if checkpoint_callback.best_model_path:
+        best_checkpoint = str(checkpoint_callback.best_model_path)
+        print(f"   💾 최적 체크포인트: {best_checkpoint}")
+        logger.info(f"💾 최적 체크포인트: {best_checkpoint}")
+    else:
+        print(f"   ⚠️ 체크포인트를 찾을 수 없습니다.")
+        logger.warning("⚠️ 체크포인트를 찾을 수 없습니다.")
     
-    # 최고 성능 체크포인트 경로 확인
-    best_checkpoint = checkpoint_callback.best_model_path
-    print(f"   🏆 Best Checkpoint: {best_checkpoint}")
-    logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
+    print(f"   ✅ Reverse Distillation 훈련 완료! (val_image_AUROC 최적화)")
+    logger.info("✅ Reverse Distillation 훈련 완료! (val_image_AUROC 최적화)")
     
     return model, engine, best_checkpoint
 
@@ -223,9 +200,8 @@ def run_single_reverse_distillation_experiment(
     source_domain = config["source_domain"]
     target_domains = extract_target_domains_from_config(config)
     
-    # 각 실험마다 고유한 results 경로 생성
+    # 각 실험마다 고유한 results 경로 생성 (DRAEM SevNet과 동일한 구조)
     from datetime import datetime
-    # run 스크립트에서 전달받은 log_dir 사용
     if log_dir:
         # run 스크립트에서 호출된 경우: 기존 timestamp 폴더 재사용
         base_timestamp_dir = log_dir
@@ -239,13 +215,18 @@ def run_single_reverse_distillation_experiment(
     
     results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/reverse_distillation/{experiment_folder}"
     
-    # 실험 이름 생성
-    experiment_name = f"{source_domain}"
+    os.makedirs(results_base_dir, exist_ok=True)
     
-    print(f"\n{'='*80}")
-    print(f"🔬 Reverse Distillation 실험 조건: {condition['name']}")
-    print(f"📝 설명: {condition['description']}")
-    print(f"{'='*80}")
+    print(f"================================================================================")
+    print(f"🚀 Reverse Distillation 실험 시작: {condition['name']}")
+    print(f"================================================================================")
+    print(f"\n🔬 실험 조건:")
+    print(f"   📝 이름: {condition['name']}")
+    print(f"   💬 설명: {condition['description']}")
+    print(f"   🎯 Source Domain: {source_domain}")
+    print(f"   🎯 Target Domains: {target_domains}")
+    print(f"   📁 Results Dir: {results_base_dir}")
+    print(f"================================================================================")
     
     try:
         # GPU 메모리 정리
@@ -261,7 +242,7 @@ def run_single_reverse_distillation_experiment(
         )
         
         # 모델 훈련
-        trained_model, engine, best_checkpoint = train_reverse_distillation_model_multi_domain(
+        fitted_model, engine, best_checkpoint = train_reverse_distillation_model_multi_domain(
             datamodule=multi_datamodule,
             config=condition["config"],
             results_base_dir=results_base_dir,
@@ -271,7 +252,7 @@ def run_single_reverse_distillation_experiment(
         # Source Domain 성능 평가
         print(f"\n📊 Source Domain 성능 평가 - {condition['name']}")
         source_results = evaluate_source_domain(
-            model=trained_model,
+            model=fitted_model,
             engine=engine,
             datamodule=multi_datamodule,
             checkpoint_path=best_checkpoint
@@ -286,82 +267,95 @@ def run_single_reverse_distillation_experiment(
                 trainer_log_dir = Path(engine.trainer.logger.log_dir)
                 print(f"   📂 Trainer log_dir: {trainer_log_dir}")
             
-            # 2. 실제 Anomalib 이미지 경로 탐색 (중첩 경로 포함)
+            # 2. 실제 Anomalib 이미지 경로 탐색
             anomalib_image_paths = []
             base_search_path = Path(results_base_dir)
             
-            # Reverse Distillation 이미지 경로 패턴 검색 (실제 생성되는 경로)
+            # Reverse Distillation 이미지 경로 패턴 검색
             patterns = [
                 "**/ReverseDistillation/MultiDomainHDMAPDataModule/*/images",  # v0, v1 등의 버전 폴더
                 "**/ReverseDistillation/latest/images"  # latest 링크가 있는 경우
             ]
             for pattern in patterns:
                 found_paths = list(base_search_path.glob(pattern))
-                anomalib_image_paths.extend(found_paths)
+                if found_paths:
+                    anomalib_image_paths.extend(found_paths)
+                    print(f"   🔍 발견된 이미지 경로: {found_paths}")
             
-            print(f"   🔍 발견된 이미지 경로들: {[str(p) for p in anomalib_image_paths]}")
-            
-            # 가장 최신 이미지 경로 선택
+            # 3. 가장 최신 버전 찾기 (v 뒤의 숫자가 가장 큰 것)
+            latest_version_path = None
             if anomalib_image_paths:
-                # 경로 생성 시간 기준으로 최신 선택
-                latest_image_path = max(anomalib_image_paths, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-                anomalib_results_path = latest_image_path.parent  # images 폴더의 부모
-                print(f"   ✅ 실제 Anomalib 결과 경로: {anomalib_results_path}")
-            else:
-                anomalib_results_path = None
+                # 버전 번호로 정렬 (v0, v1, v2, ... 순)
+                version_paths = []
+                for path in anomalib_image_paths:
+                    # 경로에서 v0, v1 등의 버전 추출
+                    for part in path.parts:
+                        if part.startswith('v') and part[1:].isdigit():
+                            version_num = int(part[1:])
+                            version_paths.append((version_num, path))
+                            break
                 
-            # 시각화 폴더는 TensorBoardLogger 경로에 생성
-            if trainer_log_dir:
-                latest_version_path = trainer_log_dir
-            else:
-                latest_version_path = Path(results_base_dir)
-                
-        except Exception as e:
-            print(f"   ⚠️ Warning: 실제 이미지 경로 찾기 실패: {e}")
-            latest_version_path = Path(results_base_dir)
+                if version_paths:
+                    # 가장 높은 버전 선택
+                    version_paths.sort(reverse=True)  # 내림차순 정렬
+                    latest_version_path = version_paths[0][1]
+                    print(f"   📂 선택된 최신 이미지 경로: {latest_version_path}")
+                else:
+                    latest_version_path = anomalib_image_paths[0]
+                    print(f"   📂 기본 이미지 경로 사용: {latest_version_path}")
+            
+            # 4. anomalib_results_path는 images 폴더의 상위 디렉터리
             anomalib_results_path = None
+            if latest_version_path:
+                # images의 상위 폴더가 실제 결과 디렉터리
+                anomalib_results_path = latest_version_path.parent
+                print(f"   📂 Anomalib 결과 경로: {anomalib_results_path}")
+        
+        except Exception as e:
+            print(f"   ⚠️ 이미지 경로 탐색 중 오류: {e}")
+            anomalib_results_path = None
+            latest_version_path = None
         
         # Target Domains 성능 평가
         print(f"\n🎯 Target Domains 성능 평가 - {condition['name']}")
         target_results = evaluate_target_domains(
-            model=trained_model,
+            model=fitted_model,
             engine=engine,
             datamodule=multi_datamodule,
             checkpoint_path=best_checkpoint,
-            results_base_dir=str(anomalib_results_path) if anomalib_results_path else results_base_dir,  # 실제 Anomalib 이미지 경로
-            save_samples=True,  # Target Domain 이미지 복사 활성화
-            current_version_path=str(latest_version_path) if latest_version_path else None  # 시각화 폴더는 TensorBoard 경로
+            results_base_dir=str(anomalib_results_path) if anomalib_results_path else results_base_dir,  # 🎯 실제 Anomalib 이미지 경로
+            save_samples=True,  # 🎯 Target Domain 이미지 복사 활성화
+            current_version_path=f"{results_base_dir}/tensorboard_logs"  # 🎯 시각화 폴더는 TensorBoard 경로
         )
         
+        # 시각화 폴더 생성
         if latest_version_path:
             # Reverse Distillation 시각화 폴더 생성 (target_results 이후에 실행)
-            rd_viz_path_str = create_experiment_visualization(
+            reverse_distillation_viz_path_str = create_experiment_visualization(
                 experiment_name=condition['name'],
                 model_type="ReverseDistillation",
-                results_base_dir=str(latest_version_path),
                 source_domain=source_domain,
-                target_domains=multi_datamodule.target_domains,
-                source_results=source_results,
-                target_results=target_results
+                target_domains=target_domains,
+                results_base_dir=f"{results_base_dir}/tensorboard_logs"  # DRAEM SevNet처럼 tensorboard_logs 하위에 생성
             )
-            rd_viz_path = Path(rd_viz_path_str) if rd_viz_path_str else latest_version_path / "visualize"
+            reverse_distillation_viz_path = Path(reverse_distillation_viz_path_str)
             
             # Source Domain 이미지 복사
             if anomalib_results_path:
                 source_success = organize_source_domain_results(
-                    sevnet_viz_path=str(rd_viz_path),
+                    sevnet_viz_path=str(reverse_distillation_viz_path),
                     results_base_dir=str(anomalib_results_path),  # 실제 Anomalib 이미지가 있는 경로
-                    source_domain=source_domain,
-                    specific_version_path=str(anomalib_results_path)  # 실제 이미지 경로 전달
+                    source_domain=source_domain
                 )
+                
+                if source_success:
+                    print(f"   ✅ Source Domain 이미지 복사 완료")
+                else:
+                    print(f"   ⚠️ Source Domain 이미지 복사 실패")
             else:
-                print("   ⚠️ Anomalib 이미지 경로를 찾을 수 없어 Source Domain 이미지 복사를 건너뜁니다.")
-                source_success = False
-            
-            if source_success:
-                print(f"   ✅ Source Domain ({source_domain}) 이미지 복사 완료")
-            else:
-                print(f"   ⚠️ Source Domain ({source_domain}) 이미지 복사 실패")
+                print(f"   ⚠️ Anomalib 결과 경로를 찾을 수 없어 이미지 복사 생략")
+        else:
+            print(f"   ⚠️ 이미지 경로를 찾을 수 없어 시각화 생략")
         
         # 학습 과정 정보 추출
         training_info = extract_training_info(engine)
@@ -371,110 +365,89 @@ def run_single_reverse_distillation_experiment(
             source_results=source_results,
             target_results=target_results,
             training_info=training_info,
-            condition=condition,
-            model_type="ReverseDistillation"
+            model_type="Reverse Distillation",
+            condition=condition
         )
         
-        # JSON 저장을 위해 호환되는 형식으로 결과 변환
-        source_results_compat = {}
-        if source_results and 'image_AUROC' in source_results:
-            source_results_compat = {
-                "test_image_AUROC": source_results['image_AUROC'],
-                "test_image_F1Score": source_results.get('image_F1Score', 0.0)
-            }
+        print(f"\n📊 실험 결과 요약:")
+        print(f"   🎯 Source Domain AUROC: {source_results.get('image_AUROC', 'N/A'):.4f}" if isinstance(source_results.get('image_AUROC'), (int, float)) else f"   🎯 Source Domain AUROC: {source_results.get('image_AUROC', 'N/A')}")
         
-        target_results_compat = {}
+        target_aurocs = []
         for domain, result in target_results.items():
-            if 'image_AUROC' in result:
-                target_results_compat[domain] = {
-                    "test_image_AUROC": result['image_AUROC'],
-                    "test_image_F1Score": result.get('image_F1Score', 0.0)
-                }
+            auroc = result.get('image_AUROC', 0)  # image_AUROC로 변경
+            if isinstance(auroc, (int, float)):
+                print(f"   🎯 {domain} AUROC: {auroc:.4f}")
+                target_aurocs.append(auroc)
+            else:
+                print(f"   🎯 {domain} AUROC: {auroc}")
         
-        # 실험 결과 정리
-        experiment_result = {
-            "condition": condition,
-            "experiment_name": experiment_name,
-            "source_results": source_results_compat,
-            "target_results": target_results_compat,
-            "best_checkpoint": best_checkpoint,
-            "training_info": training_info,
-            "status": "success",
-            "experiment_path": str(latest_version_path) if latest_version_path else None,
-            "avg_target_auroc": analysis["avg_target_auroc"]
-            }
+        if target_aurocs:
+            avg_auroc = sum(target_aurocs) / len(target_aurocs)
+            print(f"   📊 Target Domains 평균 AUROC: {avg_auroc:.4f}")
         
-        # 각 실험의 tensorboard_logs 폴더에 JSON 결과 저장
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        result_filename = f"result_{condition['name']}_{timestamp}.json"
-        
-        # latest_version_path가 이미 tensorboard_logs이므로 직접 저장
-        result_path = latest_version_path / result_filename
-        
-        try:
-            with open(result_path, 'w', encoding='utf-8') as f:
-                json.dump(experiment_result, f, indent=2, ensure_ascii=False)
-            print(f"📄 실험 결과 JSON 저장: {result_path}")
-        except Exception as e:
-            print(f"⚠️  JSON 저장 실패: {e}")
-        
-        print(f"\n✅ 실험 완료: {condition['name']}")
-        
-        return experiment_result
+        return {
+            'condition': condition,
+            'source_results': source_results,
+            'target_results': target_results,
+            'training_info': training_info,
+            'analysis': analysis,
+            'best_checkpoint': best_checkpoint,
+            'status': 'success'
+        }
         
     except Exception as e:
-        print(f"❌ 실험 실패 - {condition['name']}: {e}")
+        error_msg = f"Reverse Distillation 실험 실패 - {condition['name']}: {str(e)}"
+        print(f"❌ {error_msg}")
+        logging.getLogger(__name__).error(error_msg)
         import traceback
         traceback.print_exc()
         
         return {
-            "condition": condition,
-            "experiment_name": experiment_name,
-            "status": "failed",
-            "error": str(e),
-            "experiment_path": None  # 실패 시에는 경로 없음
+            'condition': condition,
+            'status': 'failed',
+            'error': error_msg,
+            'source_results': {},
+            'target_results': {},
+            'analysis': {},
+            'best_checkpoint': None
         }
+    
     finally:
         # 메모리 정리
         cleanup_gpu_memory()
 
 def main():
-    """Reverse Distillation 실험 메인 함수."""
-    # 명령행 인자 파싱
-    parser = argparse.ArgumentParser(description="Reverse Distillation 실험")
-    parser.add_argument("--gpu-id", type=str, help="사용할 GPU ID")
-    parser.add_argument("--experiment-id", type=int, help="실험 조건 ID (0부터 시작)")
-    parser.add_argument("--log-dir", type=str, help="로그 저장 디렉토리")
-    parser.add_argument("--get-experiment-count", action="store_true", help="실험 조건 개수만 반환")
+    """메인 함수 - PatchCore와 동일한 구조"""
+    parser = argparse.ArgumentParser(description="Reverse Distillation MultiDomain HDMAP 실험 실행")
+    parser.add_argument("--gpu-id", type=int, default=0, help="사용할 GPU ID")
+    parser.add_argument("--experiment-id", type=int, default=0, help="실험 ID (병렬 실행용)")
+    parser.add_argument("--results-dir", type=str, default="results/reverse_distillation", help="결과 저장 디렉터리")
+    parser.add_argument("--get-experiment-count", action="store_true", help="실험 조건 개수만 출력")
     
     args = parser.parse_args()
     
-    # 실험 조건 개수만 반환하는 경우
     if args.get_experiment_count:
         print(len(EXPERIMENT_CONDITIONS))
         return
     
-    # 필수 인자 검증
-    if not args.gpu_id or args.experiment_id is None or not args.log_dir:
-        parser.error("--gpu-id, --experiment-id, --log-dir는 필수 인자입니다 (--get-experiment-count 제외)")
+    if not EXPERIMENT_CONDITIONS:
+        print("❌ 실험 조건이 없습니다.")
+        return
     
     # GPU 설정 및 실험 조건 검증
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
     
     if args.experiment_id >= len(EXPERIMENT_CONDITIONS):
         print(f"❌ 잘못된 실험 ID: {args.experiment_id} (최대: {len(EXPERIMENT_CONDITIONS)-1})")
         return
-    
+
     condition = EXPERIMENT_CONDITIONS[args.experiment_id]
     
-    print("="*80)
-    print(f"🚀 Reverse Distillation 실험 (GPU {args.gpu_id}): {condition['name']}")
-    print("="*80)
-    
-    # 로그 설정
-    log_dir = Path(args.log_dir)
+    # 로그 디렉터리 설정
+    log_dir = Path(args.results_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     
+    # 로깅 설정
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = log_dir / f"reverse_distillation_experiment_{timestamp}.log"
     logger = setup_experiment_logging(str(log_path), f"reverse_distillation_{condition['name']}")
@@ -483,17 +456,10 @@ def main():
     cleanup_gpu_memory()
     
     try:
-        # 실험 정보 로깅
-        logger.info("="*80)
-        logger.info(f"🚀 Reverse Distillation 실험 시작: {condition['name']}")
-        logger.info(f"GPU ID: {args.gpu_id} | 실험 ID: {args.experiment_id}")
-        logger.info(f"설명: {condition['description']}")
-        logger.info("="*80)
-        
-        # 실험 수행
+        # 실험 실행
         result = run_single_reverse_distillation_experiment(
             condition=condition,
-            log_dir=args.log_dir
+            log_dir=str(log_dir)
         )
         
         # 결과 저장
@@ -501,15 +467,16 @@ def main():
         save_experiment_results(result, result_filename, log_dir, logger)
         
         logger.info("✅ 실험 완료!")
+        print("✅ 실험 완료!")
         
     except Exception as e:
         logger.error(f"❌ 실험 중 오류 발생: {e}")
+        print(f"❌ 실험 중 오류 발생: {e}")
         import traceback
         logger.error(traceback.format_exc())
     finally:
         cleanup_gpu_memory()
         logger.info("🧹 GPU 메모리 정리 완료")
-
 
 if __name__ == "__main__":
     main()

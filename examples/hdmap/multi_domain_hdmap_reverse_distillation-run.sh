@@ -50,7 +50,7 @@ for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
     nohup bash -c "source .venv/bin/activate && python ${SCRIPT_PATH} \
         --gpu-id ${GPU_ID} \
         --experiment-id ${i} \
-        --log-dir \"${LOG_DIR}\"" \
+        --results-dir \"${LOG_DIR}\"" \
         > "${LOG_DIR}/output_exp_${i}_gpu${GPU_ID}.log" 2>&1 &
     
     # PID 저장
