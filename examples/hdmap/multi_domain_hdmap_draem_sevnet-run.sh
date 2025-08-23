@@ -1,5 +1,5 @@
 #!/bin/bash
-# nohup ./examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh > /dev/null 2>&1 &
+# nohup ./examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh > experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 # pkill -f "multi_domain_hdmap_draem_sevnet-run.sh"
 # pkill -f "examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
 

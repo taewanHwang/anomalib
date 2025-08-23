@@ -329,28 +329,6 @@
         "patch_count": 1,
         "optimizer": "adamw"
       }
-    },
-    {
-      "name": "DRAEM_SEVNET_weighted_avg_v2_portrait",
-      "description": "Weighted average v2 with portrait patches",
-      "config": {
-        "max_epochs": 50,
-        "early_stopping_patience": 10,
-        "learning_rate": 0.0001,
-        "batch_size": 16,
-        "image_size": "224x224",
-        "source_domain": "domain_A",
-        "target_domains": "auto",
-        "severity_head_mode": "single_scale",
-        "score_combination": "weighted_average",
-        "severity_loss_type": "smooth_l1",
-        "severity_weight": 1.0,
-        "severity_max": 1.0,
-        "patch_width_range": [32, 64],
-        "patch_ratio_range": [2.0, 3.0],
-        "patch_count": 1,
-        "optimizer": "adamw"
-      }
     }
   ]
 }
