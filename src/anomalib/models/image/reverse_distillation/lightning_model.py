@@ -40,6 +40,7 @@ See Also:
 from collections.abc import Sequence
 from typing import Any
 
+import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 from torch import optim
 
@@ -120,6 +121,29 @@ class ReverseDistillation(AnomalibModule):
             betas=(0.5, 0.99),
         )
 
+    @staticmethod
+    def configure_evaluator() -> Evaluator:
+        """Configure the evaluator for Reverse Distillation model.
+
+        Only includes essential AUROC metrics to avoid missing field errors.
+        Reverse Distillation outputs pred_score and anomaly_map but not pred_label/pred_mask.
+
+        Returns:
+            Evaluator: Configured evaluator with essential validation and test metrics
+        """
+        from anomalib.metrics import AUROC
+        
+        # Validation metrics (for early stopping) - only essential AUROC
+        val_image_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        val_metrics = [val_image_auroc]
+        
+        # Test metrics - only essential AUROC
+        image_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="image_")
+        pixel_auroc = AUROC(fields=["anomaly_map", "gt_mask"], prefix="pixel_", strict=False)
+        test_metrics = [image_auroc, pixel_auroc]
+        
+        return Evaluator(val_metrics=val_metrics, test_metrics=test_metrics)
+
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform a training step of Reverse Distillation Model.
 
@@ -144,8 +168,9 @@ class ReverseDistillation(AnomalibModule):
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform a validation step of Reverse Distillation Model.
 
-        Similar to the training step, encoder/decoder features are extracted from the CNN for each batch, and
-        anomaly map is computed.
+        Performs inference in eval mode for consistent AUROC calculation.
+        The model automatically switches to inference mode during validation,
+        computing anomaly maps and scores for metric evaluation.
 
         Args:
           batch (Batch): Input batch
@@ -154,11 +179,15 @@ class ReverseDistillation(AnomalibModule):
 
         Returns:
           Dictionary containing images, anomaly maps, true labels and masks.
-          These are required in `validation_epoch_end` for feature concatenation.
+          These are required for metric calculation by the Evaluator.
         """
         del args, kwargs  # These variables are not used.
 
-        predictions = self.model(batch.image)
+        # Note: Lightning automatically sets model.eval() before validation_step
+        with torch.no_grad():
+            predictions = self.model(batch.image)
+        
+        # Return updated batch - Evaluator will handle metrics automatically
         return batch.update(**predictions._asdict())
 
     @property
