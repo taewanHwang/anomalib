@@ -1,0 +1,244 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "patchcore_quick_test",
+      "description": "PatchCore 빠른 테스트용 - 기본 설정으로 작은 배치",
+      "config": {
+        "batch_size": 16,
+        "image_size": [224, 224],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_baseline_wide_resnet50_2",
+      "description": "PatchCore baseline with Wide ResNet-50-2 backbone (논문 기본 설정)",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_resnet18_lightweight",
+      "description": "경량화된 ResNet-18 backbone으로 빠른 처리 테스트",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "resnet18",
+        "layers": ["layer1", "layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_resnet50_standard",
+      "description": "표준 ResNet-50 backbone으로 성능 비교",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "resnet50",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_multi_layer_deep",
+      "description": "3개 layer 조합으로 더 풍부한 feature 추출",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer1", "layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_high_coreset_ratio",
+      "description": "높은 coreset sampling ratio (0.25)로 메모리 뱅크 풍부화",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.25,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_low_coreset_ratio",
+      "description": "낮은 coreset sampling ratio (0.01)로 메모리 효율성 테스트",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_single_neighbor",
+      "description": "단일 최근접 이웃 (num_neighbors=1)으로 빠른 추론",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 1
+      }
+    },
+    {
+      "name": "patchcore_many_neighbors",
+      "description": "많은 최근접 이웃 (num_neighbors=15)으로 정확도 향상",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 15
+      }
+    },
+    {
+      "name": "patchcore_large_batch",
+      "description": "큰 배치 사이즈 (64)로 메모리 뱅크 구축 효율성 테스트",
+      "config": {
+        "batch_size": 64,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_small_batch",
+      "description": "작은 배치 사이즈 (16)로 메모리 제약 환경 테스트",
+      "config": {
+        "batch_size": 16,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_high_res_input",
+      "description": "고해상도 입력 (384x384)로 세밀한 anomaly detection",
+      "config": {
+        "batch_size": 16,
+        "image_size": [384, 384],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_low_res_input",
+      "description": "저해상도 입력 (128x128)로 빠른 처리 테스트",
+      "config": {
+        "batch_size": 64,
+        "image_size": [128, 128],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "patchcore_optimized_combination",
+      "description": "최적화된 파라미터 조합 (중간 coreset + 적당한 neighbors)",
+      "config": {
+        "batch_size": 32,
+        "image_size": [256, 256],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.15,
+        "num_neighbors": 5
+      }
+    },
+    {
+      "name": "patchcore_memory_efficient",
+      "description": "메모리 효율 최우선 설정 (작은 backbone + 낮은 coreset)",
+      "config": {
+        "batch_size": 32,
+        "image_size": [224, 224],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "resnet18",
+        "layers": ["layer1", "layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.05,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "patchcore_accuracy_focused",
+      "description": "정확도 최우선 설정 (큰 backbone + 높은 coreset + 많은 neighbors)",
+      "config": {
+        "batch_size": 16,
+        "image_size": [320, 320],
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "backbone": "wide_resnet50_2",
+        "layers": ["layer1", "layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.2,
+        "num_neighbors": 12
+      }
+    }
+  ]
+}
