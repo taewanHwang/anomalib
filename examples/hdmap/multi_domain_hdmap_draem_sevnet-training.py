@@ -66,7 +66,7 @@ from experiment_utils import (
 
 
 # JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition1.json")
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition4.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -451,11 +451,21 @@ def main():
     """DRAEM-SevNet 실험 메인 함수."""
     # 명령행 인자 파싱
     parser = argparse.ArgumentParser(description="DRAEM-SevNet 실험")
-    parser.add_argument("--gpu-id", type=str, required=True, help="사용할 GPU ID")
-    parser.add_argument("--experiment-id", type=int, required=True, help="실험 조건 ID (0부터 시작)")
-    parser.add_argument("--log-dir", type=str, required=True, help="로그 저장 디렉토리")
+    parser.add_argument("--gpu-id", type=str, help="사용할 GPU ID")
+    parser.add_argument("--experiment-id", type=int, help="실험 조건 ID (0부터 시작)")
+    parser.add_argument("--log-dir", type=str, help="로그 저장 디렉토리")
+    parser.add_argument("--get-experiment-count", action="store_true", help="실험 조건 개수만 반환")
     
     args = parser.parse_args()
+    
+    # 실험 조건 개수만 반환하는 경우
+    if args.get_experiment_count:
+        print(len(EXPERIMENT_CONDITIONS))
+        return
+    
+    # 필수 인자 검증
+    if not args.gpu_id or args.experiment_id is None or not args.log_dir:
+        parser.error("--gpu-id, --experiment-id, --log-dir는 필수 인자입니다 (--get-experiment-count 제외)")
     
     # GPU 설정 및 실험 조건 검증
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id

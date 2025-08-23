@@ -7,30 +7,16 @@
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
 AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
-EXPERIMENT_CONDITIONS=(
-    "DRAEM_SEVNET_quick_3epochs"
-    "DRAEM_SEVNET_baseline_50epochs"
-    "DRAEM_SEVNET_ultra_landscape_tiny"
-    "DRAEM_SEVNET_ultra_landscape_small"
-    "DRAEM_SEVNET_super_landscape"
-    "DRAEM_SEVNET_landscape_optimal"
-    "DRAEM_SEVNET_ultra_portrait_tiny"
-    "DRAEM_SEVNET_ultra_portrait_small"
-    "DRAEM_SEVNET_super_portrait"
-    "DRAEM_SEVNET_portrait_moderate"
-    "DRAEM_SEVNET_perfect_square_tiny"
-    "DRAEM_SEVNET_perfect_square_medium"
-    "DRAEM_SEVNET_perfect_square_large"
-    "DRAEM_SEVNET_giant_landscape"
-)
-NUM_EXPERIMENTS=${#EXPERIMENT_CONDITIONS[@]}
+
+SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
+
+# Python 스크립트에서 실험 조건 개수 가져오기 (JSON 파일명은 Python에서 관리)
+NUM_EXPERIMENTS=$(python "${SCRIPT_PATH}" --get-experiment-count)
 
 # 로그 디렉토리 생성 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_DIR="results/draem_sevnet/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
-
-SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
 
 echo "=================================="
 echo "🚀 DRAEM-SevNet 병렬 실험 시작"
@@ -44,8 +30,7 @@ echo ""
 echo "📋 실험 할당:"
 for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
     GPU_ID=${AVAILABLE_GPUS[$((i % ${#AVAILABLE_GPUS[@]}))]}
-    EXP_NAME=${EXPERIMENT_CONDITIONS[$i]}
-    echo "   GPU ${GPU_ID}: 실험 ${i} - ${EXP_NAME}"
+    echo "   GPU ${GPU_ID}: 실험 ${i}"
 done
 echo ""
 
@@ -55,12 +40,11 @@ echo "🚀 병렬 실험 시작..."
 PIDS=()
 for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
     GPU_ID=${AVAILABLE_GPUS[$((i % ${#AVAILABLE_GPUS[@]}))]}
-    EXP_NAME=${EXPERIMENT_CONDITIONS[$i]}
     
-    echo "[$(date +%H:%M:%S)] 시작: GPU ${GPU_ID} - ${EXP_NAME}"
+    echo "[$(date +%H:%M:%S)] 시작: GPU ${GPU_ID} - 실험 ${i}"
     
-    # 백그라운드로 실험 실행
-    uv run "${SCRIPT_PATH}" \
+    # 백그라운드로 실험 실행 (안정적인 방법)
+    source .venv/bin/activate && python "${SCRIPT_PATH}" \
         --gpu-id "${GPU_ID}" \
         --experiment-id "${i}" \
         --log-dir "${LOG_DIR}" \
@@ -86,19 +70,18 @@ FAILED_COUNT=0
 for i in "${!PIDS[@]}"; do
     PID=${PIDS[$i]}
     GPU_ID=${AVAILABLE_GPUS[$((i % ${#AVAILABLE_GPUS[@]}))]}
-    EXP_NAME=${EXPERIMENT_CONDITIONS[$i]}
     
-    echo "⏳ 대기 중: GPU ${GPU_ID} - ${EXP_NAME} (PID: ${PID})"
+    echo "⏳ 대기 중: GPU ${GPU_ID} - 실험 ${i} (PID: ${PID})"
     
     # 프로세스 완료 대기
     wait $PID
     EXIT_CODE=$?
     
     if [ $EXIT_CODE -eq 0 ]; then
-        echo "[$(date +%H:%M:%S)] ✅ 완료: GPU ${GPU_ID} - ${EXP_NAME}"
+        echo "[$(date +%H:%M:%S)] ✅ 완료: GPU ${GPU_ID} - 실험 ${i}"
         ((SUCCESS_COUNT++))
     else
-        echo "[$(date +%H:%M:%S)] ❌ 실패: GPU ${GPU_ID} - ${EXP_NAME} (종료 코드: ${EXIT_CODE})"
+        echo "[$(date +%H:%M:%S)] ❌ 실패: GPU ${GPU_ID} - 실험 ${i} (종료 코드: ${EXIT_CODE})"
         ((FAILED_COUNT++))
     fi
 done
