@@ -85,8 +85,9 @@ echo ""
 # 최종 결과 요약
 echo "📊 실험 결과 요약:"
 for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
-    RESULT_FILE="${LOG_DIR}/result_exp_$(printf "%02d" $i)_*_gpu*.json"
-    if ls ${RESULT_FILE} 1> /dev/null 2>&1; then
+    # PatchCore 결과 파일은 깊은 경로에 저장됨 - find 명령어 사용
+    RESULT_COUNT=$(find "${LOG_DIR}" -name "result_exp_$(printf "%02d" $i)_*_gpu*.json" -type f 2>/dev/null | wc -l)
+    if [ ${RESULT_COUNT} -gt 0 ]; then
         echo "   ✅ 실험 ${i}: 성공"
     else
         echo "   ❌ 실험 ${i}: 실패 또는 미완료"
@@ -104,8 +105,9 @@ echo ""
 # 실험 성공률 계산
 SUCCESS_COUNT=0
 for i in $(seq 0 $((NUM_EXPERIMENTS-1))); do
-    RESULT_FILE="${LOG_DIR}/result_exp_$(printf "%02d" $i)_*_gpu*.json"
-    if ls ${RESULT_FILE} 1> /dev/null 2>&1; then
+    # PatchCore 결과 파일은 깊은 경로에 저장됨 - find 명령어 사용
+    RESULT_COUNT=$(find "${LOG_DIR}" -name "result_exp_$(printf "%02d" $i)_*_gpu*.json" -type f 2>/dev/null | wc -l)
+    if [ ${RESULT_COUNT} -gt 0 ]; then
         ((SUCCESS_COUNT++))
     fi
 done
