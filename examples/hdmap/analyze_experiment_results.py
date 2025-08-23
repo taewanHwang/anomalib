@@ -9,14 +9,16 @@ image_AUROC의 평균과 표준편차를 계산합니다.
     python analyze_experiment_results.py --results_dir /path/to/results/draem
     python analyze_experiment_results.py --results_dir /path/to/results/draem --experiment_name "DRAEM_baseline_50epochs"
     uv run examples/hdmap/analyze_experiment_results.py --results_dir results/draem_sevnet
-    uv run examples/hdmap/analyze_experiment_results.py --results_dir results2/draem
+    uv run examples/hdmap/analyze_experiment_results.py --results_dir results_draem_14회/draem
+    uv run examples/hdmap/analyze_experiment_results.py --results_dir results_draemsevnet_cond2/draem_sevnet
 """
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -54,8 +56,7 @@ class ExperimentResultsAnalyzer:
         elif 'padim' in dir_name:
             return 'padim'
         else:
-            # 기본값으로 draem 사용하고 경고 출력
-            print(f"⚠️ 모델 타입을 감지할 수 없습니다. 기본값 'draem' 사용: {dir_name}")
+            # 기본값으로 draem 사용
             return 'draem'
         
     def find_all_experiment_sessions(self) -> List[Path]:
@@ -79,15 +80,6 @@ class ExperimentResultsAnalyzer:
         experiment_base_path = session_path / "MultiDomainHDMAP" / self.model_type
         
         if not experiment_base_path.exists():
-            print(f"실험 기본 경로가 존재하지 않습니다: {experiment_base_path}")
-            print(f"사용 중인 모델 타입: {self.model_type}")
-            
-            # 가능한 모델 타입 폴더들을 확인해보기
-            multi_domain_path = session_path / "MultiDomainHDMAP"
-            if multi_domain_path.exists():
-                available_types = [d.name for d in multi_domain_path.iterdir() if d.is_dir()]
-                if available_types:
-                    print(f"사용 가능한 모델 타입들: {available_types}")
             return results
             
         for exp_folder in experiment_base_path.iterdir():
@@ -104,18 +96,18 @@ class ExperimentResultsAnalyzer:
                     with open(json_file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         
-                    # 실험 이름 추출
-                    exp_name = data.get('experiment_name', 'unknown')
+                    # 실험 이름 추출 - condition.name 우선, 없으면 experiment_name 사용
+                    condition_info = data.get('condition', {})
+                    if isinstance(condition_info, dict) and 'name' in condition_info:
+                        condition_name = condition_info['name']
+                    else:
+                        condition_name = data.get('experiment_name', 'unknown')
                     
-                    # 조건 이름에서 타임스탬프 제거
-                    condition_name = data.get('condition', {}).get('name', exp_name)
+                    # 타임스탬프 패턴 제거 (예: _20250817_145220)
                     if condition_name.startswith('DRAEM_'):
-                        # 타임스탬프 패턴 제거 (예: _20250817_145220)
-                        import re
                         condition_name = re.sub(r'_\d{8}_\d{6}$', '', condition_name)
                     
                     results[condition_name] = data
-                    print(f"로드됨: {session_path.name}/{exp_folder.name} -> {condition_name}")
                     
                 except Exception as e:
                     print(f"JSON 파일 로드 실패: {json_file}, 오류: {e}")
@@ -148,53 +140,55 @@ class ExperimentResultsAnalyzer:
         
         results = []
         
-        for condition in conditions_to_analyze:
-            runs = self.experiment_data[condition]
+        for condition_name in conditions_to_analyze:
+            runs = self.experiment_data[condition_name]
             if not runs:
                 continue
                 
-            print(f"\n=== {condition} 분석 ===")
+            print(f"\n=== {condition_name} 분석 ===")
             print(f"총 실행 횟수: {len(runs)}")
             
-            # Source domain 결과 수집
+            # 동적으로 source와 target 도메인 감지
             source_aurocs = []
-            target_b_aurocs = []
-            target_c_aurocs = []
-            target_d_aurocs = []
+            target_aurocs_by_domain = {}  # domain_name -> [auroc_values]
             avg_target_aurocs = []
+            source_domain = None
+            target_domains = []
             
             for run in runs:
-                # Source domain
+                # Source domain 찾기
                 source_result = run.get('source_results', {})
                 if 'test_image_AUROC' in source_result:
                     source_aurocs.append(source_result['test_image_AUROC'])
+                    # source 도메인 이름 추출 (condition.config에서)
+                    if source_domain is None:
+                        condition = run.get('condition', {})
+                        config = condition.get('config', {})
+                        if 'source_domain' in config:
+                            source_domain = config['source_domain'].replace('domain_', '')  # domain_A -> A
                 
-                # Target domains
+                # Target domains 수집
                 target_results = run.get('target_results', {})
+                current_run_target_aucs = []
                 
-                domain_b = target_results.get('domain_B', {})
-                if 'test_image_AUROC' in domain_b:
-                    target_b_aurocs.append(domain_b['test_image_AUROC'])
+                for domain_key, domain_data in target_results.items():
+                    if 'test_image_AUROC' in domain_data:
+                        domain_name = domain_key.replace('domain_', '')  # domain_B -> B
+                        
+                        if domain_name not in target_aurocs_by_domain:
+                            target_aurocs_by_domain[domain_name] = []
+                            target_domains.append(domain_name)
+                        
+                        auroc_value = domain_data['test_image_AUROC']
+                        target_aurocs_by_domain[domain_name].append(auroc_value)
+                        current_run_target_aucs.append(auroc_value)
                 
-                domain_c = target_results.get('domain_C', {})
-                if 'test_image_AUROC' in domain_c:
-                    target_c_aurocs.append(domain_c['test_image_AUROC'])
-                
-                domain_d = target_results.get('domain_D', {})
-                if 'test_image_AUROC' in domain_d:
-                    target_d_aurocs.append(domain_d['test_image_AUROC'])
-                
-                # 평균 target AUROC (직접 계산)
-                target_aucs = []
-                if 'test_image_AUROC' in domain_b:
-                    target_aucs.append(domain_b['test_image_AUROC'])
-                if 'test_image_AUROC' in domain_c:
-                    target_aucs.append(domain_c['test_image_AUROC'])
-                if 'test_image_AUROC' in domain_d:
-                    target_aucs.append(domain_d['test_image_AUROC'])
-                
-                if target_aucs:
-                    avg_target_aurocs.append(np.mean(target_aucs))
+                # 이번 run의 평균 target AUROC 계산
+                if current_run_target_aucs:
+                    avg_target_aurocs.append(np.mean(current_run_target_aucs))
+            
+            # target_domains 정렬 (일관성을 위해)
+            target_domains = sorted(target_domains)
             
             # 통계 계산 및 저장
             def calc_stats(values: List[float]) -> Tuple[float, float, int]:
@@ -203,37 +197,57 @@ class ExperimentResultsAnalyzer:
                 return np.mean(values), np.std(values, ddof=1) if len(values) > 1 else 0.0, len(values)
             
             source_mean, source_std, source_count = calc_stats(source_aurocs)
-            target_b_mean, target_b_std, target_b_count = calc_stats(target_b_aurocs)
-            target_c_mean, target_c_std, target_c_count = calc_stats(target_c_aurocs)
-            target_d_mean, target_d_std, target_d_count = calc_stats(target_d_aurocs)
             avg_target_mean, avg_target_std, avg_target_count = calc_stats(avg_target_aurocs)
             
-            results.append({
-                'experiment_name': condition,
+            # 각 target 도메인별 통계 계산
+            target_stats = {}
+            for domain in target_domains:
+                if domain in target_aurocs_by_domain:
+                    mean, std, count = calc_stats(target_aurocs_by_domain[domain])
+                    target_stats[domain] = {
+                        'mean': mean,
+                        'std': std,
+                        'count': count
+                    }
+            
+            # Transfer ratio 계산 (avg_target_auroc_mean / source_auroc_mean)
+            transfer_ratio = avg_target_mean / source_mean if source_mean > 0 else 0.0
+            
+            # 결과 딕셔너리 동적 구성 (experiment_name은 간단한 이름만)
+            result_dict = {
+                'experiment_name': condition_name,  # 간단한 실험 이름
                 'total_runs': len(runs),
+                'source_domain': source_domain or 'Unknown',
                 'source_auroc_mean': source_mean,
                 'source_auroc_std': source_std,
                 'source_auroc_count': source_count,
-                'target_B_auroc_mean': target_b_mean,
-                'target_B_auroc_std': target_b_std,
-                'target_B_auroc_count': target_b_count,
-                'target_C_auroc_mean': target_c_mean,
-                'target_C_auroc_std': target_c_std,
-                'target_C_auroc_count': target_c_count,
-                'target_D_auroc_mean': target_d_mean,
-                'target_D_auroc_std': target_d_std,
-                'target_D_auroc_count': target_d_count,
                 'avg_target_auroc_mean': avg_target_mean,
                 'avg_target_auroc_std': avg_target_std,
-                'avg_target_auroc_count': avg_target_count
-            })
+                'avg_target_auroc_count': avg_target_count,
+                'transfer_ratio': transfer_ratio
+            }
+            
+            # 각 target 도메인별 결과 추가 (실제 target 도메인만)
+            for domain in target_domains:
+                if domain in target_stats:
+                    result_dict[f'target_{domain}_auroc_mean'] = target_stats[domain]['mean']
+                    result_dict[f'target_{domain}_auroc_std'] = target_stats[domain]['std']
+                    result_dict[f'target_{domain}_auroc_count'] = target_stats[domain]['count']
+            
+            results.append(result_dict)
             
             # 콘솔 출력
+            print(f"Source Domain: {source_domain or 'Unknown'}")
             print(f"Source AUROC: {source_mean:.4f} ± {source_std:.4f} (n={source_count})")
-            print(f"Target B AUROC: {target_b_mean:.4f} ± {target_b_std:.4f} (n={target_b_count})")
-            print(f"Target C AUROC: {target_c_mean:.4f} ± {target_c_std:.4f} (n={target_c_count})")
-            print(f"Target D AUROC: {target_d_mean:.4f} ± {target_d_std:.4f} (n={target_d_count})")
+            
+            # Target 도메인별 출력
+            for domain in sorted(target_domains):
+                if domain in target_stats:
+                    stats = target_stats[domain]
+                    print(f"Target {domain} AUROC: {stats['mean']:.4f} ± {stats['std']:.4f} (n={stats['count']})")
+            
             print(f"평균 Target AUROC: {avg_target_mean:.4f} ± {avg_target_std:.4f} (n={avg_target_count})")
+            print(f"Transfer Ratio: {transfer_ratio:.4f}")
         
         return pd.DataFrame(results)
     
@@ -262,13 +276,15 @@ class ExperimentResultsAnalyzer:
         # 컬럼 너비 조정을 위한 설정
         pd.set_option('display.max_columns', None)
         pd.set_option('display.width', None)
-        pd.set_option('display.max_colwidth', 20)
+        pd.set_option('display.max_colwidth', 30)
+        pd.set_option('display.expand_frame_repr', False)
         
         # 주요 컬럼만 선택해서 출력
         summary_cols = [
-            'experiment_name', 'total_runs',
+            'experiment_name', 'total_runs', 'source_domain',
             'source_auroc_mean', 'source_auroc_std',
-            'avg_target_auroc_mean', 'avg_target_auroc_std'
+            'avg_target_auroc_mean', 'avg_target_auroc_std',
+            'transfer_ratio'
         ]
         
         summary_df = df[summary_cols].copy()
@@ -283,6 +299,7 @@ class ExperimentResultsAnalyzer:
         summary_df['source_auroc_std'] = summary_df['source_auroc_std'].round(4)
         summary_df['avg_target_auroc_mean'] = summary_df['avg_target_auroc_mean'].round(4)
         summary_df['avg_target_auroc_std'] = summary_df['avg_target_auroc_std'].round(4)
+        summary_df['transfer_ratio'] = summary_df['transfer_ratio'].round(4)
         
         print(summary_df.to_string(index=False))
         
