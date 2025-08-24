@@ -1,0 +1,23 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "efficientad_quick_test",
+      "description": "EfficientAD 빠른 테스트용 - 기본 설정으로 작은 배치",
+      "config": {
+        "batch_size": 1,
+        "image_size": "256x256",
+        "source_domain": "domain_A",
+        "target_domains": "auto",
+        "model_size": "small",
+        "teacher_out_channels": 384,
+        "lr": 0.0001,
+        "weight_decay": 0.00001,
+        "padding": true,
+        "pad_maps": true,
+        "max_epochs": 10,
+        "early_stopping_patience": 5,
+        "imagenet_dir": "./datasets/dtd"
+      }
+    }
+  ]
+}

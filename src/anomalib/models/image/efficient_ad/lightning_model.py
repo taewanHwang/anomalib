@@ -458,6 +458,28 @@ class EfficientAd(AnomalibModule):
         """
         return {"num_sanity_val_steps": 0}
 
+    @staticmethod
+    def configure_evaluator() -> Evaluator:
+        """Configure evaluator for EfficientAD.
+        
+        Returns:
+            Evaluator: Configured evaluator with AUROC metrics only.
+                - Excludes F1Score metrics as EfficientAD doesn't output pred_label/pred_mask
+        """
+        from anomalib.metrics import AUROC
+        
+        # EfficientAD outputs anomaly_map and anomaly_score but not pred_label/pred_mask
+        # So we only use AUROC metrics, not F1Score
+        val_image_auroc = AUROC(fields=["anomaly_score", "gt_label"], prefix="val_image_")
+        val_metrics = [val_image_auroc]
+        
+        # Test metrics - only essential AUROC
+        image_auroc = AUROC(fields=["anomaly_score", "gt_label"], prefix="image_")
+        pixel_auroc = AUROC(fields=["anomaly_map", "gt_mask"], prefix="pixel_", strict=False)
+        test_metrics = [image_auroc, pixel_auroc]
+        
+        return Evaluator(val_metrics=val_metrics, test_metrics=test_metrics)
+
     @property
     def learning_type(self) -> LearningType:
         """Get model's learning type.
