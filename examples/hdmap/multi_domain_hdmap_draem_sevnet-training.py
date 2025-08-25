@@ -7,9 +7,13 @@ DRAEM-SevNet 특징:
 - DRAEM Backbone Integration: 기존 DRAEM의 97.5M 파라미터 backbone 통합
 - Wide ResNet Encoder: ImageNet pretrained encoder (기존 DRAEM과 동일)
 - Reconstructive + Discriminative Sub-Networks: 기존 DRAEM 구조 완전 활용
-- SeverityHead: Discriminative encoder features 직접 활용
+- Spatial-Aware SeverityHead: 공간 정보 보존으로 성능 향상
+  * GAP vs Spatial-Aware pooling 선택 가능
+  * AdaptiveAvgPool2d로 부분 공간 정보 유지
+  * Spatial Attention 메커니즘 선택적 적용
+  * Multi-Scale Spatial Features 지원
 - Multi-task Learning: Mask prediction + Severity prediction 동시 학습
-- Score Combination: (mask_score + severity_score) / 2로 최종 anomaly score 계산
+- Score Combination: 다양한 조합 전략 (simple_average, weighted_average, maximum)
 - Early Stopping: val_image_AUROC 기반 학습 효율성 향상
 
 실험 구조:
@@ -65,8 +69,8 @@ from experiment_utils import (
 )
 
 
-# JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition4.json")
+# JSON 파일에서 실험 조건 로드 (최적화된 조합 실험)
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition13.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -117,6 +121,10 @@ def train_draem_sevnet_model_multi_domain(
     print(f"      • Score Combination: {config['score_combination']}")
     print(f"      • Severity Loss Type: {config['severity_loss_type']}")
     print(f"      • Severity Weight: {config['severity_weight']}")
+    print(f"      • 🧠 Spatial-Aware SeverityHead:")
+    print(f"        - Pooling Type: {config['severity_head_pooling_type']}")
+    print(f"        - Spatial Size: {config['severity_head_spatial_size']}")
+    print(f"        - Use Spatial Attention: {config['severity_head_use_spatial_attention']}")
     print(f"      • Patch Width Range: {config['patch_width_range']}")
     print(f"      • Patch Ratio Range: {config['patch_ratio_range']}")
     print(f"      • Patch Count: {config['patch_count']}")
@@ -131,6 +139,11 @@ def train_draem_sevnet_model_multi_domain(
         severity_head_mode=config["severity_head_mode"],
         score_combination=config["score_combination"],
         severity_loss_type=config["severity_loss_type"],
+        
+        # 🧠 Spatial-Aware SeverityHead 설정 (NEW!)
+        severity_head_pooling_type=config["severity_head_pooling_type"],
+        severity_head_spatial_size=config["severity_head_spatial_size"],
+        severity_head_use_spatial_attention=config["severity_head_use_spatial_attention"],
         
         # 🔧 Synthetic Fault Generation 설정 
         patch_width_range=config["patch_width_range"],

@@ -39,6 +39,13 @@ class DraemSevNet(AnomalibModule):
             Defaults to ``"simple_average"``.
         severity_weight_for_combination (float, optional): Weight for severity score
             in weighted_average combination. Defaults to ``0.5``.
+        severity_head_pooling_type (str, optional): Pooling type for SeverityHead.
+            Options: "gap" (Global Average Pooling), "spatial_aware" (Spatial-Aware).
+            Defaults to ``"gap"``.
+        severity_head_spatial_size (int, optional): Spatial size to preserve in spatial_aware mode.
+            Defaults to ``4``.
+        severity_head_use_spatial_attention (bool, optional): Use spatial attention mechanism.
+            Defaults to ``True``.
         patch_ratio_range (tuple, optional): Range of patch aspect ratios.
             Values >1.0 for portrait, <1.0 for landscape, 1.0 for square.
             Defaults to ``(2.0, 4.0)``.
@@ -63,6 +70,9 @@ class DraemSevNet(AnomalibModule):
         ...     severity_max=10.0,
         ...     severity_head_mode="multi_scale",
         ...     score_combination="weighted_average",
+        ...     severity_head_pooling_type="spatial_aware",
+        ...     severity_head_spatial_size=4,
+        ...     severity_head_use_spatial_attention=True,
         ...     patch_ratio_range=(2.0, 4.0),
         ...     patch_count=2
         ... )
@@ -75,6 +85,10 @@ class DraemSevNet(AnomalibModule):
         severity_head_hidden_dim: int = 128,
         score_combination: str = "simple_average",
         severity_weight_for_combination: float = 0.5,
+        # 🆕 Spatial-Aware SeverityHead 설정
+        severity_head_pooling_type: str = "gap",
+        severity_head_spatial_size: int = 4,
+        severity_head_use_spatial_attention: bool = True,
         patch_ratio_range: tuple[float, float] = (2.0, 4.0),
         patch_width_range: tuple[int, int] = (20, 80),
         patch_count: int = 1,
@@ -113,7 +127,11 @@ class DraemSevNet(AnomalibModule):
             severity_head_mode=severity_head_mode,
             severity_head_hidden_dim=severity_head_hidden_dim,
             score_combination=score_combination,
-            severity_weight_for_combination=severity_weight_for_combination
+            severity_weight_for_combination=severity_weight_for_combination,
+            # 🆕 Spatial-Aware SeverityHead 설정 전달
+            severity_head_pooling_type=severity_head_pooling_type,
+            severity_head_spatial_size=severity_head_spatial_size,
+            severity_head_use_spatial_attention=severity_head_use_spatial_attention
         )
         
         # Initialize DRAEM-SevNet loss function

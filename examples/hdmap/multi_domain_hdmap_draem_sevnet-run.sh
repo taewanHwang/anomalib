@@ -3,8 +3,8 @@
 # pkill -f "multi_domain_hdmap_draem_sevnet-run.sh"
 # pkill -f "examples/hdmap/multi_domain_hdmap_draem_sevnet-training.py"
 
-# DRAEM-SevNet 병렬 실험 실행 스크립트
-# 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
+# DRAEM-SevNet Spatial-Aware 병렬 실험 실행 스크립트
+# 멀티 GPU를 활용하여 Spatial-Aware 실험 조건을 병렬로 실행
 
 AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
@@ -19,11 +19,19 @@ LOG_DIR="results/draem_sevnet/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
 
 echo "=================================="
-echo "🚀 DRAEM-SevNet 병렬 실험 시작"
+echo "🚀 DRAEM-SevNet Spatial-Aware 병렬 실험 시작"
 echo "=================================="
 echo "📁 로그 디렉토리: ${LOG_DIR}"
 echo "🖥️  사용 GPU: ${AVAILABLE_GPUS[*]}"
 echo "🧪 실험 조건: ${NUM_EXPERIMENTS}개"
+echo ""
+echo "🧠 Spatial-Aware 기능 테스트:"
+echo "   ✅ GAP vs Spatial-Aware 성능 비교"
+echo "   ✅ 다양한 Spatial Size (2x2, 4x4, 8x8)"
+echo "   ✅ Spatial Attention 메커니즘 효과"
+echo "   ✅ Multi-Scale Spatial Features"
+echo "   ✅ Score Combination 전략 비교"
+echo "   ✅ 다양한 Patch 생성 전략"
 echo ""
 
 # 실험 할당 및 실행
@@ -88,11 +96,18 @@ done
 
 echo ""
 echo "=================================="
-echo "🎉 모든 DRAEM SEVNET 실험 완료!"
+echo "🎉 모든 DRAEM-SevNet Spatial-Aware 실험 완료!"
 echo "   성공: ${SUCCESS_COUNT}/${NUM_EXPERIMENTS}"
 echo "   실패: ${FAILED_COUNT}/${NUM_EXPERIMENTS}"
 echo "   로그 디렉토리: ${LOG_DIR}"
 echo "=================================="
+echo ""
+echo "🔬 핵심 비교 실험:"
+echo "   📈 GAP vs Spatial-Aware 성능 차이"
+echo "   📈 Spatial Size 최적값 탐색"
+echo "   📈 Attention 메커니즘 효과"
+echo "   📈 Multi-Scale 효과"
+echo "   📈 최적 Score Combination 전략"
 
 
 

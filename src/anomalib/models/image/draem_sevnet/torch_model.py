@@ -130,6 +130,13 @@ class DraemSevNetModel(nn.Module):
             Defaults to ``"simple_average"``.
         severity_weight_for_combination (float, optional): Weight for severity score
             in weighted_average combination. Defaults to ``0.5``.
+        severity_head_pooling_type (str, optional): Pooling type for SeverityHead.
+            Options: "gap" (Global Average Pooling), "spatial_aware" (Spatial-Aware).
+            Defaults to ``"gap"``.
+        severity_head_spatial_size (int, optional): Spatial size to preserve in spatial_aware mode.
+            Defaults to ``4``.
+        severity_head_use_spatial_attention (bool, optional): Use spatial attention mechanism.
+            Defaults to ``True``.
             
     Example:
         >>> model = DraemSevNetModel(severity_head_mode="multi_scale")
@@ -149,7 +156,11 @@ class DraemSevNetModel(nn.Module):
         severity_head_mode: str = "single_scale",
         severity_head_hidden_dim: int = 128,
         score_combination: str = "simple_average",
-        severity_weight_for_combination: float = 0.5
+        severity_weight_for_combination: float = 0.5,
+        # 🆕 새로운 Spatial-Aware 옵션들
+        severity_head_pooling_type: str = "gap",           # "gap", "spatial_aware"
+        severity_head_spatial_size: int = 4,               # spatial_aware 모드 공간 크기
+        severity_head_use_spatial_attention: bool = True,  # 공간 어텐션 사용 여부
     ) -> None:
         super().__init__()
         
@@ -172,14 +183,20 @@ class DraemSevNetModel(nn.Module):
             self.severity_head = SeverityHead(
                 in_dim=512, 
                 hidden_dim=severity_head_hidden_dim,
-                mode="single_scale"
+                mode="single_scale",
+                pooling_type=severity_head_pooling_type,
+                spatial_size=severity_head_spatial_size,
+                use_spatial_attention=severity_head_use_spatial_attention,
             )
         elif severity_head_mode == "multi_scale":
             # Use act2~act6 features (base_width=64)
             self.severity_head = SeverityHead(
                 mode="multi_scale",
                 base_width=64,
-                hidden_dim=severity_head_hidden_dim
+                hidden_dim=severity_head_hidden_dim,
+                pooling_type=severity_head_pooling_type,
+                spatial_size=severity_head_spatial_size,
+                use_spatial_attention=severity_head_use_spatial_attention,
             )
         else:
             raise ValueError(f"Unsupported severity_head_mode: {severity_head_mode}. "
