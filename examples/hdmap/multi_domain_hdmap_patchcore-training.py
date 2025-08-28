@@ -64,7 +64,7 @@ from experiment_utils import (
 
 
 # JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_patchcore-exp_condition-test.json")
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_patchcore-exp_condition1.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()

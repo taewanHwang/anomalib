@@ -6,8 +6,7 @@
 # PatchCore 병렬 실험 실행 스크립트
 # 멀티 GPU를 활용하여 실험 조건을 병렬로 실행
 
-# AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
-AVAILABLE_GPUS=(15)
+AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 SCRIPT_PATH="examples/hdmap/multi_domain_hdmap_patchcore-training.py"
 
