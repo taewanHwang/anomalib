@@ -6,6 +6,7 @@ PyTorch Lightning DataLoader 생성과 배치 데이터 검증을 포함합니�
 """
 
 from pathlib import Path
+import torch
 
 from anomalib.data.datamodules.image.hdmap import HDMAPDataModule
 
@@ -17,7 +18,7 @@ def test_hdmap_datamodule():
     print("="*70)
     
     # 데이터 경로 설정
-    root_path = "./datasets/HDMAP/1000_8bit_resize_256x256"
+    root_path = "./datasets/HDMAP/1000_8bit_resize_224x224"
     
     try:
         # Domain A DataModule 생성
@@ -59,13 +60,33 @@ def test_hdmap_datamodule():
         print("\n4. 샘플 배치 데이터 확인...")
         train_batch = next(iter(train_loader))
         print(f"✅ 훈련 배치 이미지 형태: {train_batch.image.shape}")
+        print(f"✅ 이미지 채널 수: {train_batch.image.shape[1]} (C, H, W 순서)")
+        print(f"✅ 이미지 데이터 타입: {train_batch.image.dtype}")
+        print(f"✅ 이미지 값 범위: {train_batch.image.min().item():.4f} ~ {train_batch.image.max().item():.4f}")
         print(f"✅ 훈련 배치 라벨 형태: {train_batch.gt_label.shape}")
         print(f"✅ 라벨 값 범위: {train_batch.gt_label.min().item()} ~ {train_batch.gt_label.max().item()}")
         
         if test_loader:
             test_batch = next(iter(test_loader))
             print(f"✅ 테스트 배치 이미지 형태: {test_batch.image.shape}")
+            print(f"✅ 테스트 이미지 채널 수: {test_batch.image.shape[1]} (C, H, W 순서)")
+            print(f"✅ 테스트 이미지 데이터 타입: {test_batch.image.dtype}")
+            print(f"✅ 테스트 이미지 값 범위: {test_batch.image.min().item():.4f} ~ {test_batch.image.max().item():.4f}")
             print(f"✅ 테스트 배치 라벨 형태: {test_batch.gt_label.shape}")
+            
+            # RGB 채널별 동일성 확인 (grayscale → RGB 변환 확인)
+            if test_batch.image.shape[1] == 3:  # RGB 채널인 경우
+                r_channel = test_batch.image[:, 0, :, :]  # Red channel
+                g_channel = test_batch.image[:, 1, :, :]  # Green channel  
+                b_channel = test_batch.image[:, 2, :, :]  # Blue channel
+                
+                channels_identical = torch.allclose(r_channel, g_channel) and torch.allclose(g_channel, b_channel)
+                print(f"✅ RGB 채널 동일성 (grayscale → RGB 변환): {'Yes' if channels_identical else 'No'}")
+                
+                if channels_identical:
+                    print("   🔍 Grayscale 이미지가 RGB로 변환됨 (R=G=B)")
+                else:
+                    print("   🔍 실제 RGB 컬러 이미지")
             
             # 테스트 데이터 라벨 분포 확인
             good_count = (test_batch.gt_label == 0).sum().item()
@@ -85,7 +106,7 @@ def test_domain_transfer_scenario():
     print("도메인 전이 학습 시나리오 테스트")
     print("="*70)
     
-    root_path = "./datasets/HDMAP/1000_8bit_resize_256x256"
+    root_path = "./datasets/HDMAP/1000_8bit_resize_224x224"
     
     try:
         # Source Domain (domain_A) - 훈련용
@@ -127,8 +148,38 @@ def test_domain_transfer_scenario():
         target_batch = next(iter(target_dm.test_dataloader()))
         
         print(f"✅ Source 배치 형태: {source_batch.image.shape}")
+        print(f"✅ Source 채널 수: {source_batch.image.shape[1]}")
         print(f"✅ Target 배치 형태: {target_batch.image.shape}")
+        print(f"✅ Target 채널 수: {target_batch.image.shape[1]}")
         print(f"✅ 형태 일치: {source_batch.image.shape[1:] == target_batch.image.shape[1:]}")
+        
+        # 채널 변환 확인 섹션 추가
+        print(f"\n🔍 채널 변환 분석:")
+        print(f"   Source 이미지 값 범위: {source_batch.image.min().item():.4f} ~ {source_batch.image.max().item():.4f}")
+        print(f"   Target 이미지 값 범위: {target_batch.image.min().item():.4f} ~ {target_batch.image.max().item():.4f}")
+        
+        if source_batch.image.shape[1] == 3:  # RGB 채널인 경우
+            # Source batch 채널 동일성 확인
+            src_r = source_batch.image[:, 0, :, :]
+            src_g = source_batch.image[:, 1, :, :]  
+            src_b = source_batch.image[:, 2, :, :]
+            src_identical = torch.allclose(src_r, src_g) and torch.allclose(src_g, src_b)
+            
+            # Target batch 채널 동일성 확인
+            tgt_r = target_batch.image[:, 0, :, :]
+            tgt_g = target_batch.image[:, 1, :, :]
+            tgt_b = target_batch.image[:, 2, :, :]
+            tgt_identical = torch.allclose(tgt_r, tgt_g) and torch.allclose(tgt_g, tgt_b)
+            
+            print(f"   Source RGB 채널 동일성 (R=G=B): {'Yes' if src_identical else 'No'}")
+            print(f"   Target RGB 채널 동일성 (R=G=B): {'Yes' if tgt_identical else 'No'}")
+            
+            if src_identical and tgt_identical:
+                print("   ✅ 확인: Grayscale 이미지가 RGB로 변환됨 (1채널 → 3채널)")
+                print("   📍 변환 위치: anomalib/src/anomalib/data/utils/image.py:319")
+                print("       image = Image.open(path).convert('RGB')")
+            else:
+                print("   🤔 RGB 채널이 서로 다름 - 실제 컬러 이미지일 가능성")
         
         # 실제 도메인 전이 학습 시뮬레이션
         print("\n4. 도메인 전이 학습 시뮬레이션...")
@@ -152,7 +203,7 @@ def test_all_domains():
     print("모든 도메인 DataModule 테스트")
     print("="*70)
     
-    root_path = "./datasets/HDMAP/1000_8bit_resize_256x256"
+    root_path = "./datasets/HDMAP/1000_8bit_resize_224x224"
     domains = ["domain_A", "domain_B", "domain_C", "domain_D"]
     
     results = {}
