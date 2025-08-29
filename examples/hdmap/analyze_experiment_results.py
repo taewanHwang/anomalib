@@ -7,10 +7,13 @@ image_AUROC의 평균과 표준편차를 계산합니다.
 
 사용법:
     python analyze_experiment_results.py --results_dir /path/to/results/draem
-    python analyze_experiment_results.py --results_dir /path/to/results/draem --experiment_name "DRAEM_baseline_50epochs"
-    uv run examples/hdmap/analyze_experiment_results.py --results_dir results/draem_sevnet
+    python examples/hdmap/analyze_experiment_results.py --results_dir results_draemsevnet_cond7/draem_sevnet
+    python examples/hdmap/analyze_experiment_results.py --results_dir results/draem_sevnet
+    python examples/hdmap/analyze_experiment_results.py --results_dir results_patchcore_AtoD/patchcore
+    uv run examples/hdmap/analyze_experiment_results.py --results_dir results_patchcore_AtoD/patchcore
     uv run examples/hdmap/analyze_experiment_results.py --results_dir results_draem_14회/draem
     uv run examples/hdmap/analyze_experiment_results.py --results_dir results_draemsevnet_cond2/draem_sevnet
+    python examples/hdmap/analyze_experiment_results.py --results_dir results/patchcore
 """
 
 import argparse
