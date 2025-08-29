@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
-"""MultiDomain HDMAP Reverse Distillation 도메인 전이 학습 예시.
+"""MultiDomain HDMAP EfficientAD 도메인 전이 학습 예시.
 
-Reverse Distillation 모델과 MultiDomainHDMAPDataModule을 활용한 효율적인 도메인 전이 학습 실험 스크립트입니다.
+EfficientAD 모델과 MultiDomainHDMAPDataModule을 활용한 효율적인 도메인 전이 학습 실험 스크립트입니다.
 
-Reverse Distillation 특징:
-- Encoder-Decoder 구조: Pre-trained encoder + One-Class Bottleneck Embedding + Decoder
-- 특징 재구성 기반: Encoder와 Decoder 특징 간 cosine distance로 이상 탐지
-- Multi-scale Feature Fusion: 여러 ResNet layer의 특징을 융합하여 성능 향상
-- Teacher-Student 구조: Encoder(teacher)와 Decoder(student) 간의 지식 증류
-- 안정적 학습: Pre-trained backbone 활용으로 빠른 수렴과 안정적 성능
+EfficientAD 특징:
+- Student-Teacher 구조: Pre-trained EfficientNet teacher + lightweight student
+- Autoencoder 추가: Student-Autoencoder discrepancy로 전역 이상 탐지
+- 밀리초 수준 추론: 매우 빠른 추론 속도
+- ImageNet 학습: Teacher-Student 불일치를 위해 ImageNet 데이터 활용
+- 이중 탐지: Teacher-Student discrepancy (지역) + Student-Autoencoder discrepancy (전역)
 
 실험 구조:
 1. MultiDomainHDMAPDataModule 설정 (e.g. source: domain_A, targets: domain_B,C,D)
-2. Source Domain에서 Reverse Distillation 모델 훈련 (train 데이터)
+2. Source Domain에서 EfficientAD 모델 훈련 (train 데이터)
 3. Source Domain에서 성능 평가 (validation으로 사용될 test 데이터)
 4. Target Domains에서 동시 성능 평가 (각 도메인별 test 데이터)
 5. 도메인 전이 효과 종합 분석
 
-주요 개선점 (Reverse Distillation vs PatchCore):
-- 학습 기반 접근: 더 정교한 특징 학습으로 성능 향상 가능
-- 멀티스케일 특징: 3개 layer 조합으로 다양한 크기의 이상 탐지
-- 재구성 기반: Feature reconstruction error로 이상 판별
-- 안정적 훈련: Cosine distance loss로 안정적 학습
+주요 개선점 (EfficientAD vs PatchCore):
+- 학습 기반 접근: Teacher-Student 지식 증류로 더 정교한 특징 학습
+- 이중 탐지 메커니즘: 지역적 + 전역적 이상 탐지 능력
+- 초고속 추론: 밀리초 수준의 매우 빠른 추론 속도
+- 안정적 훈련: EfficientNet backbone으로 안정적 학습
 
 NOTE:
-- 실험 조건들은 multi_domain_hdmap_reverse_distillation_exp_condition.json 파일에서 관리됩니다.
-- Reverse Distillation은 학습이 필요하므로 early stopping, optimizer 설정이 중요합니다.
-- input_size 파라미터가 반드시 필요합니다.
+- 실험 조건들은 multi_domain_hdmap_efficientad_exp_condition.json 파일에서 관리됩니다.
+- EfficientAD는 학습이 필요하므로 early stopping, optimizer 설정이 중요합니다.
+- ImageNet/Imagenette 데이터셋이 필수적으로 필요합니다.
+- batch_size=1 권장 (논문 설정)
 """
 
 import os
@@ -41,8 +42,7 @@ import argparse
 
 # MultiDomain HDMAP import
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
-from anomalib.models.image.reverse_distillation import ReverseDistillation
-from anomalib.models.image.reverse_distillation.anomaly_map import AnomalyMapGenerationMode
+from anomalib.models.image.efficient_ad import EfficientAd
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -50,6 +50,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 # 공통 유틸리티 함수들 import
+# 공통 유틸리티 함수들 import - 상위 디렉토리에서 import
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from experiment_utils import (
     cleanup_gpu_memory,
     setup_warnings_filter,
@@ -68,7 +71,7 @@ from experiment_utils import (
 
 
 # JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_reverse_distillation-exp_condition-test.json")
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_efficientad-exp_condition-test.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -81,62 +84,52 @@ warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
 # 모델 훈련 및 실험 함수들
 # ========================================================================================
 
-def train_reverse_distillation_model_multi_domain(
+def train_efficientad_model_multi_domain(
     datamodule: MultiDomainHDMAPDataModule,
     config: Dict[str, Any],
     results_base_dir: str,
     logger: logging.Logger
 ) -> tuple:
-    """Reverse Distillation 모델을 Multi-Domain 설정으로 훈련합니다."""
+    """EfficientAD 모델을 Multi-Domain 설정으로 훈련합니다."""
     
-    print(f"🤖 Reverse Distillation 모델 생성 중...")
-    logger.info("🤖 Reverse Distillation 모델 생성 중...")
+    print(f"🤖 EfficientAD 모델 생성 중...")
+    logger.info("🤖 EfficientAD 모델 생성 중...")
     
-    # image_size 문자열을 튜플로 변환 (예: "224x224" -> (224, 224))
-    if isinstance(config["image_size"], str):
-        height, width = map(int, config["image_size"].split("x"))
-        image_size = (height, width)
-    else:
-        image_size = tuple(config["image_size"])
-    
-    # anomaly_map_mode 문자열을 enum으로 변환
-    if isinstance(config["anomaly_map_mode"], str):
-        anomaly_map_mode = AnomalyMapGenerationMode.MULTIPLY if config["anomaly_map_mode"].lower() == "multiply" else AnomalyMapGenerationMode.ADD
-    else:
-        anomaly_map_mode = config["anomaly_map_mode"]
-    
-    # Reverse Distillation 모델 생성
-    model = ReverseDistillation(
-        backbone=config["backbone"],
-        layers=config["layers"],
-        pre_trained=config["pre_trained"],
-        anomaly_map_mode=anomaly_map_mode,
+    # EfficientAD 모델 생성
+    model = EfficientAd(
+        imagenet_dir=config["imagenet_dir"],
+        teacher_out_channels=config["teacher_out_channels"],
+        model_size=config["model_size"],
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+        padding=config["padding"],
+        pad_maps=config["pad_maps"],
     )
     
-    print(f"   ✅ Reverse Distillation 모델 생성 완료")
-    print(f"   📊 특징: Teacher-Student 구조, Feature Reconstruction 기반")
-    logger.info("📊 Reverse Distillation 특징: Encoder-Decoder, Feature Reconstruction")
+    print(f"   ✅ EfficientAD 모델 생성 완료")
+    print(f"   📊 특징: Student-Teacher + Autoencoder, Fast Inference")
+    logger.info("📊 EfficientAD 특징: Student-Teacher + Autoencoder, Fast Inference")
     
-    # Early Stopping 및 Checkpoint 설정
+    # Early Stopping 및 Checkpoint 설정 (EfficientAD는 train loss 기반)
     early_stopping = EarlyStopping(
-        monitor="val_image_AUROC",
+        monitor="train_loss_epoch",
         patience=config["early_stopping_patience"],
-        mode="max",
+        mode="min",
         verbose=True
     )
     
     checkpoint_callback = ModelCheckpoint(
-        filename=f"reverse_distillation_multi_domain_{datamodule.source_domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-        monitor="val_image_AUROC",
-        mode="max",
+        filename=f"efficientad_multi_domain_{datamodule.source_domain}_" + "{epoch:02d}_{train_loss_epoch:.4f}",
+        monitor="train_loss_epoch",
+        mode="min",
         save_top_k=1,
         verbose=True
     )
     
-    print(f"   📊 Early Stopping: patience={config['early_stopping_patience']}, monitor=val_image_AUROC (max)")
-    print(f"   💾 Model Checkpoint: monitor=val_image_AUROC (max), save_top_k=1")
-    logger.info(f"📊 Early Stopping 설정: patience={config['early_stopping_patience']}, monitor=val_image_AUROC")
-    logger.info(f"💾 Model Checkpoint 설정: monitor=val_image_AUROC")
+    print(f"   📊 Early Stopping: patience={config['early_stopping_patience']}, monitor=train_loss_epoch (min)")
+    print(f"   💾 Model Checkpoint: monitor=train_loss_epoch (min), save_top_k=1")
+    logger.info(f"📊 Early Stopping 설정: patience={config['early_stopping_patience']}, monitor=train_loss_epoch")
+    logger.info(f"💾 Model Checkpoint 설정: monitor=train_loss_epoch")
     
     # TensorBoard 로거 설정
     tb_logger = TensorBoardLogger(
@@ -165,8 +158,8 @@ def train_reverse_distillation_model_multi_domain(
     logger.info(f"⚙️ Engine 설정: max_epochs={config['max_epochs']}")
     
     # 훈련 실행
-    print(f"🚀 Reverse Distillation 모델 훈련 시작...")
-    logger.info("🚀 Reverse Distillation 모델 훈련 시작")
+    print(f"🚀 EfficientAD 모델 훈련 시작...")
+    logger.info("🚀 EfficientAD 모델 훈련 시작")
     
     engine.fit(
         model=model,
@@ -183,17 +176,17 @@ def train_reverse_distillation_model_multi_domain(
         print(f"   ⚠️ 체크포인트를 찾을 수 없습니다.")
         logger.warning("⚠️ 체크포인트를 찾을 수 없습니다.")
     
-    print(f"   ✅ Reverse Distillation 훈련 완료! (val_image_AUROC 최적화)")
-    logger.info("✅ Reverse Distillation 훈련 완료! (val_image_AUROC 최적화)")
+    print(f"   ✅ EfficientAD 훈련 완료! (val_image_AUROC 최적화)")
+    logger.info("✅ EfficientAD 훈련 완료! (val_image_AUROC 최적화)")
     
     return model, engine, best_checkpoint
 
 
-def run_single_reverse_distillation_experiment(
+def run_single_efficientad_experiment(
     condition: dict,
     log_dir: str = None
 ) -> dict:
-    """단일 Reverse Distillation 실험 조건에 대한 실험 수행."""
+    """단일 EfficientAD 실험 조건에 대한 실험 수행."""
     
     # config에서 도메인 설정 가져오기
     config = condition["config"]
@@ -210,15 +203,15 @@ def run_single_reverse_distillation_experiment(
     else:
         # 직접 호출된 경우: 새로운 timestamp 생성
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_timestamp_dir = f"results/reverse_distillation/{timestamp}"
+        base_timestamp_dir = f"results/efficientad/{timestamp}"
         experiment_folder = f"{condition['name']}_{timestamp}"
     
-    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/reverse_distillation/{experiment_folder}"
+    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/efficientad/{experiment_folder}"
     
     os.makedirs(results_base_dir, exist_ok=True)
     
     print(f"================================================================================")
-    print(f"🚀 Reverse Distillation 실험 시작: {condition['name']}")
+    print(f"🚀 EfficientAD 실험 시작: {condition['name']}")
     print(f"================================================================================")
     print(f"\n🔬 실험 조건:")
     print(f"   📝 이름: {condition['name']}")
@@ -242,7 +235,7 @@ def run_single_reverse_distillation_experiment(
         )
         
         # 모델 훈련
-        fitted_model, engine, best_checkpoint = train_reverse_distillation_model_multi_domain(
+        fitted_model, engine, best_checkpoint = train_efficientad_model_multi_domain(
             datamodule=multi_datamodule,
             config=condition["config"],
             results_base_dir=results_base_dir,
@@ -271,10 +264,10 @@ def run_single_reverse_distillation_experiment(
             anomalib_image_paths = []
             base_search_path = Path(results_base_dir)
             
-            # Reverse Distillation 이미지 경로 패턴 검색
+            # EfficientAD 이미지 경로 패턴 검색
             patterns = [
-                "**/ReverseDistillation/MultiDomainHDMAPDataModule/*/images",  # v0, v1 등의 버전 폴더
-                "**/ReverseDistillation/latest/images"  # latest 링크가 있는 경우
+                "**/EfficientAd/MultiDomainHDMAPDataModule/*/images",  # v0, v1 등의 버전 폴더
+                "**/EfficientAd/latest/images"  # latest 링크가 있는 경우
             ]
             for pattern in patterns:
                 found_paths = list(base_search_path.glob(pattern))
@@ -330,20 +323,20 @@ def run_single_reverse_distillation_experiment(
         
         # 시각화 폴더 생성
         if latest_version_path:
-            # Reverse Distillation 시각화 폴더 생성 (target_results 이후에 실행)
-            reverse_distillation_viz_path_str = create_experiment_visualization(
+            # EfficientAD 시각화 폴더 생성 (target_results 이후에 실행)
+            efficientad_viz_path_str = create_experiment_visualization(
                 experiment_name=condition['name'],
-                model_type="ReverseDistillation",
+                model_type="EfficientAD",
                 source_domain=source_domain,
                 target_domains=target_domains,
                 results_base_dir=f"{results_base_dir}/tensorboard_logs"  # DRAEM SevNet처럼 tensorboard_logs 하위에 생성
             )
-            reverse_distillation_viz_path = Path(reverse_distillation_viz_path_str)
+            efficientad_viz_path = Path(efficientad_viz_path_str)
             
             # Source Domain 이미지 복사
             if anomalib_results_path:
                 source_success = organize_source_domain_results(
-                    sevnet_viz_path=str(reverse_distillation_viz_path),
+                    sevnet_viz_path=str(efficientad_viz_path),
                     results_base_dir=str(anomalib_results_path),  # 실제 Anomalib 이미지가 있는 경로
                     source_domain=source_domain
                 )
@@ -365,7 +358,7 @@ def run_single_reverse_distillation_experiment(
             source_results=source_results,
             target_results=target_results,
             training_info=training_info,
-            model_type="Reverse Distillation",
+            model_type="EfficientAD",
             condition=condition
         )
         
@@ -396,7 +389,7 @@ def run_single_reverse_distillation_experiment(
         }
         
     except Exception as e:
-        error_msg = f"Reverse Distillation 실험 실패 - {condition['name']}: {str(e)}"
+        error_msg = f"EfficientAD 실험 실패 - {condition['name']}: {str(e)}"
         print(f"❌ {error_msg}")
         logging.getLogger(__name__).error(error_msg)
         import traceback
@@ -418,10 +411,10 @@ def run_single_reverse_distillation_experiment(
 
 def main():
     """메인 함수 - PatchCore와 동일한 구조"""
-    parser = argparse.ArgumentParser(description="Reverse Distillation MultiDomain HDMAP 실험 실행")
+    parser = argparse.ArgumentParser(description="EfficientAD MultiDomain HDMAP 실험 실행")
     parser.add_argument("--gpu-id", type=int, default=0, help="사용할 GPU ID")
     parser.add_argument("--experiment-id", type=int, default=0, help="실험 ID (병렬 실행용)")
-    parser.add_argument("--results-dir", type=str, default="results/reverse_distillation", help="결과 저장 디렉터리")
+    parser.add_argument("--results-dir", type=str, default="results/efficientad", help="결과 저장 디렉터리")
     parser.add_argument("--get-experiment-count", action="store_true", help="실험 조건 개수만 출력")
     
     args = parser.parse_args()
@@ -449,15 +442,15 @@ def main():
     
     # 로깅 설정
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = log_dir / f"reverse_distillation_experiment_{timestamp}.log"
-    logger = setup_experiment_logging(str(log_path), f"reverse_distillation_{condition['name']}")
+    log_path = log_dir / f"efficientad_experiment_{timestamp}.log"
+    logger = setup_experiment_logging(str(log_path), f"efficientad_{condition['name']}")
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
     
     try:
         # 실험 실행
-        result = run_single_reverse_distillation_experiment(
+        result = run_single_efficientad_experiment(
             condition=condition,
             log_dir=str(log_dir)
         )

@@ -27,6 +27,7 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 # Anomalib imports
 from anomalib.engine import Engine
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+from anomalib.data.datamodules.image.all_domains_hdmap import AllDomainsHDMAPDataModule
 
 
 def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
@@ -43,9 +44,11 @@ def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
         FileNotFoundError: JSON 파일을 찾을 수 없는 경우
         json.JSONDecodeError: JSON 파싱 오류가 발생한 경우
     """
-    # 현재 스크립트가 있는 디렉토리 기준으로 JSON 파일 경로 생성
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(current_dir, json_filename)
+    # caller 스크립트가 있는 디렉토리 기준으로 JSON 파일 경로 생성
+    import inspect
+    caller_frame = inspect.stack()[1]
+    caller_dir = os.path.dirname(os.path.abspath(caller_frame.filename))
+    json_path = os.path.join(caller_dir, json_filename)
     
     if not os.path.exists(json_path):
         raise FileNotFoundError(f"실험 조건 파일을 찾을 수 없습니다: {json_path}")
@@ -76,6 +79,44 @@ def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
                 config[field] = tuple(config[field])
     
     return experiment_conditions
+    
+    return experiment_conditions
+
+
+def load_all_domains_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
+    """
+    AllDomains 실험을 위한 JSON 파일에서 실험 조건을 로드합니다.
+    
+    Args:
+        json_filename: 로드할 JSON 파일명 (확장자 포함)
+        
+    Returns:
+        실험 조건 리스트
+        
+    Raises:
+        FileNotFoundError: JSON 파일을 찾을 수 없는 경우
+        json.JSONDecodeError: JSON 파싱 오류가 발생한 경우
+    """
+    # caller 스크립트가 있는 디렉토리 기준으로 JSON 파일 경로 생성
+    import inspect
+    caller_frame = inspect.stack()[1]
+    caller_dir = os.path.dirname(os.path.abspath(caller_frame.filename))
+    json_path = os.path.join(caller_dir, json_filename)
+    
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"실험 조건 파일을 찾을 수 없습니다: {json_path}")
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise json.JSONDecodeError(f"JSON 파싱 오류: {e}")
+    
+    # AllDomains JSON은 직접 리스트 형태
+    if isinstance(data, list):
+        return data
+    else:
+        raise ValueError("AllDomains JSON 파일은 리스트 형태여야 합니다.")
 
 
 def get_experiment_by_name(experiment_conditions: List[Dict[str, Any]], 
@@ -467,6 +508,78 @@ def create_multi_domain_datamodule(
     
     for i, target_domain in enumerate(datamodule.target_domains):
         print(f"     └─ {target_domain}: {len(datamodule.test_data[i])} 샘플")
+    
+    return datamodule
+
+
+def create_all_domains_datamodule(
+    datamodule_class,
+    batch_size: int,
+    image_size: str,
+    domains: list[str] = None,
+    val_split_ratio: float = 0.2,
+    dataset_root: str = None,
+    num_workers: int = 8
+) -> AllDomainsHDMAPDataModule:
+    """AllDomainsHDMAPDataModule 생성 및 설정.
+    
+    Args:
+        datamodule_class: AllDomainsHDMAPDataModule 클래스 (일관성을 위해 추가, 실제로는 사용하지 않음)
+        batch_size: 배치 크기
+        image_size: 이미지 크기 (예: "392x392")
+        domains: 사용할 도메인 리스트. None이면 모든 도메인 사용
+        val_split_ratio: 검증 데이터 분할 비율
+        dataset_root: 데이터셋 루트 경로 (None이면 자동 생성)
+        num_workers: 워커 수
+        
+    Returns:
+        설정된 AllDomainsHDMAPDataModule
+    """
+    print(f"\n📦 AllDomainsHDMAPDataModule 생성 중...")
+    
+    # 이미지 크기 파싱
+    try:
+        width, height = map(int, image_size.split('x'))
+        image_size_tuple = (width, height)
+    except ValueError:
+        # 기본값 사용
+        image_size_tuple = (392, 392)
+        print(f"   ⚠️ 이미지 크기 파싱 실패, 기본값 사용: {image_size_tuple}")
+    
+    # 도메인 정보 출력
+    domains_info = f"전체 도메인 (A~D)" if not domains else f"{domains}"
+    print(f"   🌍 도메인: {domains_info}")
+    print(f"   📏 이미지 크기: {image_size_tuple}")
+    print(f"   📊 배치 크기: {batch_size}")
+    print(f"   🔄 Val 분할 비율: {val_split_ratio}")
+    
+    # 이미지 크기에 따른 데이터셋 루트 경로 설정
+    if dataset_root is None:
+        # 현재 작업 디렉토리를 기준으로 절대 경로 생성
+        import os
+        current_dir = os.getcwd()
+        dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
+    
+    # AllDomainsHDMAPDataModule 생성
+    datamodule = AllDomainsHDMAPDataModule(
+        root=dataset_root,
+        domains=domains,  # None이면 모든 도메인 사용
+        train_batch_size=batch_size,
+        eval_batch_size=batch_size,
+        num_workers=num_workers,
+        val_split_ratio=val_split_ratio,  # train에서 validation 분할
+        seed=42
+    )
+    
+    # 데이터 설정
+    print(f"   ⚙️  DataModule 설정 중...")
+    datamodule.setup()
+    
+    # 데이터 통계 출력
+    print(f"   ✅ DataModule 설정 완료!")
+    print(f"      • Train 샘플: {len(datamodule.train_data):,}개 (모든 도메인 정상 데이터)")
+    print(f"      • Val 샘플: {len(datamodule.val_data):,}개 (train에서 분할)")
+    print(f"      • Test 샘플: {len(datamodule.test_data):,}개 (모든 도메인 정상+결함)")
     
     return datamodule
 
@@ -1026,19 +1139,31 @@ def save_experiment_results(
     if result["status"] == "success":
         logger.info("✅ 실험 성공!")
         
-        # Source Domain AUROC 안전한 포맷팅
-        source_auroc = result['source_results'].get('image_AUROC', None)
-        if isinstance(source_auroc, (int, float)):
-            logger.info(f"   Source Domain AUROC: {source_auroc:.4f}")
+        # AUROC 정보 로깅 (multi-domain 또는 all-domains에 따라 다르게 처리)
+        if 'source_results' in result:
+            # Multi-domain 실험의 경우
+            source_auroc = result['source_results'].get('image_AUROC', None)
+            if isinstance(source_auroc, (int, float)):
+                logger.info(f"   Source Domain AUROC: {source_auroc:.4f}")
+            else:
+                logger.info(f"   Source Domain AUROC: {source_auroc or 'N/A'}")
+            
+            # Target Domains Avg AUROC 안전한 포맷팅
+            avg_target_auroc = result.get('avg_target_auroc', None)
+            if isinstance(avg_target_auroc, (int, float)):
+                logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc:.4f}")
+            else:
+                logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc or 'N/A'}")
+                
+        elif 'all_domains_results' in result:
+            # All-domains 실험의 경우
+            all_domains_auroc = result['all_domains_results'].get('test_image_AUROC', None)
+            if isinstance(all_domains_auroc, (int, float)):
+                logger.info(f"   All Domains AUROC: {all_domains_auroc:.4f}")
+            else:
+                logger.info(f"   All Domains AUROC: {all_domains_auroc or 'N/A'}")
         else:
-            logger.info(f"   Source Domain AUROC: {source_auroc or 'N/A'}")
-        
-        # Target Domains Avg AUROC 안전한 포맷팅
-        avg_target_auroc = result.get('avg_target_auroc', None)
-        if isinstance(avg_target_auroc, (int, float)):
-            logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc:.4f}")
-        else:
-            logger.info(f"   Target Domains Avg AUROC: {avg_target_auroc or 'N/A'}")
+            logger.info("   AUROC 정보 없음")
         
         logger.info(f"   체크포인트: {result.get('best_checkpoint', 'N/A')}")
         

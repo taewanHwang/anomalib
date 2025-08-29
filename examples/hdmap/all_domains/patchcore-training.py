@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""MultiDomain HDMAP PatchCore 도메인 전이 학습 예시.
+"""AllDomains HDMAP PatchCore 통합 학습 예시.
 
-PatchCore 모델과 MultiDomainHDMAPDataModule을 활용한 효율적인 도메인 전이 학습 실험 스크립트입니다.
+PatchCore 모델과 AllDomainsHDMAPDataModule을 활용한 Multi-class Unified Model Anomaly Detection 실험 스크립트입니다.
 
 PatchCore 특징:
 - Memory Bank 기반: 정상 샘플의 patch feature들을 메모리 뱅크에 저장
@@ -12,11 +12,11 @@ PatchCore 특징:
 - Nearest Neighbor Search: 테스트 시 메모리 뱅크와의 거리 기반 anomaly score 계산
 
 실험 구조:
-1. MultiDomainHDMAPDataModule 설정 (e.g. source: domain_A, targets: domain_B,C,D)
-2. Source Domain에서 PatchCore 모델 피팅 (train 데이터로 메모리 뱅크 구축)
-3. Source Domain에서 성능 평가 (validation으로 사용될 test 데이터)
-4. Target Domains에서 동시 성능 평가 (각 도메인별 test 데이터)
-5. 도메인 전이 효과 종합 분석
+1. AllDomainsHDMAPDataModule 설정 (전체 도메인 A~D 통합)
+2. 통합 정상 데이터로 PatchCore 모델 피팅 (train 데이터로 메모리 뱅크 구축)
+3. 통합 검증 데이터에서 성능 평가 (validation 데이터)
+4. 통합 테스트 데이터에서 최종 성능 평가 (모든 도메인의 정상+결함)
+5. 도메인별 세부 성능 분석
 
 주요 개선점 (PatchCore vs 기존 학습 기반 모델):
 - 훈련 시간 단축: 1 epoch 피팅으로 빠른 학습
@@ -39,32 +39,38 @@ import logging
 import warnings
 import argparse
 
-# MultiDomain HDMAP import
-from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+# GPU 메모리 최적화를 위한 환경 변수 설정
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
+# 추가 메모리 최적화
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+
+# AllDomains HDMAP import
+from anomalib.data.datamodules.image.all_domains_hdmap import AllDomainsHDMAPDataModule
 from anomalib.models.image.patchcore import Patchcore
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 
-# 공통 유틸리티 함수들 import
+# 공통 유틸리티 함수들 import - 상위 디렉토리에서 import
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from experiment_utils import (
     cleanup_gpu_memory,
     setup_warnings_filter,
     setup_experiment_logging,
     extract_training_info,
-    organize_source_domain_results,
-    evaluate_target_domains,
     save_experiment_results,
     create_experiment_visualization,
-    create_multi_domain_datamodule,
-    evaluate_source_domain,
     load_experiment_conditions,
     analyze_experiment_results,
-    extract_target_domains_from_config
+    create_all_domains_datamodule,
+    evaluate_target_domains,
+    organize_source_domain_results
 )
 
 
-# JSON 파일에서 실험 조건 로드
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_patchcore-exp_condition1.json")
+# JSON 파일에서 실험 조건 로드 - multi_domain 패턴 사용
+EXPERIMENT_CONDITIONS = load_experiment_conditions("patchcore-exp_condition.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -77,8 +83,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
 # 모델 훈련 및 실험 함수들
 # ========================================================================================
 
-def train_patchcore_model_multi_domain(
-    datamodule: MultiDomainHDMAPDataModule, 
+def train_patchcore_model_all_domains(
+    datamodule, 
     config: Dict[str, Any],
     results_base_dir: str,
     logger: logging.Logger
@@ -116,9 +122,12 @@ def train_patchcore_model_multi_domain(
     logger.info("✅ PatchCore 모델 생성 완료 (학습 불필요, 피팅만 수행)")
     logger.info(f"🔧 Config 설정: backbone={config['backbone']}, layers={config['layers']}, coreset_ratio={config['coreset_sampling_ratio']}")
     
+    # 모델 생성 전 메모리 정리
+    cleanup_gpu_memory()
+    torch.cuda.empty_cache()
+    
     # PatchCore 모델 생성
     model = Patchcore(
-        # 🎯 PatchCore 핵심 설정
         backbone=config["backbone"],
         layers=config["layers"],
         pre_trained=config["pre_trained"],
@@ -137,19 +146,13 @@ def train_patchcore_model_multi_domain(
         version=""  # 빈 버전으로 version_x 폴더 방지
     )
     
-    # Engine 설정 (PatchCore 특화 - 학습 불필요하지만 Anomalib Engine 호환성을 위해 체크포인트 허용)
+    # Engine 설정 - 간단하게 유지 (multi_domain 패턴)
     engine_kwargs = {
         "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
         "devices": [0] if torch.cuda.is_available() else 1,
         "logger": tb_logger,
-        "callbacks": [],  # 빈 콜백 리스트 (Anomalib이 자동으로 ModelCheckpoint 추가)
-        "enable_checkpointing": True,  # Anomalib Engine 호환성을 위해 True로 설정
-        "log_every_n_steps": 10,
-        "enable_model_summary": True,
         "max_epochs": 1,  # PatchCore는 1 epoch만 실행
-        "check_val_every_n_epoch": 1,
-        "num_sanity_val_steps": 0,  # PatchCore trainer_arguments 반영
-        "gradient_clip_val": 0,     # PatchCore trainer_arguments 반영
+        "enable_checkpointing": True,
         "default_root_dir": results_base_dir
     }
     
@@ -159,6 +162,10 @@ def train_patchcore_model_multi_domain(
     print(f"   📁 결과 저장 경로: {results_base_dir}")
     logger.info(f"🔧 Engine 설정 완료 - PatchCore 1-epoch 피팅")
     logger.info(f"📁 결과 저장 경로: {results_base_dir}")
+    
+    # 모델 피팅 전 메모리 정리
+    cleanup_gpu_memory()
+    torch.cuda.empty_cache()
     
     # 모델 피팅 (학습 아닌 메모리 뱅크 구축)
     print(f"   🎯 PatchCore 피팅 시작... (메모리 뱅크 구축)")
@@ -182,20 +189,89 @@ def train_patchcore_model_multi_domain(
 
 
 
-def run_single_patchcore_experiment(
+def evaluate_all_domains_unified(
+    model: Patchcore,
+    engine: Engine,
+    datamodule,
+    checkpoint_path: str = None
+) -> dict:
+    """AllDomains 통합 모델 성능 평가.
+    
+    Args:
+        model: 피팅된 PatchCore 모델
+        engine: Engine 객체
+        datamodule: AllDomainsHDMAPDataModule
+        checkpoint_path: 체크포인트 경로 (PatchCore는 None)
+        
+    Returns:
+        평가 결과 딕셔너리
+    """
+    print(f"\n🎯 AllDomains 통합 모델 성능 평가")
+    
+    try:
+        # PatchCore는 체크포인트 로드 불필요 (메모리 뱅크가 모델에 저장됨)
+        if checkpoint_path:
+            print(f"   💾 Checkpoint 로드: {checkpoint_path}")
+        else:
+            print(f"   💾 PatchCore: 메모리 뱅크 기반 (체크포인트 불필요)")
+        
+        # 통합 테스트 데이터에서 평가
+        print(f"   🔍 통합 테스트 데이터 평가 중...")
+        print(f"      • 테스트 샘플: {len(datamodule.test_data):,}개")
+        print(f"      • 포함 도메인: {datamodule.domains}")
+        
+        # 테스트 평가 수행
+        test_results = engine.test(
+            model=model,
+            datamodule=datamodule,
+            ckpt_path=checkpoint_path
+        )
+        
+        if test_results and len(test_results) > 0:
+            results = test_results[0]  # 첫 번째 결과 사용
+            
+            # 결과 정리
+            unified_results = {}
+            for key, value in results.items():
+                if isinstance(value, torch.Tensor):
+                    unified_results[key] = float(value.item())
+                else:
+                    unified_results[key] = float(value)
+            
+            # 주요 메트릭 출력
+            auroc = unified_results.get('image_AUROC', 0.0)
+            f1_score = unified_results.get('image_F1Score', 0.0)
+            
+            print(f"   ✅ 통합 평가 완료!")
+            print(f"      • Image AUROC: {auroc:.4f}")
+            print(f"      • Image F1Score: {f1_score:.4f}")
+            
+            return unified_results
+            
+        else:
+            print(f"   ❌ 평가 결과가 비어있습니다.")
+            return {}
+            
+    except Exception as e:
+        print(f"   ❌ 평가 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+
+
+def run_single_all_domains_patchcore_experiment(
     condition: dict,
     log_dir: str = None
 ) -> dict:
-    """단일 PatchCore 실험 조건에 대한 실험 수행."""
+    """단일 AllDomains PatchCore 실험 조건에 대한 실험 수행."""
     
-    # config에서 도메인 설정 가져오기
+    # config에서 설정 가져오기
     config = condition["config"]
-    source_domain = config["source_domain"]
-    target_domains = extract_target_domains_from_config(config)
+    domains = config.get("domains", None)  # None이면 모든 도메인 사용
     
     # 각 실험마다 고유한 results 경로 생성
     from datetime import datetime
-    # run 스크립트에서 전달받은 log_dir 사용 (DRAEM과 동일하게)
+    # run 스크립트에서 전달받은 log_dir 사용
     if log_dir:
         # run 스크립트에서 호출된 경우: 기존 timestamp 폴더 재사용
         base_timestamp_dir = log_dir
@@ -204,46 +280,49 @@ def run_single_patchcore_experiment(
     else:
         # 직접 호출된 경우: 새로운 timestamp 생성
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_timestamp_dir = f"results/patchcore/{timestamp}"
+        base_timestamp_dir = f"results/patchcore_all_domains/{timestamp}"
         experiment_folder = f"{condition['name']}_{timestamp}"
     
-    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/patchcore/{experiment_folder}"
+    results_base_dir = f"{base_timestamp_dir}/AllDomainsHDMAP/patchcore/{experiment_folder}"
     
     # 실험 이름 생성
-    experiment_name = f"{source_domain}"
+    experiment_name = f"all_domains_{condition['name']}"
     
     print(f"\n{'='*80}")
-    print(f"🔬 PatchCore 실험 조건: {condition['name']}")
+    print(f"🔬 AllDomains PatchCore 실험 조건: {condition['name']}")
     print(f"📝 설명: {condition['description']}")
+    print(f"🌍 도메인: {'전체 (A~D)' if not domains else domains}")
     print(f"{'='*80}")
     
     try:
         # GPU 메모리 정리
         cleanup_gpu_memory()
         
-        # DataModule 생성
-        multi_datamodule = create_multi_domain_datamodule(
-            datamodule_class=MultiDomainHDMAPDataModule,
-            source_domain=source_domain,
-            target_domains=target_domains,
+        # AllDomainsHDMAPDataModule 생성 - multi_domain 패턴 사용
+        print(f"   🏗️  AllDomains HDMAP DataModule 생성 중...")
+        
+        all_domains_datamodule = create_all_domains_datamodule(
+            datamodule_class=AllDomainsHDMAPDataModule,
             batch_size=config["batch_size"],
-            image_size=config["image_size"]
+            image_size=config["image_size"],
+            domains=None,  # 모든 도메인 사용
+            val_split_ratio=0.2
         )
         
         # 모델 피팅
-        fitted_model, engine, best_checkpoint = train_patchcore_model_multi_domain(
-            datamodule=multi_datamodule,
+        fitted_model, engine, best_checkpoint = train_patchcore_model_all_domains(
+            datamodule=all_domains_datamodule,
             config=condition["config"],
             results_base_dir=results_base_dir,
             logger=logging.getLogger(__name__)
         )
         
-        # Source Domain 성능 평가
-        print(f"\n📊 Source Domain 성능 평가 - {condition['name']}")
-        source_results = evaluate_source_domain(
+        # 통합 모델 성능 평가
+        print(f"\n📊 AllDomains 통합 성능 평가 - {condition['name']}")
+        unified_results = evaluate_all_domains_unified(
             model=fitted_model,
             engine=engine,
-            datamodule=multi_datamodule,
+            datamodule=all_domains_datamodule,
             checkpoint_path=best_checkpoint  # PatchCore는 None
         )
         
@@ -291,88 +370,45 @@ def run_single_patchcore_experiment(
             latest_version_path = Path(results_base_dir)
             anomalib_results_path = None
         
-        # Target Domains 성능 평가
-        print(f"\n🎯 Target Domains 성능 평가 - {condition['name']}")
-        target_results = evaluate_target_domains(
-            model=fitted_model,
-            engine=engine,
-            datamodule=multi_datamodule,
-            checkpoint_path=best_checkpoint,  # PatchCore는 None
-            results_base_dir=str(anomalib_results_path) if anomalib_results_path else results_base_dir,  # 실제 Anomalib 이미지 경로
-            save_samples=True,  # Target Domain 이미지 복사 활성화
-            current_version_path=str(latest_version_path) if latest_version_path else None  # 시각화 폴더는 TensorBoard 경로
-        )
-        
-        if latest_version_path:
-            # PatchCore 시각화 폴더 생성 (target_results 이후에 실행)
-            patchcore_viz_path_str = create_experiment_visualization(
-                experiment_name=condition['name'],
-                model_type="PatchCore",
-                results_base_dir=str(latest_version_path),
-                source_domain=source_domain,
-                target_domains=multi_datamodule.target_domains,
-                source_results=source_results,
-                target_results=target_results
-            )
-            patchcore_viz_path = Path(patchcore_viz_path_str) if patchcore_viz_path_str else latest_version_path / "visualize"
-            
-            # Source Domain 이미지 복사
-            if anomalib_results_path:
-                source_success = organize_source_domain_results(
-                    sevnet_viz_path=str(patchcore_viz_path),
-                    results_base_dir=str(anomalib_results_path),  # 실제 Anomalib 이미지가 있는 경로
-                    source_domain=source_domain,
-                    specific_version_path=str(anomalib_results_path)  # 실제 이미지 경로 전달
-                )
-            else:
-                print("   ⚠️ Anomalib 이미지 경로를 찾을 수 없어 Source Domain 이미지 복사를 건너뜁니다.")
-                source_success = False
-            
-            if source_success:
-                print(f"   ✅ Source Domain ({source_domain}) 이미지 복사 완료")
-            else:
-                print(f"   ⚠️ Source Domain ({source_domain}) 이미지 복사 실패")
+        # AllDomains 접근법에서는 별도의 Target Domain 평가가 필요하지 않음
+        # 모든 도메인이 통합되어 하나의 모델로 평가됨
+        print(f"\n✅ AllDomains 통합 평가 완료 - {condition['name']}")
+        target_results = {}  # 빈 dict로 설정
         
         # 학습 과정 정보 추출 (PatchCore는 피팅 정보)
         training_info = extract_training_info(engine)
         
         # 결과 분석
         analysis = analyze_experiment_results(
-            source_results=source_results,
-            target_results=target_results,
+            source_results=unified_results,  # AllDomains는 source/target 구분 없음
+            target_results={},  # 빈 dict
             training_info=training_info,
             condition=condition,
-            model_type="PatchCore"
+            model_type="PatchCore_AllDomains"
         )
         
-        # JSON 저장을 위해 DRAEM과 호환되는 형식으로 결과 변환
-        source_results_compat = {}
-        if source_results and 'image_AUROC' in source_results:
-            source_results_compat = {
-                "test_image_AUROC": source_results['image_AUROC'],
-                "test_image_F1Score": source_results.get('image_F1Score', 0.0)
+        # JSON 저장을 위한 결과 변환
+        unified_results_compat = {}
+        if unified_results and 'image_AUROC' in unified_results:
+            unified_results_compat = {
+                "test_image_AUROC": unified_results['image_AUROC'],
+                "test_image_F1Score": unified_results.get('image_F1Score', 0.0)
             }
-        
-        target_results_compat = {}
-        for domain, result in target_results.items():
-            if 'image_AUROC' in result:
-                target_results_compat[domain] = {
-                    "test_image_AUROC": result['image_AUROC'],
-                    "test_image_F1Score": result.get('image_F1Score', 0.0)
-                }
         
         # 실험 결과 정리
         experiment_result = {
             "condition": condition,
             "experiment_name": experiment_name,
-            "source_results": source_results_compat,
-            "target_results": target_results_compat,
+            "unified_results": unified_results_compat,  # AllDomains는 통합 결과
+            "source_results": unified_results_compat,  # AllDomains에서는 unified_results를 source_results로도 사용
+            "target_results": target_results,  # 빈 dict
+            "domains": all_domains_datamodule.domains,
             "best_checkpoint": best_checkpoint,  # PatchCore는 None
             "training_info": training_info,
             "status": "success",
             "experiment_path": str(latest_version_path) if latest_version_path else None,
-            "avg_target_auroc": analysis["avg_target_auroc"]
-            }
+            "unified_auroc": unified_results.get('image_AUROC', 0.0)
+        }
         
         # DRAEM과 동일하게 각 실험의 tensorboard_logs 폴더에 JSON 결과 저장
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -388,12 +424,12 @@ def run_single_patchcore_experiment(
         except Exception as e:
             print(f"⚠️  JSON 저장 실패: {e}")
         
-        print(f"\n✅ 실험 완료: {condition['name']}")
+        print(f"\n✅ AllDomains 실험 완료: {condition['name']}")
         
         return experiment_result
         
     except Exception as e:
-        print(f"❌ 실험 실패 - {condition['name']}: {e}")
+        print(f"❌ AllDomains 실험 실패 - {condition['name']}: {e}")
         import traceback
         traceback.print_exc()
         
@@ -409,9 +445,9 @@ def run_single_patchcore_experiment(
         cleanup_gpu_memory()
 
 def main():
-    """PatchCore 실험 메인 함수."""
+    """AllDomains PatchCore 실험 메인 함수."""
     # 명령행 인자 파싱
-    parser = argparse.ArgumentParser(description="PatchCore 실험")
+    parser = argparse.ArgumentParser(description="AllDomains PatchCore 실험")
     parser.add_argument("--gpu-id", type=str, help="사용할 GPU ID")
     parser.add_argument("--experiment-id", type=int, help="실험 조건 ID (0부터 시작)")
     parser.add_argument("--log-dir", type=str, help="로그 저장 디렉토리")
@@ -438,7 +474,7 @@ def main():
     condition = EXPERIMENT_CONDITIONS[args.experiment_id]
     
     print("="*80)
-    print(f"🚀 PatchCore 실험 (GPU {args.gpu_id}): {condition['name']}")
+    print(f"🚀 AllDomains PatchCore 실험 (GPU {args.gpu_id}): {condition['name']}")
     print("="*80)
     
     # 로그 설정
@@ -446,8 +482,8 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = log_dir / f"patchcore_experiment_{timestamp}.log"
-    logger = setup_experiment_logging(str(log_path), f"patchcore_{condition['name']}")
+    log_path = log_dir / f"all_domains_patchcore_experiment_{timestamp}.log"
+    logger = setup_experiment_logging(str(log_path), f"all_domains_patchcore_{condition['name']}")
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
@@ -455,13 +491,13 @@ def main():
     try:
         # 실험 정보 로깅
         logger.info("="*80)
-        logger.info(f"🚀 PatchCore 실험 시작: {condition['name']}")
+        logger.info(f"🚀 AllDomains PatchCore 실험 시작: {condition['name']}")
         logger.info(f"GPU ID: {args.gpu_id} | 실험 ID: {args.experiment_id}")
         logger.info(f"설명: {condition['description']}")
         logger.info("="*80)
         
         # 실험 수행
-        result = run_single_patchcore_experiment(
+        result = run_single_all_domains_patchcore_experiment(
             condition=condition,
             log_dir=args.log_dir
         )
@@ -470,10 +506,10 @@ def main():
         result_filename = f"result_exp_{args.experiment_id:02d}_{condition['name']}_gpu{args.gpu_id}_{timestamp}.json"
         save_experiment_results(result, result_filename, log_dir, logger)
         
-        logger.info("✅ 실험 완료!")
+        logger.info("✅ AllDomains 실험 완료!")
         
     except Exception as e:
-        logger.error(f"❌ 실험 중 오류 발생: {e}")
+        logger.error(f"❌ AllDomains 실험 중 오류 발생: {e}")
         import traceback
         logger.error(traceback.format_exc())
     finally:

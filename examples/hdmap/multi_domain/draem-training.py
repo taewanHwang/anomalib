@@ -34,6 +34,9 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
 # Experiment utilities import
+# 공통 유틸리티 함수들 import - 상위 디렉토리에서 import
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from experiment_utils import (
     setup_warnings_filter,
     setup_experiment_logging,

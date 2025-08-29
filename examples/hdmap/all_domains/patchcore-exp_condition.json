@@ -1,0 +1,69 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "all_domains_baseline",
+      "description": "AllDomains PatchCore: 모든 도메인 통합, 기본 설정",
+      "config": {
+        "batch_size": 16,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer2", "layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "all_domains_light",
+      "description": "AllDomains PatchCore: 메모리 최적화 - 작은 배치, 단일 레이어",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.005,
+        "num_neighbors": 5
+      }
+    },
+    {
+      "name": "all_domains_ultra_light",
+      "description": "AllDomains PatchCore: 극도 메모리 절약 - 매우 작은 coreset",
+      "config": {
+        "batch_size": 4,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.003,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "all_domains_minimal",
+      "description": "AllDomains PatchCore: 최소 메모리 설정",
+      "config": {
+        "batch_size": 2,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.002,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "all_domains_efficient_layer2",
+      "description": "AllDomains PatchCore: layer2만 사용으로 메모리 절약",
+      "config": {
+        "batch_size": 12,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.007,
+        "num_neighbors": 6
+      }
+    }
+  ]
+}

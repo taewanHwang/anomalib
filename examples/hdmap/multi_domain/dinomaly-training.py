@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
-"""MultiDomain HDMAP DRAEM-SevNet 도메인 전이 학습 예시.
+"""MultiDomain HDMAP Dinomaly 도메인 전이 학습 예시.
 
-DRAEM-SevNet 모델과 MultiDomainHDMAPDataModule을 활용한 효율적인 도메인 전이 학습 실험 스크립트입니다.
+Dinomaly 모델과 MultiDomainHDMAPDataModule을 활용한 효율적인 도메인 전이 학습 실험 스크립트입니다.
 
-DRAEM-SevNet 특징:
-- DRAEM Backbone Integration: 기존 DRAEM의 97.5M 파라미터 backbone 통합
-- Wide ResNet Encoder: ImageNet pretrained encoder (기존 DRAEM과 동일)
-- Reconstructive + Discriminative Sub-Networks: 기존 DRAEM 구조 완전 활용
-- Spatial-Aware SeverityHead: 공간 정보 보존으로 성능 향상
-  * GAP vs Spatial-Aware pooling 선택 가능
-  * AdaptiveAvgPool2d로 부분 공간 정보 유지
-  * Spatial Attention 메커니즘 선택적 적용
-  * Multi-Scale Spatial Features 지원
-- Multi-task Learning: Mask prediction + Severity prediction 동시 학습
-- Score Combination: 다양한 조합 전략 (simple_average, weighted_average, maximum)
-- Early Stopping: val_image_AUROC 기반 학습 효율성 향상
+Dinomaly 특징:
+- Vision Transformer 기반: DINOv2 사전훈련 모델을 encoder로 활용
+- Encoder-Decoder 구조: 특징 재구성을 통한 이상 탐지
+- Multi-scale Feature 활용: DINOv2의 여러 중간 레이어에서 특징 추출
+- Cosine Similarity 기반: 인코더-디코더 특징 간 유사도로 이상도 계산
+- Reconstruction Loss: MSE + Cosine 손실을 통한 재구성 학습
+- 고해상도 입력: 518x518 입력으로 세밀한 이상 탐지
 
 실험 구조:
 1. MultiDomainHDMAPDataModule 설정 (e.g. source: domain_A, targets: domain_B,C,D)
-2. Source Domain에서 DRAEM-SevNet 모델 훈련 (train 데이터)
+2. Source Domain에서 Dinomaly 모델 훈련 (train 데이터)
 3. Source Domain에서 성능 평가 (validation으로 사용될 test 데이터)
 4. Target Domains에서 동시 성능 평가 (각 도메인별 test 데이터)
 5. 도메인 전이 효과 종합 분석
 
-주요 개선점 (DRAEM-SevNet vs Custom DRAEM):
-- 정보 효율성: Discriminative features 직접 활용으로 정보 손실 최소화
-- 성능 향상: Mask + Severity 결합으로 detection 정확도 개선
+주요 개선점 (Dinomaly vs CNN 기반 모델):
+- 전역 컨텍스트: ViT의 self-attention으로 전체 이미지 관계 파악
+- 사전훈련 품질: DINOv2의 고품질 self-supervised 특징 활용
+- 세밀한 로컬라이제이션: 고해상도 입력과 패치 기반 처리로 정밀한 이상 위치 파악
+- 복잡한 패턴 탐지: transformer 구조로 복잡한 이상 패턴 모델링
 
 NOTE:
-- 실험 조건들은 multi_domain_hdmap_draem_sevnet_exp_condition.py 파일에서 관리됩니다.
-- 코드 유지보수성을 위해 실험 설정과 실행 로직을 분리했습니다.
+- 실험 조건들은 multi_domain_hdmap_dinomaly_exp_condition.json 파일에서 관리됩니다.
+- DINOv2 모델은 518x518 입력 크기를 요구하므로 image_size 설정에 주의하세요.
 """
 
 import os
@@ -44,14 +41,19 @@ import argparse
 
 # MultiDomain HDMAP import
 from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
-from anomalib.models.image.draem_sevnet import DraemSevNet
+from anomalib.models.image.dinomaly import Dinomaly
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 
-# Early Stopping import
+# Early Stopping import (Dinomaly는 학습을 요구함)
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
-# 공통 유틸리티 함수들 import
+# 공통 유틸리티 함수들 import - 상위 디렉토리에서 import
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# 공통 유틸리티 함수들 import - 상위 디렉토리에서 import
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from experiment_utils import (
     cleanup_gpu_memory,
     setup_warnings_filter,
@@ -69,8 +71,8 @@ from experiment_utils import (
 )
 
 
-# JSON 파일에서 실험 조건 로드 (최적화된 조합 실험)
-EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_draem_sevnet-exp_condition13.json")
+# JSON 파일에서 실험 조건 로드
+EXPERIMENT_CONDITIONS = load_experiment_conditions("multi_domain_hdmap_dinomaly-exp_condition.json")
 
 # 경고 메시지 비활성화
 setup_warnings_filter()
@@ -83,120 +85,104 @@ warnings.filterwarnings("ignore", category=UserWarning, module="lightning")
 # 모델 훈련 및 실험 함수들
 # ========================================================================================
 
-def train_draem_sevnet_model_multi_domain(
+def train_dinomaly_model_multi_domain(
     datamodule: MultiDomainHDMAPDataModule, 
     config: Dict[str, Any],
     results_base_dir: str,
     logger: logging.Logger
-) -> tuple[DraemSevNet, Engine, str]:
-    """DRAEM-SevNet 모델 훈련 수행.
+) -> tuple[Dinomaly, Engine, str]:
+    """Dinomaly 모델 훈련 수행.
     
     Args:
         datamodule: 설정된 MultiDomainHDMAPDataModule
         config: 훈련 설정 딕셔너리
         results_base_dir: 결과 저장 기본 경로
-        experiment_name: 실험 이름
         logger: 로거 객체
         
     Returns:
         tuple: (훈련된 모델, Engine 객체, 체크포인트 경로)
         
     Note:
-        DRAEM-SevNet 특징:
-        - DRAEM Backbone (97.5M): Wide ResNet encoder + Discriminative/Reconstructive subnetworks
-        - SeverityHead: Discriminative encoder features 직접 활용
-        - Multi-task Loss: L2+SSIM (recon) + FocalLoss (seg) + MSE/SmoothL1 (severity)
-        - Score Combination: (mask_score + severity_score) / 2
-        - Early Stopping: val_image_AUROC 기반 학습 효율성 개선
+        Dinomaly 특징:
+        - Vision Transformer 기반: DINOv2를 encoder로 사용
+        - Reconstruction Loss: MSE + Cosine 손실로 특징 재구성 학습
+        - Multi-scale Features: 여러 ViT 레이어에서 특징 추출
+        - High Resolution: 518x518 입력으로 세밀한 이상 탐지
     """
     
-    print(f"\n🚀 DRAEM-SevNet 모델 훈련 시작")
-    logger.info("🚀 DRAEM-SevNet 모델 훈련 시작")
+    print(f"\n🚀 Dinomaly 모델 훈련 시작")
+    logger.info("🚀 Dinomaly 모델 훈련 시작")
     
-    print(f"   ✅ DRAEM-SevNet 모델 생성 완료")
     print(f"   🔧 Config 설정:")
-    print(f"      • 옵티마이저: {config['optimizer'].upper()}")
-    print(f"      • 학습률: {config['learning_rate']}")
-    print(f"      • Severity Head Mode: {config['severity_head_mode']}")
-    print(f"      • Score Combination: {config['score_combination']}")
-    print(f"      • Severity Loss Type: {config['severity_loss_type']}")
-    print(f"      • Severity Weight: {config['severity_weight']}")
-    print(f"      • 🧠 Spatial-Aware SeverityHead:")
-    print(f"        - Pooling Type: {config['severity_head_pooling_type']}")
-    print(f"        - Spatial Size: {config['severity_head_spatial_size']}")
-    print(f"        - Use Spatial Attention: {config['severity_head_use_spatial_attention']}")
-    print(f"      • Patch Width Range: {config['patch_width_range']}")
-    print(f"      • Patch Ratio Range: {config['patch_ratio_range']}")
-    print(f"      • Patch Count: {config['patch_count']}")
-    print(f"      • Severity Max: {config['severity_max']}")
+    print(f"      • Encoder Name: {config['encoder_name']}")
+    print(f"      • Target Layers: {config['target_layers']}")
+    print(f"      • Bottleneck Dropout: {config['bottleneck_dropout']}")
+    print(f"      • Decoder Depth: {config['decoder_depth']}")
+    if 'max_steps' in config:
+        print(f"      • Max Steps: {config['max_steps']}")
+    elif 'max_epochs' in config:
+        print(f"      • Max Epochs: {config['max_epochs']}")
+    print(f"      • Input Size: {config['image_size']}")
     
-    logger.info("✅ DRAEM-SevNet 모델 생성 완료")
-    logger.info(f"🔧 Config 설정: optimizer={config['optimizer']}, lr={config['learning_rate']}, severity_max={config['severity_max']}")
+    logger.info("✅ Dinomaly 모델 생성 완료 (DINOv2 기반 학습 모델)")
+    logger.info(f"🔧 Config 설정: encoder_name={config['encoder_name']}, target_layers={config['target_layers']}")
     
-    # DRAEM-SevNet 모델 생성
-    model = DraemSevNet(
-        # 🎯 DRAEM-SevNet 아키텍처 설정
-        severity_head_mode=config["severity_head_mode"],
-        score_combination=config["score_combination"],
-        severity_loss_type=config["severity_loss_type"],
-        
-        # 🧠 Spatial-Aware SeverityHead 설정 (NEW!)
-        severity_head_pooling_type=config["severity_head_pooling_type"],
-        severity_head_spatial_size=config["severity_head_spatial_size"],
-        severity_head_use_spatial_attention=config["severity_head_use_spatial_attention"],
-        
-        # 🔧 Synthetic Fault Generation 설정 
-        patch_width_range=config["patch_width_range"],
-        patch_ratio_range=config["patch_ratio_range"],
-        patch_count=config["patch_count"],
-        severity_max=config["severity_max"],
-        
-        # 🔧 Loss 가중치 설정
-        severity_weight=config["severity_weight"],
-        
-        # 🔧 옵티마이저 설정
-        optimizer=config["optimizer"],
-        learning_rate=config["learning_rate"],
-    )
+    # Dinomaly 모델 생성 - None 값 처리
+    model_params = {
+        "encoder_name": config["encoder_name"],
+        "bottleneck_dropout": config["bottleneck_dropout"],
+        "decoder_depth": config["decoder_depth"],
+        "remove_class_token": config["remove_class_token"]
+    }
     
-    # Early stopping과 model checkpoint 설정 (val_image_AUROC 기반)
+    # target_layers가 null이 아닌 경우만 전달 (None이면 기본값 사용)
+    if config["target_layers"] is not None:
+        model_params["target_layers"] = config["target_layers"]
+    
+    model = Dinomaly(**model_params)
+    
+    print(f"   ✅ Dinomaly 모델 생성 완료")
+    print(f"   📊 특징: DINOv2 기반, Encoder-Decoder 구조, 재구성 기반 학습")
+    logger.info("📊 Dinomaly 특징: DINOv2 기반, Encoder-Decoder 구조, 재구성 기반 학습")
+    
+    # 🎯 콜백 설정 (Dinomaly는 학습이 필요함)
+    callbacks = []
+    
+    # val_image_AUROC가 pseudo 값(0.5)으로 고정되는 문제로 val_loss 기반으로 변경
+    # Dinomaly는 reconstruction loss를 사용하므로 train_loss 기반이 더 안정적
     early_stopping = EarlyStopping(
-        monitor="val_image_AUROC",
-        patience=config["early_stopping_patience"],
-        mode="max",  # AUROC는 높을수록 좋음
-        verbose=True
+        monitor="train_loss",  # train_loss는 더 안정적으로 감소함
+        patience=config["early_stopping_patience"] * 2,  # patience를 늘려서 충분히 학습하도록
+        mode="min",
+        verbose=True,
+        min_delta=0.001,
+        stopping_threshold=0.01  # loss가 0.01 아래로 떨어지면 조기 종료하지 않음
     )
     
-    print(f"   📊 Early Stopping: patience={config['early_stopping_patience']}, monitor=val_image_AUROC (max)")
-    logger.info(f"📊 Early Stopping 설정: patience={config['early_stopping_patience']}, monitor=val_image_AUROC")
-    
-    # 체크포인트 경로 설정
     checkpoint_callback = ModelCheckpoint(
-        filename=f"draem_sevnet_multi_domain_{datamodule.source_domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-        monitor="val_image_AUROC",
-        mode="max",  # AUROC는 높을수록 좋음
-        save_top_k=1,
-        verbose=True
+        filename=f"dinomaly_multi_domain_{datamodule.source_domain}_" + "{step:05d}_{train_loss:.4f}",
+        monitor="train_loss",
+        mode="min",
+        save_top_k=3,  # 최고 성능 3개 체크포인트 저장
+        verbose=True,
+        save_last=True  # 마지막 체크포인트도 저장
     )
     
-    print(f"   💾 Model Checkpoint: monitor=val_image_AUROC (max), save_top_k=1")
-    logger.info(f"💾 Model Checkpoint 설정: monitor=val_image_AUROC")
+    callbacks.extend([early_stopping, checkpoint_callback])
     
-    # TensorBoard 로거 설정 (DRAEM과 동일)
+    # TensorBoard 로거 설정
     tb_logger = TensorBoardLogger(
         save_dir=results_base_dir,
         name="tensorboard_logs",
         version=""  # 빈 버전으로 version_x 폴더 방지
     )
     
-    # Engine 생성 및 훈련
+    # Engine 설정 (Dinomaly 특화 - 학습 필요)
     engine_kwargs = {
         "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
         "devices": [0] if torch.cuda.is_available() else 1,
         "logger": tb_logger,
-        "max_epochs": config["max_epochs"],
-        "callbacks": [early_stopping, checkpoint_callback],
-        "check_val_every_n_epoch": 1,
+        "callbacks": callbacks,
         "enable_checkpointing": True,
         "log_every_n_steps": 10,
         "enable_model_summary": True,
@@ -204,41 +190,59 @@ def train_draem_sevnet_model_multi_domain(
         "default_root_dir": results_base_dir
     }
     
+    # Dinomaly는 max_steps 기반 학습을 권장 (소스코드 기본값)
+    if 'max_steps' in config:
+        engine_kwargs["max_steps"] = config["max_steps"]
+        # Validation을 덜 자주 수행 (train_loss 기반 early stopping이므로)
+        # validation은 주로 최종 성능 확인용으로만 사용
+        engine_kwargs["val_check_interval"] = min(500, config["max_steps"] // 5)  # 5번만 validation 수행
+        engine_kwargs["check_val_every_n_epoch"] = None  # epoch 기반 validation 비활성화
+    elif 'max_epochs' in config:
+        engine_kwargs["max_epochs"] = config["max_epochs"]
+        engine_kwargs["check_val_every_n_epoch"] = 5  # 5 epoch마다 validation
+    else:
+        # 기본값으로 5000 steps 사용 (Dinomaly 소스코드 기본값)
+        engine_kwargs["max_steps"] = 5000
+        engine_kwargs["val_check_interval"] = 1000  # 5번만 validation 수행
+    
     engine = Engine(**engine_kwargs)
     
-    print(f"   🔧 Engine 설정 완료 - max_epochs: {config['max_epochs']}")
+    # 학습 설정 출력
+    if 'max_steps' in config:
+        print(f"   🔧 Engine 설정 완료 - max_steps: {config['max_steps']}")
+    elif 'max_epochs' in config:
+        print(f"   🔧 Engine 설정 완료 - max_epochs: {config['max_epochs']}")
+    else:
+        print(f"   🔧 Engine 설정 완료 - max_steps: 5000 (기본값)")
     print(f"   📁 결과 저장 경로: {results_base_dir}")
-    logger.info(f"🔧 Engine 설정 완료 - max_epochs: {config['max_epochs']}")
+    logger.info(f"🔧 Engine 설정 완료 - Dinomaly 학습 기반 모델")
     logger.info(f"📁 결과 저장 경로: {results_base_dir}")
     
-    # 모델 훈련
-    print(f"   🎯 모델 훈련 시작...")
-    logger.info("🎯 모델 훈련 시작...")
+    # 모델 훈련 (학습 기반 모델)
+    print(f"   🎯 Dinomaly 훈련 시작...")
+    logger.info("🎯 Dinomaly 훈련 시작...")
     
     engine.fit(
         model=model,
         datamodule=datamodule
     )
     
-    print(f"   ✅ 모델 훈련 완료!")
-    logger.info("✅ 모델 훈련 완료!")
-    
-    # 최고 성능 체크포인트 경로 확인
     best_checkpoint = checkpoint_callback.best_model_path
     print(f"   🏆 Best Checkpoint: {best_checkpoint}")
+    print(f"   ✅ Dinomaly 훈련 완료!")
     logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
+    logger.info("✅ Dinomaly 훈련 완료!")
     
     return model, engine, best_checkpoint
 
 
 
 
-
-def run_single_draem_sevnet_experiment(
+def run_single_dinomaly_experiment(
     condition: dict,
     log_dir: str = None
 ) -> dict:
-    """단일 DRAEM-SevNet 실험 조건에 대한 실험 수행."""
+    """단일 Dinomaly 실험 조건에 대한 실험 수행."""
     
     # config에서 도메인 설정 가져오기
     config = condition["config"]
@@ -247,7 +251,7 @@ def run_single_draem_sevnet_experiment(
     
     # 각 실험마다 고유한 results 경로 생성
     from datetime import datetime
-    # run 스크립트에서 전달받은 log_dir 사용 (DRAEM과 동일하게)
+    # run 스크립트에서 전달받은 log_dir 사용
     if log_dir:
         # run 스크립트에서 호출된 경우: 기존 timestamp 폴더 재사용
         base_timestamp_dir = log_dir
@@ -256,16 +260,16 @@ def run_single_draem_sevnet_experiment(
     else:
         # 직접 호출된 경우: 새로운 timestamp 생성
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_timestamp_dir = f"results/draem_sevnet/{timestamp}"
+        base_timestamp_dir = f"results/dinomaly/{timestamp}"
         experiment_folder = f"{condition['name']}_{timestamp}"
     
-    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/draem_sevnet/{experiment_folder}"
+    results_base_dir = f"{base_timestamp_dir}/MultiDomainHDMAP/dinomaly/{experiment_folder}"
     
     # 실험 이름 생성
     experiment_name = f"{source_domain}"
     
     print(f"\n{'='*80}")
-    print(f"🔬 DRAEM-SevNet 실험 조건: {condition['name']}")
+    print(f"🔬 Dinomaly 실험 조건: {condition['name']}")
     print(f"📝 설명: {condition['description']}")
     print(f"{'='*80}")
     
@@ -283,7 +287,7 @@ def run_single_draem_sevnet_experiment(
         )
         
         # 모델 훈련
-        trained_model, engine, best_checkpoint = train_draem_sevnet_model_multi_domain(
+        trained_model, engine, best_checkpoint = train_dinomaly_model_multi_domain(
             datamodule=multi_datamodule,
             config=condition["config"],
             results_base_dir=results_base_dir,
@@ -312,10 +316,10 @@ def run_single_draem_sevnet_experiment(
             anomalib_image_paths = []
             base_search_path = Path(results_base_dir)
             
-            # DraemSevNet 이미지 경로 패턴 검색 (실제 생성되는 경로)
+            # Dinomaly 이미지 경로 패턴 검색 (실제 생성되는 경로)
             patterns = [
-                "**/DraemSevNet/MultiDomainHDMAPDataModule/*/images",  # v0, v1 등의 버전 폴더
-                "**/DraemSevNet/latest/images"  # latest 링크가 있는 경우
+                "**/Dinomaly/MultiDomainHDMAPDataModule/*/images",  # v0, v1 등의 버전 폴더
+                "**/Dinomaly/latest/images"  # latest 링크가 있는 경우
             ]
             for pattern in patterns:
                 found_paths = list(base_search_path.glob(pattern))
@@ -356,22 +360,22 @@ def run_single_draem_sevnet_experiment(
         )
         
         if latest_version_path:
-            # DRAEM-SevNet 시각화 폴더 생성 (target_results 이후에 실행)
-            sevnet_viz_path_str = create_experiment_visualization(
+            # Dinomaly 시각화 폴더 생성 (target_results 이후에 실행)
+            dinomaly_viz_path_str = create_experiment_visualization(
                 experiment_name=condition['name'],
-                model_type="DRAEM-SevNet",
+                model_type="Dinomaly",
                 results_base_dir=str(latest_version_path),
                 source_domain=source_domain,
                 target_domains=multi_datamodule.target_domains,
                 source_results=source_results,
                 target_results=target_results
             )
-            sevnet_viz_path = Path(sevnet_viz_path_str) if sevnet_viz_path_str else latest_version_path / "visualize"
+            dinomaly_viz_path = Path(dinomaly_viz_path_str) if dinomaly_viz_path_str else latest_version_path / "visualize"
             
             # Source Domain 이미지 복사
             if anomalib_results_path:
                 source_success = organize_source_domain_results(
-                    sevnet_viz_path=str(sevnet_viz_path),
+                    sevnet_viz_path=str(dinomaly_viz_path),
                     results_base_dir=str(anomalib_results_path),  # 실제 Anomalib 이미지가 있는 경로
                     source_domain=source_domain,
                     specific_version_path=str(anomalib_results_path)  # 실제 이미지 경로 전달
@@ -394,10 +398,10 @@ def run_single_draem_sevnet_experiment(
             target_results=target_results,
             training_info=training_info,
             condition=condition,
-            model_type="DRAEM-SevNet"
+            model_type="Dinomaly"
         )
         
-        # JSON 저장을 위해 DRAEM과 호환되는 형식으로 결과 변환
+        # JSON 저장을 위해 호환되는 형식으로 결과 변환
         source_results_compat = {}
         if source_results and 'image_AUROC' in source_results:
             source_results_compat = {
@@ -426,7 +430,7 @@ def run_single_draem_sevnet_experiment(
             "avg_target_auroc": analysis["avg_target_auroc"]
             }
         
-        # DRAEM과 동일하게 각 실험의 tensorboard_logs 폴더에 JSON 결과 저장
+        # 각 실험의 tensorboard_logs 폴더에 JSON 결과 저장
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         result_filename = f"result_{condition['name']}_{timestamp}.json"
         
@@ -461,9 +465,9 @@ def run_single_draem_sevnet_experiment(
         cleanup_gpu_memory()
 
 def main():
-    """DRAEM-SevNet 실험 메인 함수."""
+    """Dinomaly 실험 메인 함수."""
     # 명령행 인자 파싱
-    parser = argparse.ArgumentParser(description="DRAEM-SevNet 실험")
+    parser = argparse.ArgumentParser(description="Dinomaly 실험")
     parser.add_argument("--gpu-id", type=str, help="사용할 GPU ID")
     parser.add_argument("--experiment-id", type=int, help="실험 조건 ID (0부터 시작)")
     parser.add_argument("--log-dir", type=str, help="로그 저장 디렉토리")
@@ -490,7 +494,7 @@ def main():
     condition = EXPERIMENT_CONDITIONS[args.experiment_id]
     
     print("="*80)
-    print(f"🚀 DRAEM-SevNet 실험 (GPU {args.gpu_id}): {condition['name']}")
+    print(f"🚀 Dinomaly 실험 (GPU {args.gpu_id}): {condition['name']}")
     print("="*80)
     
     # 로그 설정
@@ -498,8 +502,8 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = log_dir / f"draem_sevnet_experiment_{timestamp}.log"
-    logger = setup_experiment_logging(str(log_path), f"draem_sevnet_{condition['name']}")
+    log_path = log_dir / f"dinomaly_experiment_{timestamp}.log"
+    logger = setup_experiment_logging(str(log_path), f"dinomaly_{condition['name']}")
     
     # GPU 메모리 정리
     cleanup_gpu_memory()
@@ -507,13 +511,13 @@ def main():
     try:
         # 실험 정보 로깅
         logger.info("="*80)
-        logger.info(f"🚀 DRAEM-SevNet 실험 시작: {condition['name']}")
+        logger.info(f"🚀 Dinomaly 실험 시작: {condition['name']}")
         logger.info(f"GPU ID: {args.gpu_id} | 실험 ID: {args.experiment_id}")
         logger.info(f"설명: {condition['description']}")
         logger.info("="*80)
         
         # 실험 수행
-        result = run_single_draem_sevnet_experiment(
+        result = run_single_dinomaly_experiment(
             condition=condition,
             log_dir=args.log_dir
         )

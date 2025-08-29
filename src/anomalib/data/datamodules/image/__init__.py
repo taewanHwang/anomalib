@@ -11,6 +11,7 @@ anomaly detection. The following data modules are available:
 - ``Folder``: Custom folder structure with normal/abnormal images
 - ``HDMAP``: HDMAP dataset for domain transfer learning
 - ``MultiDomainHDMAPDataModule``: Multi-domain HDMAP dataset for advanced domain transfer learning
+- ``AllDomainsHDMAPDataModule``: All-domains HDMAP dataset for unified multi-class anomaly detection
 - ``Kolektor``: Kolektor Surface-Defect Dataset
 - ``MPDD``: Metal Parts Defect Detection Dataset
 - ``MVTecAD``: MVTec Anomaly Detection Dataset
@@ -37,6 +38,7 @@ from .datumaro import Datumaro
 from .folder import Folder
 from .hdmap import HDMAPDataModule as HDMAP
 from .multi_domain_hdmap import MultiDomainHDMAPDataModule
+from .all_domains_hdmap import AllDomainsHDMAPDataModule
 from .kolektor import Kolektor
 from .mpdd import MPDD
 from .mvtec_loco import MVTecLOCO
@@ -86,6 +88,7 @@ class ImageDataFormat(str, Enum):
 
 
 __all__ = [
+    "AllDomainsHDMAPDataModule",
     "BTech",
     "Datumaro",
     "Folder",

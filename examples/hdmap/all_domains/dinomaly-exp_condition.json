@@ -1,0 +1,164 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "all_domains_baseline",
+      "description": "All Domains - 기본 설정 (검증된 조건)",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 12000,
+        "early_stopping_patience": 150,
+        "learning_rate": 0.002,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 100
+      }
+    },
+    {
+      "name": "all_domains_large_model",
+      "description": "All Domains - Large 모델 사용",
+      "config": {
+        "batch_size": 4,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_large_14",
+        "target_layers": [4, 6, 8, 10, 12, 14, 16, 18],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 12000,
+        "early_stopping_patience": 150,
+        "learning_rate": 0.002,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 100
+      }
+    },
+    {
+      "name": "all_domains_high_lr",
+      "description": "All Domains - 높은 학습률과 더 많은 warmup",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 12000,
+        "early_stopping_patience": 150,
+        "learning_rate": 0.003,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 200
+      }
+    },
+    {
+      "name": "all_domains_deep_decoder",
+      "description": "All Domains - 더 깊은 decoder와 낮은 dropout",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.1,
+        "decoder_depth": 12,
+        "remove_class_token": false,
+        "max_steps": 12000,
+        "early_stopping_patience": 150,
+        "learning_rate": 0.002,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 100
+      }
+    },
+    {
+      "name": "all_domains_extended_training",
+      "description": "All Domains - 더 긴 학습과 큰 배치 사이즈",
+      "config": {
+        "batch_size": 16,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 20000,
+        "early_stopping_patience": 200,
+        "learning_rate": 0.002,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 150
+      }
+    },
+    {
+      "name": "all_domains_high_res",
+      "description": "All Domains - 높은 해상도 입력 (518x518)",
+      "config": {
+        "batch_size": 4,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 12000,
+        "early_stopping_patience": 150,
+        "learning_rate": 0.001,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0001,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 100
+      }
+    },
+    {
+      "name": "all_domains_optimized",
+      "description": "All Domains - 최적화된 설정 (더 많은 target layers)",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "bottleneck_dropout": 0.15,
+        "decoder_depth": 10,
+        "remove_class_token": false,
+        "max_steps": 15000,
+        "early_stopping_patience": 180,
+        "learning_rate": 0.0025,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.00005,
+        "gradient_clip_val": 0.1,
+        "warmup_steps": 120
+      }
+    },
+    {
+      "name": "all_domains_conservative",
+      "description": "All Domains - 보수적인 설정 (낮은 lr, 많은 patience)",
+      "config": {
+        "batch_size": 8,
+        "image_size": "224x224",
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.3,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "max_steps": 18000,
+        "early_stopping_patience": 250,
+        "learning_rate": 0.001,
+        "optimizer": "stable_adamw",
+        "weight_decay": 0.0002,
+        "gradient_clip_val": 0.05,
+        "warmup_steps": 200
+      }
+    }
+  ]
+}

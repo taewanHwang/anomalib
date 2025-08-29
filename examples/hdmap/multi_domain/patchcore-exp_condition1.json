@@ -5,7 +5,7 @@
       "description": "Domain A source - 기본 설정으로 full training",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -20,7 +20,7 @@
       "description": "Domain A source - ResNet101 백본 사용",
       "config": {
         "batch_size": 24,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "resnet101",
@@ -35,7 +35,7 @@
       "description": "Domain A source - 높은 coreset 비율 사용",
       "config": {
         "batch_size": 20,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -50,7 +50,7 @@
       "description": "Domain A source - 더 많은 이웃 수 사용",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_A",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -65,7 +65,7 @@
       "description": "Domain B source - 기본 설정으로 full training",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_B",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -80,7 +80,7 @@
       "description": "Domain B source - ResNet101 백본 사용",
       "config": {
         "batch_size": 24,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_B",
         "target_domains": "auto",
         "backbone": "resnet101",
@@ -95,7 +95,7 @@
       "description": "Domain B source - 높은 coreset 비율 사용",
       "config": {
         "batch_size": 20,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_B",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -110,7 +110,7 @@
       "description": "Domain B source - 더 많은 이웃 수 사용",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_B",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -125,7 +125,7 @@
       "description": "Domain C source - 기본 설정으로 full training",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_C",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -140,7 +140,7 @@
       "description": "Domain C source - ResNet101 백본 사용",
       "config": {
         "batch_size": 24,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_C",
         "target_domains": "auto",
         "backbone": "resnet101",
@@ -155,7 +155,7 @@
       "description": "Domain C source - 높은 coreset 비율 사용",
       "config": {
         "batch_size": 20,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_C",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -170,7 +170,7 @@
       "description": "Domain C source - 더 많은 이웃 수 사용",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_C",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -185,7 +185,7 @@
       "description": "Domain D source - 기본 설정으로 full training",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_D",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -200,7 +200,7 @@
       "description": "Domain D source - ResNet101 백본 사용",
       "config": {
         "batch_size": 24,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_D",
         "target_domains": "auto",
         "backbone": "resnet101",
@@ -215,7 +215,7 @@
       "description": "Domain D source - 높은 coreset 비율 사용",
       "config": {
         "batch_size": 20,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_D",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
@@ -230,7 +230,7 @@
       "description": "Domain D source - 더 많은 이웃 수 사용",
       "config": {
         "batch_size": 32,
-        "image_size": "392x392",
+        "image_size": "224x224",
         "source_domain": "domain_D",
         "target_domains": "auto",
         "backbone": "wide_resnet50_2",
