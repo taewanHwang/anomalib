@@ -2,448 +2,61 @@
 """
 실험 결과 분석 스크립트
 
-이 스크립트는 여러 실험 세션의 결과를 분석하여 각 실험 조건별로
-image_AUROC의 평균과 표준편차를 계산합니다.
+이 스크립트는 여러 실험의 결과를 분석하여 각 실험별로
+image_AUROC 값을 추출합니다.
 
 ==============================================================================
 🚀 기본 사용법:
 ==============================================================================
 
-1. 단일 모델 분석:
-   .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results/draem_single
-   .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results/dinomaly_single
-   .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results/patchcore_single
-
-2. 모든 모델 통합 분석 (추천):
+1. 모든 실험 분석:
    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models
 
-3. 특정 실험 조건만 분석:
-   .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models --experiment_name "baseline"
-
-4. 결과 CSV로 저장:
+2. 결과 CSV로 저장:
    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models --output comparison.csv
 
 ==============================================================================
-📁 대상 폴더 구조 (base-run.sh 결과):
+📁 대상 폴더 구조 (통합된 저장 방식):
 ==============================================================================
 
 results/
-├── draem_single/20250830_143052/SingleDomainHDMAP/DRAEM/...
-├── dinomaly_single/20250830_143052/SingleDomainHDMAP/Dinomaly/...  
-├── patchcore_single/20250830_143052/SingleDomainHDMAP/PatchCore/...
-└── draem_sevnet_single/20250830_143052/SingleDomainHDMAP/DRAEM_SevNet/...
+└── 20250831_074352/
+    ├── domainA_to_BCD_draem_quick_test_20250831_074352/
+    │   └── result_20250831_080624.json
+    ├── domainA_patchcore_baseline_20250831_074352/
+    │   └── result_20250831_081234.json
+    └── ...
 
 ==============================================================================
 📊 출력 내용:
 ==============================================================================
 
---all-models 사용 시:
-- 모델별 평균/최고/최저 AUROC 요약
-- 전체 실험 조건별 상세 성능 (AUROC 순 정렬)  
+- 전체 실험별 AUROC 값 (높은 순으로 정렬)
 - CSV 파일 자동 생성:
-  * all_models_analysis_summary.csv (전체 상세 결과)
-  * models_summary_all_models_analysis.csv (모델별 요약)
+  * experiment_analysis_summary.csv (전체 실험 결과)
 
 ==============================================================================
 🔧 고급 옵션:
 ==============================================================================
 
---model_type: 모델 타입 명시 (draem, dinomaly, patchcore 등)
---experiment_name: 특정 실험만 분석 (부분 문자열 매칭)
 --output: 결과 CSV 저장 경로 지정
-
-==============================================================================
-💡 이전 버전 호환성:
-==============================================================================
-
-기존 multidomain 결과도 분석 가능:
-    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results_draem_14회/draem
-    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results_patchcore_AtoD/patchcore
 """
 
 import argparse
 import json
-import re
-from collections import defaultdict
 from pathlib import Path
-from typing import List, Tuple, Dict
 
-import numpy as np
 import pandas as pd
 
 
-def extract_auroc_from_json(json_file_path: str) -> float:
-    """JSON 결과 파일에서 Image AUROC 값을 추출합니다.
-    
-    Args:
-        json_file_path: JSON 결과 파일 경로
-        
-    Returns:
-        AUROC 값 (float) 또는 None
-    """
-    try:
-        with open(json_file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            
-        # source_results에서 test_image_AUROC 추출
-        if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
-            return float(data['source_results']['test_image_AUROC'])
-        else:
-            print(f"   ⚠️ {json_file_path}에서 test_image_AUROC 값을 찾을 수 없습니다.")
-            return None
-            
-    except Exception as e:
-        print(f"   ❌ {json_file_path} 파일 읽기 오류: {e}")
-        return None
-
-
-def extract_auroc_from_log(log_file_path: str) -> float:
-    """로그 파일에서 Image AUROC 값을 추출합니다.
-    
-    Args:
-        log_file_path: 로그 파일 경로
-        
-    Returns:
-        AUROC 값 (float) 또는 None
-    """
-    try:
-        with open(log_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-        # "Image AUROC=0.8445" 패턴 찾기
-        import re
-        pattern = r'Image AUROC=([0-9.]+)'
-        match = re.search(pattern, content)
-        
-        if match:
-            return float(match.group(1))
-        else:
-            print(f"   ⚠️ {log_file_path}에서 AUROC 값을 찾을 수 없습니다.")
-            return None
-            
-    except Exception as e:
-        print(f"   ❌ {log_file_path} 파일 읽기 오류: {e}")
-        return None
-
-
-class ExperimentResultsAnalyzer:
-    """실험 결과 분석기"""
-    
-    def __init__(self, results_dir: str, model_type: str = None):
-        """
-        Args:
-            results_dir: 실험 결과가 저장된 기본 디렉토리 (예: results/draem)
-            model_type: 모델 타입 ('draem', 'draem_sevnet', 'fastflow' 등). None이면 자동 감지
-        """
-        self.results_dir = Path(results_dir)
-        self.model_type = model_type
-        self.experiment_data = defaultdict(list)
-        
-        # 모델 타입 자동 감지
-        if self.model_type is None:
-            self.model_type = self._detect_model_type()
-            print(f"자동 감지된 모델 타입: {self.model_type}")
-        
-    def _detect_model_type(self) -> str:
-        """결과 디렉토리에서 모델 타입을 자동 감지합니다"""
-        dir_name = self.results_dir.name.lower()
-        
-        # 디렉토리 이름에서 모델 타입 추출 (대문자 반환)
-        if 'draem_sevnet' in dir_name:
-            return 'DRAEM_SevNet'
-        elif 'draem' in dir_name:
-            return 'DRAEM'
-        elif 'dinomaly' in dir_name:
-            return 'Dinomaly'
-        elif 'fastflow' in dir_name:
-            return 'FastFlow'
-        elif 'padim' in dir_name:
-            return 'Padim'
-        elif 'patchcore' in dir_name:
-            return 'PatchCore'
-        else:
-            # 기본값으로 DRAEM 사용
-            return 'DRAEM'
-        
-    def find_all_experiment_sessions(self) -> List[Path]:
-        """모든 실험 세션 폴더를 찾습니다 (타임스탬프 기반)"""
-        sessions = []
-        if not self.results_dir.exists():
-            print(f"결과 디렉토리가 존재하지 않습니다: {self.results_dir}")
-            return sessions
-            
-        for item in self.results_dir.iterdir():
-            if item.is_dir() and item.name.startswith('2025'):  # 타임스탬프 패턴
-                sessions.append(item)
-                
-        return sorted(sessions, key=lambda x: x.name)
-    
-    def load_experiment_results(self, session_path: Path) -> Dict[str, dict]:
-        """특정 세션의 모든 실험 결과를 로드합니다"""
-        results = {}
-        
-        # MultiDomainHDMAP/{model_type}/ 또는 SingleDomainHDMAP/{model_type}/ 하위의 모든 실험 폴더 검색
-        possible_paths = [
-            session_path / "MultiDomainHDMAP" / self.model_type,
-            session_path / "SingleDomainHDMAP" / self.model_type
-        ]
-        
-        experiment_base_path = None
-        for path in possible_paths:
-            if path.exists():
-                experiment_base_path = path
-                break
-        
-        if experiment_base_path is None:
-            print(f"실험 결과 경로를 찾을 수 없습니다: {possible_paths}")
-            return results
-            
-        for exp_folder in experiment_base_path.iterdir():
-            if not exp_folder.is_dir():
-                continue
-                
-            # tensorboard_logs/result_*.json 파일 찾기
-            tensorboard_path = exp_folder / "tensorboard_logs"
-            if not tensorboard_path.exists():
-                continue
-                
-            for json_file in tensorboard_path.glob("result_*.json"):
-                try:
-                    with open(json_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        
-                    # 실험 이름 추출 - condition.name 우선, 없으면 experiment_name 사용
-                    condition_info = data.get('condition', {})
-                    if isinstance(condition_info, dict) and 'name' in condition_info:
-                        condition_name = condition_info['name']
-                    else:
-                        condition_name = data.get('experiment_name', 'unknown')
-                    
-                    # 타임스탬프 패턴 제거 (예: _20250817_145220)
-                    if condition_name.startswith('DRAEM_'):
-                        condition_name = re.sub(r'_\d{8}_\d{6}$', '', condition_name)
-                    
-                    results[condition_name] = data
-                    
-                except Exception as e:
-                    print(f"JSON 파일 로드 실패: {json_file}, 오류: {e}")
-                    
-        return results
-    
-    def collect_all_results(self) -> None:
-        """모든 세션의 결과를 수집합니다"""
-        sessions = self.find_all_experiment_sessions()
-        print(f"발견된 실험 세션: {len(sessions)}개")
-        
-        for session in sessions:
-            print(f"\n세션 분석 중: {session.name}")
-            session_results = self.load_experiment_results(session)
-            
-            for condition_name, data in session_results.items():
-                self.experiment_data[condition_name].append(data)
-                
-        print(f"\n총 수집된 실험 조건: {len(self.experiment_data)}개")
-        for condition, runs in self.experiment_data.items():
-            print(f"  {condition}: {len(runs)}회 실행")
-    
-    def calculate_statistics(self, experiment_name: str = None) -> pd.DataFrame:
-        """통계를 계산합니다"""
-        if experiment_name and experiment_name not in self.experiment_data:
-            print(f"실험 '{experiment_name}'를 찾을 수 없습니다.")
-            return pd.DataFrame()
-        
-        conditions_to_analyze = [experiment_name] if experiment_name else list(self.experiment_data.keys())
-        
-        results = []
-        
-        for condition_name in conditions_to_analyze:
-            runs = self.experiment_data[condition_name]
-            if not runs:
-                continue
-                
-            print(f"\n=== {condition_name} 분석 ===")
-            print(f"총 실행 횟수: {len(runs)}")
-            
-            # 동적으로 source와 target 도메인 감지
-            source_aurocs = []
-            target_aurocs_by_domain = {}  # domain_name -> [auroc_values]
-            avg_target_aurocs = []
-            source_domain = None
-            target_domains = []
-            
-            for run in runs:
-                # Source domain 찾기 - source_results에서 먼저 찾고, 없으면 results에서 찾기 (단일 도메인 실험용)
-                source_result = run.get('source_results', {})
-                auroc_value = None
-                
-                if 'test_image_AUROC' in source_result:
-                    auroc_value = source_result['test_image_AUROC']
-                elif 'image_AUROC' in run.get('results', {}):
-                    # 단일 도메인 실험의 경우 results.image_AUROC 사용
-                    auroc_value = run.get('results', {})['image_AUROC']
-                elif 'test_image_AUROC' in run.get('source_results', {}):
-                    auroc_value = run.get('source_results', {})['test_image_AUROC']
-                
-                if auroc_value is not None:
-                    source_aurocs.append(auroc_value)
-                    # source 도메인 이름 추출 (condition.config에서)
-                    if source_domain is None:
-                        condition = run.get('condition', {})
-                        config = condition.get('config', {})
-                        if 'source_domain' in config:
-                            source_domain = config['source_domain'].replace('domain_', '')  # domain_A -> A
-                        elif 'domain' in run.get('results', {}):
-                            # 단일 도메인 실험의 경우 results.domain 사용
-                            source_domain = run.get('results', {})['domain'].replace('domain_', '')
-                
-                # Target domains 수집
-                target_results = run.get('target_results', {})
-                current_run_target_aucs = []
-                
-                for domain_key, domain_data in target_results.items():
-                    if 'test_image_AUROC' in domain_data:
-                        domain_name = domain_key.replace('domain_', '')  # domain_B -> B
-                        
-                        if domain_name not in target_aurocs_by_domain:
-                            target_aurocs_by_domain[domain_name] = []
-                            target_domains.append(domain_name)
-                        
-                        auroc_value = domain_data['test_image_AUROC']
-                        target_aurocs_by_domain[domain_name].append(auroc_value)
-                        current_run_target_aucs.append(auroc_value)
-                
-                # 이번 run의 평균 target AUROC 계산
-                if current_run_target_aucs:
-                    avg_target_aurocs.append(np.mean(current_run_target_aucs))
-            
-            # target_domains 정렬 (일관성을 위해)
-            target_domains = sorted(target_domains)
-            
-            # 통계 계산 및 저장
-            def calc_stats(values: List[float]) -> Tuple[float, float, int]:
-                if not values:
-                    return 0.0, 0.0, 0
-                return np.mean(values), np.std(values, ddof=1) if len(values) > 1 else 0.0, len(values)
-            
-            source_mean, source_std, source_count = calc_stats(source_aurocs)
-            avg_target_mean, avg_target_std, avg_target_count = calc_stats(avg_target_aurocs)
-            
-            # 각 target 도메인별 통계 계산
-            target_stats = {}
-            for domain in target_domains:
-                if domain in target_aurocs_by_domain:
-                    mean, std, count = calc_stats(target_aurocs_by_domain[domain])
-                    target_stats[domain] = {
-                        'mean': mean,
-                        'std': std,
-                        'count': count
-                    }
-            
-            # Transfer ratio 계산 (avg_target_auroc_mean / source_auroc_mean)
-            transfer_ratio = avg_target_mean / source_mean if source_mean > 0 else 0.0
-            
-            # 결과 딕셔너리 동적 구성 (experiment_name은 간단한 이름만)
-            result_dict = {
-                'experiment_name': condition_name,  # 간단한 실험 이름
-                'total_runs': len(runs),
-                'source_domain': source_domain or 'Unknown',
-                'source_auroc_mean': source_mean,
-                'source_auroc_std': source_std,
-                'source_auroc_count': source_count,
-                'avg_target_auroc_mean': avg_target_mean,
-                'avg_target_auroc_std': avg_target_std,
-                'avg_target_auroc_count': avg_target_count,
-                'transfer_ratio': transfer_ratio
-            }
-            
-            # 각 target 도메인별 결과 추가 (실제 target 도메인만)
-            for domain in target_domains:
-                if domain in target_stats:
-                    result_dict[f'target_{domain}_auroc_mean'] = target_stats[domain]['mean']
-                    result_dict[f'target_{domain}_auroc_std'] = target_stats[domain]['std']
-                    result_dict[f'target_{domain}_auroc_count'] = target_stats[domain]['count']
-            
-            results.append(result_dict)
-            
-            # 콘솔 출력
-            print(f"Source Domain: {source_domain or 'Unknown'}")
-            print(f"Source AUROC: {source_mean:.4f} ± {source_std:.4f} (n={source_count})")
-            
-            # Target 도메인별 출력
-            for domain in sorted(target_domains):
-                if domain in target_stats:
-                    stats = target_stats[domain]
-                    print(f"Target {domain} AUROC: {stats['mean']:.4f} ± {stats['std']:.4f} (n={stats['count']})")
-            
-            print(f"평균 Target AUROC: {avg_target_mean:.4f} ± {avg_target_std:.4f} (n={avg_target_count})")
-            print(f"Transfer Ratio: {transfer_ratio:.4f}")
-        
-        return pd.DataFrame(results)
-    
-    def save_results(self, df: pd.DataFrame, output_path: str = None) -> None:
-        """결과를 CSV 파일로 저장합니다"""
-        if df.empty:
-            print("저장할 결과가 없습니다.")
-            return
-            
-        if output_path is None:
-            output_path = self.results_dir / "experiment_analysis_summary.csv"
-        
-        df.to_csv(output_path, index=False, encoding='utf-8')
-        print(f"\n결과가 저장되었습니다: {output_path}")
-    
-    def print_summary(self, df: pd.DataFrame) -> None:
-        """요약 통계를 출력합니다"""
-        if df.empty:
-            print("출력할 결과가 없습니다.")
-            return
-            
-        print("\n" + "="*80)
-        print("실험 결과 요약")
-        print("="*80)
-        
-        # 컬럼 너비 조정을 위한 설정
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.width', None)
-        pd.set_option('display.max_colwidth', 30)
-        pd.set_option('display.expand_frame_repr', False)
-        
-        # 주요 컬럼만 선택해서 출력
-        summary_cols = [
-            'experiment_name', 'total_runs', 'source_domain',
-            'source_auroc_mean', 'source_auroc_std',
-            'avg_target_auroc_mean', 'avg_target_auroc_std',
-            'transfer_ratio'
-        ]
-        
-        summary_df = df[summary_cols].copy()
-        
-        # 정렬: source_auroc_mean 높은 순, 같다면 avg_target_auroc_mean 높은 순
-        summary_df = summary_df.sort_values(
-            by=['source_auroc_mean', 'avg_target_auroc_mean'], 
-            ascending=[False, False]
-        )
-        
-        summary_df['source_auroc_mean'] = summary_df['source_auroc_mean'].round(4)
-        summary_df['source_auroc_std'] = summary_df['source_auroc_std'].round(4)
-        summary_df['avg_target_auroc_mean'] = summary_df['avg_target_auroc_mean'].round(4)
-        summary_df['avg_target_auroc_std'] = summary_df['avg_target_auroc_std'].round(4)
-        summary_df['transfer_ratio'] = summary_df['transfer_ratio'].round(4)
-        
-        print(summary_df.to_string(index=False))
-        
-        print("\n" + "="*80)
-
-
-def analyze_all_models(results_base_dir: str, experiment_name: str = None, output: str = None):
-    """모든 모델의 결과를 통합 분석"""
+def analyze_all_models(results_base_dir: str, output: str = None):
+    """모든 실험의 결과를 분석 (단순화된 버전)"""
     results_base_path = Path(results_base_dir)
     
-    print(f"🔍 모든 모델 통합 분석 시작...")
+    print(f"🔍 실험 결과 분석 시작...")
     print(f"📁 기본 디렉토리: {results_base_path}")
     
-    # 새로운 디렉토리 구조: results/timestamp/experiment_name/
-    # 모든 timestamp 디렉토리를 찾고, 그 안의 실험 디렉토리들을 분석
+    # timestamp 디렉토리를 찾고, 그 안의 실험 디렉토리들을 분석
     timestamp_dirs = [d for d in results_base_path.iterdir() if d.is_dir() and d.name.replace('_', '').isdigit()]
     
     if not timestamp_dirs:
@@ -463,155 +76,105 @@ def analyze_all_models(results_base_dir: str, experiment_name: str = None, outpu
     print(f"📊 발견된 실험 디렉토리: {len(all_experiment_dirs)}개")
     print(f"   예시: {[d.name for d in all_experiment_dirs[:3]]}")
     
-    # 실험 디렉토리를 모델별로 그룹화
-    model_groups = {}
+    # 각 실험 디렉토리에서 결과 수집
+    experiment_results = []
+    
     for exp_dir in all_experiment_dirs:
-        # 실험 이름에서 모델 타입 추출 (예: domainA_patchcore_baseline_timestamp -> patchcore)
-        exp_name = exp_dir.name
+        # 실험 루트 디렉토리에서 result_*.json 파일 찾기 (통합된 저장 방식)
+        json_files = list(exp_dir.glob("result_*.json"))
         
-        # timestamp 부분 제거 (마지막 _YYYYMMDD_HHMMSS 패턴)
-        import re
-        exp_name_clean = re.sub(r'_\d{8}_\d{6}$', '', exp_name)
-        
-        # domainA_ 부분 제거
-        if exp_name_clean.startswith('domainA_'):
-            remaining = exp_name_clean[8:]  # 'domainA_' 제거
-            
-            # 모델 타입 추출 (첫 번째 단어가 모델 타입)
-            if '_' in remaining:
-                model_type_lower = remaining.split('_')[0]
-            else:
-                model_type_lower = remaining
+        if json_files:
+            try:
+                with open(json_files[0], 'r', encoding='utf-8') as f:
+                    data = json.load(f)
                 
-            if model_type_lower not in model_groups:
-                model_groups[model_type_lower] = []
-            model_groups[model_type_lower].append(exp_dir)
+                # Single domain vs Multi domain 구분
+                if 'target_results' in data and data['target_results']:
+                    # Multi-domain 실험
+                    exp_name = exp_dir.name
+                    session_id = exp_dir.parent.name
+                    
+                    source_auroc = None
+                    if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
+                        source_auroc = data['source_results']['test_image_AUROC']
+                    
+                    # 각 target domain 결과를 개별 행으로 추가
+                    for domain_key, domain_data in data['target_results'].items():
+                        if 'test_image_AUROC' in domain_data:
+                            domain_name = domain_key.replace('domain_', '')
+                            experiment_results.append({
+                                'experiment_name': exp_name,
+                                'source_AUROC': source_auroc,
+                                'target_AUROC': domain_data['test_image_AUROC'],
+                                'target_domain': domain_name,
+                                'session_id': session_id,
+                                'type': 'Multi-domain'
+                            })
+                    
+                    # 평균 target AUROC도 추가
+                    if 'avg_target_auroc' in data:
+                        experiment_results.append({
+                            'experiment_name': exp_name,
+                            'source_AUROC': source_auroc,
+                            'target_AUROC': data['avg_target_auroc'],
+                            'target_domain': 'Average',
+                            'session_id': session_id,
+                            'type': 'Multi-domain'
+                        })
+                
+                else:
+                    # Single domain 실험
+                    source_auroc = None
+                    if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
+                        source_auroc = data['source_results']['test_image_AUROC']
+                    
+                    if source_auroc is not None:
+                        experiment_results.append({
+                            'experiment_name': exp_dir.name,
+                            'source_AUROC': source_auroc,
+                            'target_AUROC': 'N/A',
+                            'target_domain': 'N/A',
+                            'session_id': exp_dir.parent.name,
+                            'type': 'Single-domain'
+                        })
+                    else:
+                        print(f"   ⚠️ {exp_dir.name}에서 AUROC 값을 찾을 수 없습니다.")
+                        
+            except Exception as e:
+                print(f"   ⚠️ {exp_dir.name} JSON 파싱 오류: {e}")
+        else:
+            print(f"   ⚠️ {exp_dir.name}에서 result JSON 파일을 찾을 수 없습니다.")
     
-    if not model_groups:
-        print(f"❌ 유효한 모델 실험을 찾을 수 없습니다.")
+    if not experiment_results:
+        print("❌ 분석할 수 있는 실험 결과가 없습니다.")
         return
     
-    print(f"🎯 발견된 모델들: {list(model_groups.keys())}")
-    
-    all_results = []
-    
-    for model_type_lower, experiment_dirs in model_groups.items():
-        # 모델 타입 매핑 (대문자)
-        model_type_mapping = {
-            'draem': 'DRAEM',
-            'dinomaly': 'Dinomaly', 
-            'patchcore': 'PatchCore',
-            'draem_sevnet': 'DRAEM_SevNet'
-        }
-        model_type = model_type_mapping.get(model_type_lower, model_type_lower.upper())
-        
-        print(f"\n🔬 {model_type} 분석 중... ({len(experiment_dirs)}개 실험)")
-        
-        try:
-            # 각 실험 디렉토리에서 결과 수집
-            experiment_results = []
-            
-            for exp_dir in experiment_dirs:
-                # 먼저 JSON 결과 파일 찾기 (우선순위)
-                json_files = list((exp_dir / "tensorboard_logs").glob("result_*.json")) if (exp_dir / "tensorboard_logs").exists() else []
-                auroc = None
-                
-                if json_files:
-                    # JSON 파일이 있으면 JSON에서 추출
-                    try:
-                        auroc = extract_auroc_from_json(str(json_files[0]))
-                    except Exception as e:
-                        print(f"   ⚠️ {exp_dir.name} JSON 파싱 오류: {e}")
-                
-                if auroc is None:
-                    # JSON에서 못 찾으면 로그 파일에서 찾기 (백업)
-                    log_file = exp_dir / "domain_A_single.log"
-                    if log_file.exists():
-                        try:
-                            auroc = extract_auroc_from_log(str(log_file))
-                        except Exception as e:
-                            print(f"   ⚠️ {exp_dir.name} 로그 파싱 오류: {e}")
-                
-                if auroc is not None:
-                    experiment_results.append({
-                        'experiment_name': exp_dir.name,
-                        'image_AUROC': auroc,
-                        'session_id': exp_dir.parent.name  # timestamp
-                    })
-            
-            if not experiment_results:
-                print(f"⚠️ {model_type}에서 유효한 AUROC 결과를 찾을 수 없습니다.")
-                continue
-            
-            # DataFrame 생성 및 통계 계산
-            model_df = pd.DataFrame(experiment_results)
-            
-            if not model_df.empty:
-                # 모델 타입 컬럼 추가
-                model_df['Model'] = model_type
-                all_results.append(model_df)
-                print(f"✅ {model_type}: {len(model_df)} 개 실험 조건")
-            else:
-                print(f"⚠️ {model_type}: 분석할 데이터가 없습니다.")
-                
-        except Exception as e:
-            print(f"❌ {model_type} 분석 실패: {e}")
-            continue
-    
-    if not all_results:
-        print("❌ 분석할 수 있는 모델 결과가 없습니다.")
-        return
-    
-    # 모든 결과 통합
-    combined_df = pd.concat(all_results, ignore_index=True)
-    
-    # 컬럼 순서 재정렬 (Model을 앞으로)
-    cols = ['Model'] + [col for col in combined_df.columns if col != 'Model']
-    combined_df = combined_df[cols]
+    # DataFrame 생성
+    combined_df = pd.DataFrame(experiment_results)
     
     # 결과 출력
     print(f"\n{'='*80}")
-    print(f"🎯 모든 모델 통합 분석 결과")
+    print(f"🎯 실험 분석 결과")
     print(f"{'='*80}")
-    print(f"총 모델 수: {combined_df['Model'].nunique()}")
-    print(f"총 실험 조건 수: {len(combined_df)}")
-    print(f"\n📊 모델별 Image AUROC 요약:")
+    print(f"총 실험 수: {len(combined_df)}")
     
-    # 모델별 평균 성능 출력 (실제 컬럼명 사용)
-    auroc_column = 'image_AUROC'  # 실제 컬럼명은 image_AUROC
-    model_summary = None
+    # target_AUROC 기준으로 정렬 (N/A가 아닌 것만), 그 다음 source_AUROC
+    # N/A를 맨 아래로 보내기 위해 숫자 변환
+    display_df = combined_df.copy()
+    display_df['sort_target'] = display_df['target_AUROC'].apply(lambda x: -1 if x == 'N/A' else float(x))
+    display_df = display_df.sort_values(['sort_target', 'source_AUROC'], ascending=[False, False]).drop('sort_target', axis=1)
     
-    if auroc_column in combined_df.columns:
-        model_summary = combined_df.groupby('Model')[auroc_column].agg(['mean', 'max', 'min', 'count']).round(4)
-        model_summary.columns = ['평균_AUROC', '최고_AUROC', '최저_AUROC', '실험_수']
-        model_summary = model_summary.sort_values('평균_AUROC', ascending=False)
-        
-        print(model_summary)
-        
-        print(f"\n📈 전체 상세 결과:")
-        # Image AUROC 기준으로 정렬해서 출력
-        display_df = combined_df.sort_values(auroc_column, ascending=False)
-    else:
-        print(f"⚠️ AUROC 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {list(combined_df.columns)}")
-        display_df = combined_df
+    print(f"\n📈 전체 실험 결과:")
     print(display_df.to_string(index=False))
     
     # 결과 저장
     if output is None:
-        output = results_base_path / "all_models_analysis_summary.csv"
+        output = results_base_path / "experiment_analysis_summary.csv"
     else:
         output = Path(output)
     
     combined_df.to_csv(output, index=False, encoding='utf-8-sig')
-    print(f"\n💾 통합 결과 저장됨: {output}")
-    
-    # 모델별 요약도 저장 (model_summary가 있는 경우에만)
-    if model_summary is not None:
-        summary_output = output.parent / f"models_summary_{output.stem}.csv"
-        model_summary.to_csv(summary_output, encoding='utf-8-sig')
-        print(f"📋 모델별 요약 저장됨: {summary_output}")
-    else:
-        print("⚠️ 모델별 요약 저장을 건너뜁니다.")
+    print(f"\n💾 결과 저장됨: {output}")
 
 
 def main():
@@ -619,20 +182,8 @@ def main():
     parser.add_argument(
         '--results_dir', 
         type=str, 
-        default='/home/taewan.hwang/study/anomalib/results/draem',
-        help='실험 결과 디렉토리 경로'
-    )
-    parser.add_argument(
-        '--model_type', 
-        type=str, 
-        default=None,
-        help='모델 타입 (draem, draem_sevnet, fastflow, padim 등). None이면 자동 감지'
-    )
-    parser.add_argument(
-        '--experiment_name', 
-        type=str, 
-        default=None,
-        help='특정 실험만 분석 (예: DRAEM_baseline_50epochs)'
+        default='results',
+        help='실험 결과 디렉토리 경로 (기본: results)'
     )
     parser.add_argument(
         '--output', 
@@ -643,33 +194,18 @@ def main():
     parser.add_argument(
         '--all-models',
         action='store_true',
-        help='results 디렉토리의 모든 모델 결과를 통합 분석 (예: results/)'
+        help='모든 실험 결과를 분석 (필수 옵션)'
     )
     
     args = parser.parse_args()
     
-    if args.all_models:
-        # 모든 모델 통합 분석
-        analyze_all_models(args.results_dir, args.experiment_name, args.output)
-    else:
-        # 단일 모델 분석 (기존 방식)
-        print(f"실험 결과 분석 시작...")
-        print(f"결과 디렉토리: {args.results_dir}")
-        if args.model_type:
-            print(f"지정된 모델 타입: {args.model_type}")
-        if args.experiment_name:
-            print(f"특정 실험 분석: {args.experiment_name}")
-        
-        # 분석기 초기화 및 실행
-        analyzer = ExperimentResultsAnalyzer(args.results_dir, args.model_type)
-        analyzer.collect_all_results()
-        
-        # 통계 계산
-        results_df = analyzer.calculate_statistics(args.experiment_name)
-        
-        # 결과 출력 및 저장
-        analyzer.print_summary(results_df)
-        analyzer.save_results(results_df, args.output)
+    if not args.all_models:
+        print("❌ --all-models 옵션을 사용하여 분석을 수행하세요.")
+        print("예: python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models")
+        return
+    
+    # 통합 분석 실행
+    analyze_all_models(args.results_dir, args.output)
 
 
 if __name__ == "__main__":

@@ -352,15 +352,13 @@ class BaseAnomalyTrainer:
         
         # 결과 저장
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        tensorboard_logs_dir = Path(self.experiment_dir) / "tensorboard_logs"
-        tensorboard_logs_dir.mkdir(parents=True, exist_ok=True)
-        
+        # 실험 루트 디렉토리에 직접 저장 (multi-domain과 동일)
         result_filename = f"result_{timestamp}.json"
         
         results_file = save_experiment_results(
             result=experiment_results,
             result_filename=result_filename,
-            log_dir=tensorboard_logs_dir,
+            log_dir=Path(self.experiment_dir),  # 실험 루트 디렉토리
             logger=logger,
             model_type=self.model_type.upper()
         )

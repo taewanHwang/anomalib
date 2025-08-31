@@ -1,0 +1,84 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "domainA_to_BCD_draem_quick_test",
+      "description": "Domain A → B,C,D DRAEM 빠른 테스트 (3 epochs)",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 3,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "optimizer": "adamw",
+        "weight_decay": 0.0,
+        "num_workers": 8,
+        "seed": 42
+      }
+    },
+    {
+      "name": "domainA_to_BCD_dinomaly_quick_test",
+      "description": "Domain A → B,C,D Dinomaly 빠른 테스트 (3 epochs)",
+      "config": {
+        "model_type": "dinomaly",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 3,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 8,
+        "image_size": "224x224",
+        "optimizer": "adam",
+        "weight_decay": 1e-4,
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "remove_class_token": false,
+        "num_workers": 8,
+        "seed": 42
+      }
+    },
+    {
+      "name": "domainA_to_BCD_patchcore_quick_test",
+      "description": "Domain A → B,C,D PatchCore 빠른 테스트 (1 epoch)",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 1,
+        "early_stopping_patience": 3,
+        "batch_size": 32,
+        "image_size": "224x224",
+        "backbone": "resnet18",
+        "layers": ["layer2", "layer3"],
+        "coreset_sampling_ratio": 0.1,
+        "num_neighbors": 9,
+        "num_workers": 8,
+        "seed": 42
+      }
+    },
+    {
+      "name": "domainA_to_BCD_draem_sevnet_quick_test",
+      "description": "Domain A → B,C,D DRAEM-SevNet 빠른 테스트 (3 epochs)",
+      "config": {
+        "model_type": "draem_sevnet",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 3,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 16,
+        "image_size": "224x224",
+        "optimizer": "adam",
+        "weight_decay": 1e-4,
+        "score_combination": "weighted_average",
+        "severity_loss_type": "smooth_l1",
+        "severity_head_pooling_type": "gap",
+        "severity_weight": 1.0,
+        "num_workers": 8,
+        "seed": 42
+      }
+    }
+  ]
+}

@@ -1,29 +1,35 @@
 #!/bin/bash
 
-# Base Single Domain Anomaly Detection Training Script
+# Single Domain Anomaly Detection 통합 실험 병렬 실행 스크립트
 # 
 # 🚀 기본 사용법:
-#   ./examples/hdmap/single_domain/base-run.sh          # 단일 실험 (ID 0)
-#   ./examples/hdmap/single_domain/base-run.sh 5        # 특정 실험 (ID 5)
-#   ./examples/hdmap/single_domain/base-run.sh all      # 전체 실험 (멀티 GPU 자동 할당)
+#   ./examples/hdmap/single_domain/base-run.sh               # 사용법 안내
+#   ./examples/hdmap/single_domain/base-run.sh 0             # 특정 실험 (ID 0)
+#   ./examples/hdmap/single_domain/base-run.sh 0,1,2         # 여러 실험 (ID 0,1,2)
+#   ./examples/hdmap/single_domain/base-run.sh all           # 전체 실험 (멀티 GPU 자동 할당)
 #
 # 🔥 백그라운드 실행 (추천):
-#   nohup ./examples/hdmap/single_domain/base-run.sh all > training.log 2>&1 &
-#   nohup ./examples/hdmap/single_domain/base-run.sh 4 > exp4.log 2>&1 &
+#   nohup ./examples/hdmap/single_domain/base-run.sh all > single_domain_training.log 2>&1 &
+#   nohup ./examples/hdmap/single_domain/base-run.sh 2 > patchcore_test.log 2>&1 &
 #
 # 📊 실행 상태 확인:
-#   tail -f training.log                               # 메인 스크립트 로그 확인  
-#   tail -f results/*/training_detail.log             # 개별 실험 상세 로그 확인
-#   tail -f results/*/domain*_single.log              # 실험별 구조화된 로그 확인
-#   ps aux | grep base-run.sh                         # 스크립트 실행 여부
-#   ps aux | grep base-training                       # 개별 실험 진행 상황
-#   nvidia-smi                                        # GPU 사용 현황
+#   tail -f single_domain_training.log                      # 메인 스크립트 로그 확인  
+#   tail -f results/*/single_domain_*.log                   # 개별 실험 상세 로그 확인
+#   tail -f results/*/training_detail.log                   # 실험별 훈련 상세 로그 확인
+#   ps aux | grep base-run.sh                               # 스크립트 실행 여부
+#   ps aux | grep base-training                             # 개별 실험 진행 상황
+#   nvidia-smi                                              # GPU 사용 현황
 #
 # 🛑 실행 중단:
-#   pkill -f base-run.sh                              # 메인 스크립트 종료
-#   pkill -f base-training.py                         # 모든 실험 프로세스 종료
+#   pkill -f "single_domain.*base-run.sh"                   # 메인 스크립트 종료
+#   pkill -f "single_domain.*base-training.py"              # 모든 single-domain 실험 종료
 # 
 # 🖥️ GPU 설정: AVAILABLE_GPUS 배열을 수정하세요
+# 
+# 📋 Single-Domain 특징:
+#   - 단일 domain(A)에서 훈련 → 동일 domain(A)에서 평가
+#   - 전통적인 anomaly detection 성능 측정
+#   - 결과: domain A에서의 AUROC + F1Score
 
 set -e
 
@@ -45,8 +51,8 @@ fi
 AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 # 기본 설정
-CONFIG_FILE="$SCRIPT_DIR/base-exp_condition1.json"
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
+CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_quick_test.json"
 
 # 인자 처리
 MODE=${1:-0}

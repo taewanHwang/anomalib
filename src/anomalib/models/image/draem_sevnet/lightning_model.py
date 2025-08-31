@@ -247,13 +247,18 @@ class DraemSevNet(AnomalibModule):
             # For metrics calculation, use clean image prediction
             model_output = self.model(input_image)
         
-        # Return updated batch - Evaluator will handle metrics automatically (same as DRAEM)
-        # Convert dataclass to dict since DraemSevNetOutput doesn't have _asdict method
-        model_dict = {
-            "pred_score": model_output.final_score,
-            "anomaly_map": model_output.anomaly_map
-        }
-        return batch.update(**model_dict)
+        # Return updated batch - Evaluator will handle metrics automatically (same as test_step)
+        # Use same logic as test_step for consistent metrics
+        pred_score = getattr(model_output, 'final_score', getattr(model_output, 'pred_score', None))
+        
+        # Generate pred_label from pred_score (threshold will be applied by post_processor)
+        pred_label = (pred_score > 0.5).int() if pred_score is not None else None
+        
+        return batch.update(
+            pred_score=pred_score,
+            anomaly_map=model_output.anomaly_map,
+            pred_label=pred_label
+        )
 
 
     def test_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
