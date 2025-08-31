@@ -43,24 +43,32 @@ from anomalib.metrics import AUROC, Evaluator
 class BaseAnomalyTrainer:
     """통합 Anomaly Detection 모델 훈련을 위한 베이스 클래스"""
     
-    def __init__(self, config: Dict[str, Any], experiment_name: str, session_timestamp: str):
+    def __init__(self, config: Dict[str, Any], experiment_name: str, session_timestamp: str, experiment_dir: str = None):
         """
         Args:
             config: 실험 설정 딕셔너리 (model_type 포함)
             experiment_name: 실험 이름
             session_timestamp: 전체 세션의 timestamp
+            experiment_dir: 외부에서 지정한 실험 디렉터리 (선택적)
         """
         self.config = config
         self.experiment_name = experiment_name
         self.session_timestamp = session_timestamp
         self.model_type = config.get("model_type", "").lower()
+        self.external_experiment_dir = experiment_dir
         self.setup_paths()
         
     def setup_paths(self):
         """실험 경로 설정"""
-        self.results_dir = Path("results") / self.session_timestamp
-        self.experiment_dir = self.results_dir / f"{self.experiment_name}_{self.session_timestamp}"
-        self.experiment_dir.mkdir(parents=True, exist_ok=True)
+        if self.external_experiment_dir:
+            # bash 스크립트에서 전달받은 디렉터리 사용
+            self.experiment_dir = Path(self.external_experiment_dir)
+            self.results_dir = self.experiment_dir.parent
+        else:
+            # 호환성을 위한 기본 방식 (단독 실행 시)
+            self.results_dir = Path("results") / self.session_timestamp
+            self.experiment_dir = self.results_dir / f"{self.experiment_name}_{self.session_timestamp}"
+            self.experiment_dir.mkdir(parents=True, exist_ok=True)
         
     def create_model(self):
         """Factory pattern으로 모델 생성"""
@@ -399,9 +407,11 @@ class BaseAnomalyTrainer:
             # 시각화 생성
             try:
                 create_experiment_visualization(
-                    experiment_results,
-                    str(self.experiment_dir),
-                    f"{self.model_type.upper()}_single_domain_{domain}",
+                    experiment_name=self.experiment_name,
+                    model_type=f"{self.model_type.upper()}_single_domain_{domain}",
+                    results_base_dir=str(self.experiment_dir),
+                    source_domain=domain,
+                    source_results=experiment_results.get('results', {}),
                     single_domain=True
                 )
                 print(f"📊 결과 시각화 생성 완료")

@@ -12,7 +12,9 @@
 #   nohup ./examples/hdmap/single_domain/base-run.sh 4 > exp4.log 2>&1 &
 #
 # 📊 실행 상태 확인:
-#   tail -f training.log                               # 로그 실시간 확인
+#   tail -f training.log                               # 메인 스크립트 로그 확인  
+#   tail -f results/*/training_detail.log             # 개별 실험 상세 로그 확인
+#   tail -f results/*/domain*_single.log              # 실험별 구조화된 로그 확인
 #   ps aux | grep base-run.sh                         # 스크립트 실행 여부
 #   ps aux | grep base-training                       # 개별 실험 진행 상황
 #   nvidia-smi                                        # GPU 사용 현황
@@ -64,20 +66,50 @@ print(len(data['experiment_conditions']))
     echo "📋 총 실험 수: $TOTAL_EXPERIMENTS"
     echo "🖥️ 사용할 GPU 수: ${#AVAILABLE_GPUS[@]}개"
     
+    # 세션 타임스탬프 생성
+    SESSION_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    echo "🕐 세션 Timestamp: $SESSION_TIMESTAMP"
+    echo ""
+    
     # 각 실험을 GPU에 자동 분배하여 병렬 실행
     for ((i=0; i<TOTAL_EXPERIMENTS; i++)); do
         # 사용 가능한 GPU 중에서 순환 할당
         GPU_ID=${AVAILABLE_GPUS[$((i % ${#AVAILABLE_GPUS[@]}))]}
         
-        echo "🔬 실험 $i 시작 (GPU $GPU_ID)"
+        # 실험 조건에서 실험 이름 추출
+        EXPERIMENT_NAME=$("$PYTHON_CMD" -c "
+import json
+with open('$CONFIG_FILE', 'r') as f:
+    data = json.load(f)
+print(data['experiment_conditions'][$i]['name'])
+")
         
-        # 백그라운드에서 실험 실행
+        # 실험 디렉터리 생성
+        RESULTS_DIR="results/$SESSION_TIMESTAMP"
+        EXPERIMENT_DIR="$RESULTS_DIR/${EXPERIMENT_NAME}_${SESSION_TIMESTAMP}"
+        mkdir -p "$EXPERIMENT_DIR"
+        
+        # 로그 파일 경로
+        TRAINING_LOG="$EXPERIMENT_DIR/training_detail.log"
+        
+        echo "🔬 실험 $i 시작 (GPU $GPU_ID)"
+        echo "   📁 실험 디렉터리: $EXPERIMENT_DIR"
+        echo "   📄 로그 파일: $TRAINING_LOG"
+        
+        # 백그라운드에서 실험 실행 (로그를 실험 디렉터리에 직접 저장)
         (
             cd "$PROJECT_ROOT"
+            echo "🔬 [Exp$i-GPU$GPU_ID] 실험 시작" >> "$TRAINING_LOG"
+            
+            # Python 스크립트를 실험 디렉터리의 로그 파일로 실행
             CUDA_VISIBLE_DEVICES="$GPU_ID" "$PYTHON_CMD" "$PYTHON_SCRIPT" \
                 --config "$CONFIG_FILE" \
                 --experiment-id "$i" \
-                --gpu-id "$GPU_ID"
+                --gpu-id "$GPU_ID" \
+                --experiment-dir "$EXPERIMENT_DIR" \
+                >> "$TRAINING_LOG" 2>&1
+            
+            echo "✅ [Exp$i-GPU$GPU_ID] 실험 완료" >> "$TRAINING_LOG"
         ) &
         
         # 모든 GPU가 사용 중이면 대기

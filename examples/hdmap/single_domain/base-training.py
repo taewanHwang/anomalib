@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--gpu-id", type=int, default=0, help="사용할 GPU ID")
     parser.add_argument("--experiment-id", type=int, default=None, help="특정 실험 조건 인덱스 (없으면 모든 실험 실행)")
     parser.add_argument("--log-dir", type=str, default=None, help="로그 저장 디렉토리")
+    parser.add_argument("--experiment-dir", type=str, default=None, help="실험 디렉터리 (bash 스크립트에서 전달)")
     
     args = parser.parse_args()
     
@@ -68,7 +69,13 @@ def main():
             return
         
         condition = conditions[args.experiment_id]
-        trainer = BaseAnomalyTrainer(condition["config"], condition["name"], session_timestamp)
+        
+        # bash 스크립트에서 실험 디렉터리가 전달된 경우 사용
+        if args.experiment_dir:
+            trainer = BaseAnomalyTrainer(condition["config"], condition["name"], session_timestamp, experiment_dir=args.experiment_dir)
+        else:
+            trainer = BaseAnomalyTrainer(condition["config"], condition["name"], session_timestamp)
+        
         result = trainer.run_experiment()
         
         if "error" not in result:
