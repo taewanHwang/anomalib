@@ -101,12 +101,15 @@ class CosineHardMiningLoss(torch.nn.Module):
 
             loss += torch.mean(1 - cos_loss(en_.reshape(en_.shape[0], -1), de_.reshape(de_.shape[0], -1)))
 
-            partial_func = partial(
-                self._modify_grad,
-                indices_to_modify=point_dist < thresh,
-                gradient_multiply_factor=self.factor,
-            )
-            de_.register_hook(partial_func)
+            # Only register hook if tensor requires gradients to avoid runtime errors
+            # during validation when model is temporarily set to train mode
+            if de_.requires_grad:
+                partial_func = partial(
+                    self._modify_grad,
+                    indices_to_modify=point_dist < thresh,
+                    gradient_multiply_factor=self.factor,
+                )
+                de_.register_hook(partial_func)
 
         return loss / len(encoder_features)
 

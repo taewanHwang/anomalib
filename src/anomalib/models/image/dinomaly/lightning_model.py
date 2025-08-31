@@ -271,8 +271,7 @@ class Dinomaly(AnomalibModule):
         """Validation step for the Dinomaly model.
 
         Performs inference on the validation batch to compute anomaly scores
-        and anomaly maps. The model operates in evaluation mode to generate
-        predictions for anomaly detection evaluation.
+        and anomaly maps. Also computes and logs validation loss for early stopping.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -289,12 +288,23 @@ class Dinomaly(AnomalibModule):
         Note:
             During validation, the model returns InferenceBatch with anomaly
             scores and maps computed from encoder-decoder feature comparisons.
+            Also computes validation loss using the same loss function as training.
         """
         del args, kwargs  # These variables are not used.
 
-        # 🔧 Fix: Use identical inference logic as test_step for consistency
         # Note: Lightning automatically sets model.eval() before validation_step
         with torch.no_grad():
+            # Compute validation loss (same as training loss computation)
+            # Temporarily set model to training mode for loss calculation
+            self.model.train()
+            val_loss = self.model(batch.image, global_step=self.global_step)
+            
+            # Log validation loss for early stopping
+            self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
+            
+            # Set back to eval mode for inference
+            self.model.eval()
+            # Compute predictions for metrics evaluation
             predictions = self.model(batch.image)
         
         # Use _asdict() for consistent field extraction like test_step

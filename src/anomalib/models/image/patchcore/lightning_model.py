@@ -58,7 +58,7 @@ from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize
 
 from anomalib import LearningType
 from anomalib.data import Batch
-from anomalib.metrics import Evaluator
+from anomalib.metrics import AUROC, Evaluator
 from anomalib.models.components import AnomalibModule, MemoryBankMixin
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
@@ -145,6 +145,12 @@ class Patchcore(MemoryBankMixin, AnomalibModule):
         evaluator: Evaluator | bool = True,
         visualizer: Visualizer | bool = True,
     ) -> None:
+        if evaluator is True:
+            # Create evaluator with explicit AUROC metric with test_ prefix
+            val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+            test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+            evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+        
         super().__init__(
             pre_processor=pre_processor,
             post_processor=post_processor,
@@ -268,6 +274,26 @@ class Patchcore(MemoryBankMixin, AnomalibModule):
         # Get anomaly maps and predicted scores from the model.
         predictions = self.model(batch.image)
 
+        return batch.update(**predictions._asdict())
+
+    def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
+        """Perform test step with consistent metric naming.
+
+        This method overrides the base test_step to ensure metrics are logged 
+        with the correct 'test_' prefix for consistency with other models.
+
+        Args:
+            batch (Batch): Input batch
+            batch_idx (int): Index of the batch
+            *args: Additional positional arguments (unused)
+            **kwargs: Additional keyword arguments (unused)
+
+        Returns:
+            STEP_OUTPUT: Updated batch with model predictions
+        """
+        del args, kwargs, batch_idx  # These variables are not used.
+
+        predictions = self.model(batch.image)
         return batch.update(**predictions._asdict())
 
     @property

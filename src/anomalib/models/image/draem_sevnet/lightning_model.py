@@ -13,6 +13,7 @@ from lightning.pytorch.utilities.types import STEP_OUTPUT
 
 from anomalib import LearningType
 from anomalib.data import Batch
+from anomalib.metrics import AUROC, Evaluator
 from anomalib.models.components import AnomalibModule
 from .loss import DraemSevNetLoss
 from .synthetic_generator import HDMAPCutPasteSyntheticGenerator
@@ -98,8 +99,15 @@ class DraemSevNet(AnomalibModule):
         severity_max: float = 1.0,
         optimizer: str = "adam",
         learning_rate: float = 1e-4,
+        evaluator: Evaluator | bool = True,
     ) -> None:
-        super().__init__()
+        # Create evaluator with explicit AUROC metric with test_ prefix (same as DRAEM and PatchCore)
+        if evaluator is True:
+            val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+            test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+            evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+        
+        super().__init__(evaluator=evaluator)
 
         # Store DRAEM-SevNet configuration
         self.severity_head_mode = severity_head_mode
@@ -140,12 +148,6 @@ class DraemSevNet(AnomalibModule):
             severity_loss_type=severity_loss_type
         )
         
-        # Initialize collections for validation metrics
-        self._val_predictions = []
-        self._val_labels = []
-        self._val_mask_scores = []
-        self._val_severity_scores = []
-        self._val_final_scores = []
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
@@ -211,98 +213,48 @@ class DraemSevNet(AnomalibModule):
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform the validation step of DRAEM-SevNet."""
+        """Perform the validation step of DRAEM-SevNet.
+        
+        Computes both inference outputs for metrics and validation loss for early stopping.
+        """
         del args, kwargs  # These variables are not used.
         
         input_image = batch.image
-        labels = batch.gt_label
         
-        # Forward pass through DRAEM-SevNet model (inference mode)
-        model_output = self.model(input_image)
-        
-        # Extract all DRAEM-SevNet outputs
-        if isinstance(model_output, DraemSevNetOutput):
-            mask_score = model_output.mask_score
-            severity_score = model_output.severity_score  
-            final_score = model_output.final_score
-            anomaly_map = model_output.anomaly_map
-        else:
-            # Fallback for compatibility (shouldn't happen in inference mode)
-            reconstruction, mask_logits, severity_score = model_output
-            mask_score = torch.amax(torch.softmax(mask_logits, dim=1)[:, 1, ...], dim=(-2, -1))
-            final_score = (mask_score + severity_score) / 2.0
-            anomaly_map = torch.softmax(mask_logits, dim=1)[:, 1, ...]
-        
-        # Store predictions and labels for multi-AUROC calculation
-        self._val_mask_scores.extend(mask_score.cpu().numpy())
-        self._val_severity_scores.extend(severity_score.cpu().numpy())
-        self._val_final_scores.extend(final_score.cpu().numpy())
-        self._val_labels.extend(labels.cpu().numpy())
-        
-        # Log basic validation metrics
-        self.log("val_mask_score_mean", mask_score.mean().item(), on_epoch=True, logger=True)
-        self.log("val_severity_score_mean", severity_score.mean().item(), on_epoch=True, logger=True)
-        self.log("val_final_score_mean", final_score.mean().item(), on_epoch=True, logger=True)
-        
-        return {"final_score": final_score}
-
-    def on_validation_epoch_end(self) -> None:
-        """DRAEM-SevNet validation epoch 종료 시 multi-AUROC 계산 및 로깅.
-        
-        Mask AUROC, Severity AUROC, Combined AUROC를 각각 계산하여
-        early stopping 및 성능 분석에 활용합니다.
-        """
-        if (len(self._val_mask_scores) > 0 and len(self._val_severity_scores) > 0 and 
-            len(self._val_final_scores) > 0 and len(self._val_labels) > 0):
+        with torch.no_grad():
+            # For validation loss calculation, generate synthetic anomalies (same as training)
+            synthetic_image, fault_mask, severity_map, severity_label = self.augmenter(input_image)
             
-            try:
-                from sklearn.metrics import roc_auc_score
-                import numpy as np
-                
-                # Convert to numpy arrays
-                mask_scores = np.array(self._val_mask_scores)
-                severity_scores = np.array(self._val_severity_scores)
-                final_scores = np.array(self._val_final_scores)
-                labels = np.array(self._val_labels)
-                
-                # Check if we have both classes for AUROC calculation
-                unique_labels = np.unique(labels)
-                
-                if len(unique_labels) >= 2:
-                    # Calculate individual AUROCs
-                    mask_auroc = roc_auc_score(labels, mask_scores)
-                    severity_auroc = roc_auc_score(labels, severity_scores)
-                    combined_auroc = roc_auc_score(labels, final_scores)
-                    
-                    # Log all AUROC metrics
-                    self.log("val_mask_AUROC", mask_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    self.log("val_severity_AUROC", severity_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    self.log("val_combined_AUROC", combined_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    
-                    # Keep val_image_AUROC for backward compatibility (use combined score)
-                    self.log("val_image_AUROC", combined_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    
-                else:
-                    # Single class case - set all to random performance
-                    default_auroc = 0.5
-                    self.log("val_mask_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    self.log("val_severity_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    self.log("val_combined_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    self.log("val_image_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                    
-            except Exception as e:
-                # AUROC calculation failed - use default values
-                default_auroc = 0.5
-                self.log("val_mask_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                self.log("val_severity_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                self.log("val_combined_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
-                self.log("val_image_AUROC", default_auroc, on_epoch=True, prog_bar=True, logger=True)
+            # Temporarily set model to training mode for loss calculation
+            self.model.train()
+            reconstruction, mask_logits, predicted_severity = self.model(synthetic_image)
+            
+            # Compute validation loss
+            val_loss = self.loss(
+                input_image=input_image,
+                reconstruction=reconstruction,
+                anomaly_mask=fault_mask,
+                prediction=mask_logits,
+                severity_gt=severity_label,
+                severity_pred=predicted_severity
+            )
+            
+            # Log validation loss for early stopping
+            self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
+            
+            # Set back to eval mode for inference outputs
+            self.model.eval()
+            # For metrics calculation, use clean image prediction
+            model_output = self.model(input_image)
         
-        # Reset collections for next epoch
-        self._val_mask_scores = []
-        self._val_severity_scores = []
-        self._val_final_scores = []
-        self._val_labels = []
+        # Return updated batch - Evaluator will handle metrics automatically (same as DRAEM)
+        # Convert dataclass to dict since DraemSevNetOutput doesn't have _asdict method
+        model_dict = {
+            "pred_score": model_output.final_score,
+            "anomaly_map": model_output.anomaly_map
+        }
+        return batch.update(**model_dict)
+
 
     def test_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform the test step of Custom DRAEM."""

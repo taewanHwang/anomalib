@@ -376,10 +376,11 @@ def create_experiment_visualization(
     experiment_name: str,
     model_type: str,
     results_base_dir: str,
-    source_domain: str,
+    source_domain: str = None,
     target_domains: list = None,
     source_results: Dict[str, Any] = None,
-    target_results: Dict[str, Dict[str, Any]] = None
+    target_results: Dict[str, Dict[str, Any]] = None,
+    single_domain: bool = False
 ) -> str:
     """실험 결과 시각화 폴더 구조 생성 및 실험 정보 저장.
     
@@ -387,10 +388,11 @@ def create_experiment_visualization(
         experiment_name: 실험 이름
         model_type: 모델 타입 (예: "DRAEM-SevNet", "PaDiM")
         results_base_dir: 기본 결과 디렉토리 경로
-        source_domain: 소스 도메인 이름
+        source_domain: 소스 도메인 이름 (single_domain=True일 때는 None 가능)
         target_domains: 타겟 도메인 리스트
         source_results: 소스 도메인 평가 결과
         target_results: 타겟 도메인들 평가 결과
+        single_domain: 단일 도메인 실험 여부
         
     Returns:
         str: 생성된 visualize 디렉토리 경로
@@ -413,17 +415,20 @@ def create_experiment_visualization(
     viz_path = latest_version_path / "visualize"
     viz_path.mkdir(exist_ok=True)
     
-    # 폴더 구조 생성
-    folders_to_create = [
-        "source_domain",
-        "target_domains"
-    ]
+    # 폴더 구조 생성 (single_domain 실험에서는 target_domains 폴더 생성하지 않음)
+    if single_domain:
+        folders_to_create = ["results"]
+    else:
+        folders_to_create = [
+            "source_domain",
+            "target_domains"
+        ]
     
     for folder in folders_to_create:
         (viz_path / folder).mkdir(exist_ok=True)
     
-    # 타겟 도메인별 하위 폴더 생성
-    if target_domains:
+    # 타겟 도메인별 하위 폴더 생성 (multi-domain 실험에만 적용)
+    if not single_domain and target_domains:
         for domain in target_domains:
             (viz_path / "target_domains" / domain).mkdir(exist_ok=True)
     
@@ -1274,3 +1279,76 @@ def analyze_multi_experiment_results(all_results: list, source_domain: str):
             worst_domain = min(target_performances, key=lambda x: x[1])
             print(f"\n   🎯 최고 성능 도메인: {best_domain[0]} (AUROC: {best_domain[1]:.3f})")
             print(f"   ⚠️  최저 성능 도메인: {worst_domain[0]} (AUROC: {worst_domain[1]:.3f})")
+
+
+def create_single_domain_datamodule(
+    domain: str,
+    batch_size: int = 16,
+    image_size: str = "224x224",
+    dataset_root: str = None,
+    val_split_ratio: float = 0.2,
+    num_workers: int = 4,
+    seed: int = 42
+):
+    """Single Domain용 HDMAPDataModule 생성 및 설정.
+    
+    Args:
+        domain: 단일 도메인 이름 (예: "domain_A")
+        batch_size: 배치 크기
+        image_size: 이미지 크기 (예: "224x224")
+        dataset_root: 데이터셋 루트 경로 (None이면 자동 생성)
+        val_split_ratio: train에서 validation 분할 비율
+        num_workers: 워커 수
+        seed: 랜덤 시드
+        
+    Returns:
+        설정된 HDMAPDataModule
+    """
+    from anomalib.data.datamodules.image.hdmap import HDMAPDataModule
+    from anomalib.data.utils import ValSplitMode
+    
+    print(f"\n📦 Single Domain HDMAPDataModule 생성 중...")
+    print(f"   🎯 도메인: {domain}")
+    print(f"   📏 이미지 크기: {image_size}")
+    print(f"   📊 배치 크기: {batch_size}")
+    print(f"   🔄 Val 분할 비율: {val_split_ratio}")
+    
+    # 기본 dataset_root 설정
+    if dataset_root is None:
+        import os
+        current_dir = os.getcwd()
+        # working directory가 examples/hdmap/single_domain일 때를 고려
+        if current_dir.endswith('single_domain'):
+            dataset_root = os.path.join(current_dir, "..", "..", "..", "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
+        else:
+            dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
+        
+        # 절대 경로로 변환
+        dataset_root = os.path.abspath(dataset_root)
+    
+    print(f"   📁 데이터셋 경로: {dataset_root}")
+    
+    # HDMAPDataModule 생성
+    datamodule = HDMAPDataModule(
+        root=dataset_root,
+        domain=domain,
+        train_batch_size=batch_size,
+        eval_batch_size=batch_size,
+        num_workers=num_workers,
+        val_split_mode=ValSplitMode.FROM_TRAIN,  # train에서 validation 분할
+        val_split_ratio=val_split_ratio,
+        seed=seed
+    )
+    
+    # 데이터 준비 및 설정
+    print(f"   ⚙️  DataModule 설정 중...")
+    datamodule.prepare_data()
+    datamodule.setup()
+    
+    # 데이터 통계 출력
+    print(f"✅ {domain} 데이터 로드 완료")
+    print(f"   훈련 샘플: {len(datamodule.train_data)}개")
+    print(f"   검증 샘플: {len(datamodule.val_data) if datamodule.val_data else 0}개")
+    print(f"   테스트 샘플: {len(datamodule.test_data)}개")
+    
+    return datamodule
