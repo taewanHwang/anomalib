@@ -72,6 +72,60 @@ import numpy as np
 import pandas as pd
 
 
+def extract_auroc_from_json(json_file_path: str) -> float:
+    """JSON 결과 파일에서 Image AUROC 값을 추출합니다.
+    
+    Args:
+        json_file_path: JSON 결과 파일 경로
+        
+    Returns:
+        AUROC 값 (float) 또는 None
+    """
+    try:
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        # source_results에서 test_image_AUROC 추출
+        if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
+            return float(data['source_results']['test_image_AUROC'])
+        else:
+            print(f"   ⚠️ {json_file_path}에서 test_image_AUROC 값을 찾을 수 없습니다.")
+            return None
+            
+    except Exception as e:
+        print(f"   ❌ {json_file_path} 파일 읽기 오류: {e}")
+        return None
+
+
+def extract_auroc_from_log(log_file_path: str) -> float:
+    """로그 파일에서 Image AUROC 값을 추출합니다.
+    
+    Args:
+        log_file_path: 로그 파일 경로
+        
+    Returns:
+        AUROC 값 (float) 또는 None
+    """
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # "Image AUROC=0.8445" 패턴 찾기
+        import re
+        pattern = r'Image AUROC=([0-9.]+)'
+        match = re.search(pattern, content)
+        
+        if match:
+            return float(match.group(1))
+        else:
+            print(f"   ⚠️ {log_file_path}에서 AUROC 값을 찾을 수 없습니다.")
+            return None
+            
+    except Exception as e:
+        print(f"   ❌ {log_file_path} 파일 읽기 오류: {e}")
+        return None
+
+
 class ExperimentResultsAnalyzer:
     """실험 결과 분석기"""
     
@@ -388,19 +442,61 @@ def analyze_all_models(results_base_dir: str, experiment_name: str = None, outpu
     print(f"🔍 모든 모델 통합 분석 시작...")
     print(f"📁 기본 디렉토리: {results_base_path}")
     
-    # 모델별 디렉토리 찾기 (*_single 패턴)
-    model_dirs = list(results_base_path.glob("*_single"))
-    if not model_dirs:
-        print(f"❌ {results_base_path}에서 *_single 패턴의 모델 디렉토리를 찾을 수 없습니다.")
+    # 새로운 디렉토리 구조: results/timestamp/experiment_name/
+    # 모든 timestamp 디렉토리를 찾고, 그 안의 실험 디렉토리들을 분석
+    timestamp_dirs = [d for d in results_base_path.iterdir() if d.is_dir() and d.name.replace('_', '').isdigit()]
+    
+    if not timestamp_dirs:
+        print(f"❌ {results_base_path}에서 timestamp 디렉토리를 찾을 수 없습니다.")
         return
     
-    print(f"📊 발견된 모델: {[d.name for d in model_dirs]}")
+    # 모든 실험 디렉토리를 수집
+    all_experiment_dirs = []
+    for timestamp_dir in timestamp_dirs:
+        experiment_dirs = [d for d in timestamp_dir.iterdir() if d.is_dir()]
+        all_experiment_dirs.extend(experiment_dirs)
+    
+    if not all_experiment_dirs:
+        print(f"❌ timestamp 디렉토리들에서 실험 디렉토리를 찾을 수 없습니다.")
+        return
+    
+    print(f"📊 발견된 실험 디렉토리: {len(all_experiment_dirs)}개")
+    print(f"   예시: {[d.name for d in all_experiment_dirs[:3]]}")
+    
+    # 실험 디렉토리를 모델별로 그룹화
+    model_groups = {}
+    for exp_dir in all_experiment_dirs:
+        # 실험 이름에서 모델 타입 추출 (예: domainA_patchcore_baseline_timestamp -> patchcore)
+        exp_name = exp_dir.name
+        
+        # timestamp 부분 제거 (마지막 _YYYYMMDD_HHMMSS 패턴)
+        import re
+        exp_name_clean = re.sub(r'_\d{8}_\d{6}$', '', exp_name)
+        
+        # domainA_ 부분 제거
+        if exp_name_clean.startswith('domainA_'):
+            remaining = exp_name_clean[8:]  # 'domainA_' 제거
+            
+            # 모델 타입 추출 (첫 번째 단어가 모델 타입)
+            if '_' in remaining:
+                model_type_lower = remaining.split('_')[0]
+            else:
+                model_type_lower = remaining
+                
+            if model_type_lower not in model_groups:
+                model_groups[model_type_lower] = []
+            model_groups[model_type_lower].append(exp_dir)
+    
+    if not model_groups:
+        print(f"❌ 유효한 모델 실험을 찾을 수 없습니다.")
+        return
+    
+    print(f"🎯 발견된 모델들: {list(model_groups.keys())}")
     
     all_results = []
     
-    for model_dir in sorted(model_dirs):
-        model_type_lower = model_dir.name.replace('_single', '')
-        # 실제 폴더명에 맞는 모델 타입 매핑 (대문자)
+    for model_type_lower, experiment_dirs in model_groups.items():
+        # 모델 타입 매핑 (대문자)
         model_type_mapping = {
             'draem': 'DRAEM',
             'dinomaly': 'Dinomaly', 
@@ -409,19 +505,46 @@ def analyze_all_models(results_base_dir: str, experiment_name: str = None, outpu
         }
         model_type = model_type_mapping.get(model_type_lower, model_type_lower.upper())
         
-        print(f"\n🔬 {model_type} 분석 중...")
+        print(f"\n🔬 {model_type} 분석 중... ({len(experiment_dirs)}개 실험)")
         
         try:
-            # 각 모델별 분석
-            analyzer = ExperimentResultsAnalyzer(str(model_dir), model_type)
-            analyzer.collect_all_results()
+            # 각 실험 디렉토리에서 결과 수집
+            experiment_results = []
             
-            if not analyzer.experiment_data:
-                print(f"⚠️ {model_type}에서 유효한 실험 데이터를 찾을 수 없습니다.")
-                continue
+            for exp_dir in experiment_dirs:
+                # 먼저 JSON 결과 파일 찾기 (우선순위)
+                json_files = list((exp_dir / "tensorboard_logs").glob("result_*.json")) if (exp_dir / "tensorboard_logs").exists() else []
+                auroc = None
                 
-            # 통계 계산
-            model_df = analyzer.calculate_statistics(experiment_name)
+                if json_files:
+                    # JSON 파일이 있으면 JSON에서 추출
+                    try:
+                        auroc = extract_auroc_from_json(str(json_files[0]))
+                    except Exception as e:
+                        print(f"   ⚠️ {exp_dir.name} JSON 파싱 오류: {e}")
+                
+                if auroc is None:
+                    # JSON에서 못 찾으면 로그 파일에서 찾기 (백업)
+                    log_file = exp_dir / "domain_A_single.log"
+                    if log_file.exists():
+                        try:
+                            auroc = extract_auroc_from_log(str(log_file))
+                        except Exception as e:
+                            print(f"   ⚠️ {exp_dir.name} 로그 파싱 오류: {e}")
+                
+                if auroc is not None:
+                    experiment_results.append({
+                        'experiment_name': exp_dir.name,
+                        'image_AUROC': auroc,
+                        'session_id': exp_dir.parent.name  # timestamp
+                    })
+            
+            if not experiment_results:
+                print(f"⚠️ {model_type}에서 유효한 AUROC 결과를 찾을 수 없습니다.")
+                continue
+            
+            # DataFrame 생성 및 통계 계산
+            model_df = pd.DataFrame(experiment_results)
             
             if not model_df.empty:
                 # 모델 타입 컬럼 추가
@@ -454,8 +577,10 @@ def analyze_all_models(results_base_dir: str, experiment_name: str = None, outpu
     print(f"총 실험 조건 수: {len(combined_df)}")
     print(f"\n📊 모델별 Image AUROC 요약:")
     
-    # 모델별 평균 성능 출력
-    auroc_column = 'source_auroc_mean'  # 실제 컬럼명 사용
+    # 모델별 평균 성능 출력 (실제 컬럼명 사용)
+    auroc_column = 'image_AUROC'  # 실제 컬럼명은 image_AUROC
+    model_summary = None
+    
     if auroc_column in combined_df.columns:
         model_summary = combined_df.groupby('Model')[auroc_column].agg(['mean', 'max', 'min', 'count']).round(4)
         model_summary.columns = ['평균_AUROC', '최고_AUROC', '최저_AUROC', '실험_수']
@@ -480,10 +605,13 @@ def analyze_all_models(results_base_dir: str, experiment_name: str = None, outpu
     combined_df.to_csv(output, index=False, encoding='utf-8-sig')
     print(f"\n💾 통합 결과 저장됨: {output}")
     
-    # 모델별 요약도 저장
-    summary_output = output.parent / f"models_summary_{output.stem}.csv"
-    model_summary.to_csv(summary_output, encoding='utf-8-sig')
-    print(f"📋 모델별 요약 저장됨: {summary_output}")
+    # 모델별 요약도 저장 (model_summary가 있는 경우에만)
+    if model_summary is not None:
+        summary_output = output.parent / f"models_summary_{output.stem}.csv"
+        model_summary.to_csv(summary_output, encoding='utf-8-sig')
+        print(f"📋 모델별 요약 저장됨: {summary_output}")
+    else:
+        print("⚠️ 모델별 요약 저장을 건너뜁니다.")
 
 
 def main():

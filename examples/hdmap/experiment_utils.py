@@ -451,6 +451,51 @@ def create_experiment_visualization(
     with open(info_file, 'w', encoding='utf-8') as f:
         json.dump(experiment_info, f, indent=2, ensure_ascii=False)
     
+    # 실제 생성된 이미지 파일들을 visualize/results로 복사 (single domain의 경우)
+    if single_domain:
+        try:
+            # anomalib 모델 결과 이미지가 저장되는 패턴 탐색
+            image_patterns = [
+                latest_version_path / "*" / "*" / source_domain / "latest" / "images",  # 일반적인 패턴
+                latest_version_path / "*" / source_domain / "latest" / "images",        # 축약된 패턴
+                latest_version_path / "images",                                          # 직접 images 폴더
+            ]
+            
+            images_found = False
+            for pattern_path in image_patterns:
+                # glob 패턴으로 이미지 디렉토리 찾기
+                for images_dir in Path(str(pattern_path).replace('*', '')).parent.glob('**/images'):
+                    if images_dir.exists() and any(images_dir.iterdir()):
+                        print(f"📁 이미지 발견: {images_dir}")
+                        
+                        # 이미지 파일들을 visualize/results로 복사
+                        results_dir = viz_path / "results"
+                        
+                        # 서브 디렉토리별로 복사 (good, fault 등)
+                        for subdir in images_dir.iterdir():
+                            if subdir.is_dir():
+                                target_subdir = results_dir / subdir.name
+                                target_subdir.mkdir(exist_ok=True)
+                                
+                                # 모든 이미지 파일 복사
+                                image_files = list(subdir.glob('*.png'))
+                                for img_file in image_files:
+                                    shutil.copy2(img_file, target_subdir / img_file.name)
+                                
+                                print(f"   📸 {len(image_files)}개 이미지를 {target_subdir}에 복사")
+                        
+                        images_found = True
+                        break
+                
+                if images_found:
+                    break
+            
+            if not images_found:
+                print(f"⚠️ 이미지 파일을 찾을 수 없습니다: {latest_version_path}")
+        
+        except Exception as copy_error:
+            print(f"⚠️ 이미지 복사 중 오류: {copy_error}")
+    
     print(f"✅ {model_type} 폴더 구조 생성 완료: {viz_path}")
     
     return str(viz_path)
@@ -672,6 +717,9 @@ def setup_warnings_filter():
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
+    
+    # 시각화 관련 특정 경고 필터링
+    warnings.filterwarnings("ignore", message=".*Field.*gt_mask.*is None.*Skipping visualization.*")
 
 
 def setup_experiment_logging(log_file_path: str, experiment_name: str) -> logging.Logger:
