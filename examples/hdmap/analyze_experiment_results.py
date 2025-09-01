@@ -167,6 +167,99 @@ def analyze_all_models(results_base_dir: str, output: str = None):
     print(f"\n📈 전체 실험 결과:")
     print(display_df.to_string(index=False))
     
+    # 도메인별 평균과 실험 조건별 전체 평균 분석 (Single-domain 실험만)
+    single_domain_df = combined_df[combined_df['type'] == 'Single-domain'].copy()
+    
+    if not single_domain_df.empty:
+        print(f"\n{'='*80}")
+        print(f"📊 실험 조건별 평균 성능 분석 (Single-domain)")
+        print(f"{'='*80}")
+        
+        # 실험 이름에서 도메인과 조건 추출
+        def extract_condition_and_domain(exp_name):
+            parts = exp_name.split('_')
+            if len(parts) >= 2:
+                domain = parts[0]  # domainA, domainB, etc.
+                # timestamp 제거 (마지막 부분이 숫자로만 이루어진 경우)
+                condition_parts = []
+                for part in parts[1:]:
+                    if part.replace('_', '').isdigit() and len(part) >= 8:  # timestamp 형태
+                        break
+                    condition_parts.append(part)
+                condition = '_'.join(condition_parts)
+                return domain, condition
+            return None, None
+        
+        single_domain_df['domain'] = single_domain_df['experiment_name'].apply(lambda x: extract_condition_and_domain(x)[0])
+        single_domain_df['condition'] = single_domain_df['experiment_name'].apply(lambda x: extract_condition_and_domain(x)[1])
+        
+        # 유효한 도메인과 조건만 필터링
+        valid_df = single_domain_df.dropna(subset=['domain', 'condition'])
+        
+        if not valid_df.empty:
+            # 조건별 전체 평균 (모든 도메인과 실행에 대한 평균)
+            condition_avg = valid_df.groupby('condition')['source_AUROC'].agg(['mean', 'std', 'count']).reset_index()
+            condition_avg.columns = ['condition', 'avg_AUROC', 'std_AUROC', 'experiment_count']
+            condition_avg = condition_avg.sort_values('avg_AUROC', ascending=False)
+            
+            print(f"\n🎯 실험 조건별 전체 평균 (모든 도메인, 모든 실행):")
+            print(f"{'조건':<50} {'평균 AUROC':<12} {'표준편차':<10} {'실험 수':<8}")
+            print("-" * 82)
+            for _, row in condition_avg.iterrows():
+                std_str = f"±{row['std_AUROC']:.4f}" if pd.notna(row['std_AUROC']) else "N/A"
+                print(f"{row['condition']:<50} {row['avg_AUROC']:<12.6f} {std_str:<10} {int(row['experiment_count']):<8}")
+            
+            # 조건별, 도메인별 평균
+            domain_condition_avg = valid_df.groupby(['condition', 'domain'])['source_AUROC'].agg(['mean', 'std', 'count']).reset_index()
+            domain_condition_avg.columns = ['condition', 'domain', 'avg_AUROC', 'std_AUROC', 'experiment_count']
+            
+            # 조건별로 도메인 결과를 피벗
+            pivot_df = domain_condition_avg.pivot_table(
+                values='avg_AUROC', 
+                index='condition', 
+                columns='domain', 
+                fill_value=None
+            )
+            
+            # 전체 평균과 함께 표시
+            summary_df = condition_avg.set_index('condition')[['avg_AUROC']].copy()
+            summary_df.columns = ['Overall_Avg']
+            
+            # 도메인별 결과와 전체 평균 결합
+            final_df = pd.concat([pivot_df, summary_df], axis=1)
+            final_df = final_df.sort_values('Overall_Avg', ascending=False)
+            
+            print(f"\n📋 실험 조건별 도메인 성능 매트릭스:")
+            print("=" * 100)
+            
+            # 컬럼 헤더 출력
+            domains = [col for col in final_df.columns if col.startswith('domain')]
+            header = f"{'조건':<50}"
+            for domain in sorted(domains):
+                header += f" {domain:<10}"
+            header += f" {'전체평균':<10}"
+            print(header)
+            print("-" * len(header))
+            
+            # 각 행 출력
+            for condition, row in final_df.iterrows():
+                line = f"{condition:<50}"
+                for domain in sorted(domains):
+                    if domain in row and pd.notna(row[domain]):
+                        line += f" {row[domain]:<10.6f}"
+                    else:
+                        line += f" {'N/A':<10}"
+                line += f" {row['Overall_Avg']:<10.6f}"
+                print(line)
+            
+            # CSV로도 저장
+            condition_summary_path = Path(output).parent / "experiment_condition_summary.csv" if output else results_base_path / "experiment_condition_summary.csv"
+            final_df.to_csv(condition_summary_path, encoding='utf-8-sig')
+            print(f"\n💾 조건별 요약 저장됨: {condition_summary_path}")
+        
+        else:
+            print("⚠️ 유효한 single-domain 실험 데이터가 없습니다.")
+    
     # 결과 저장
     if output is None:
         output = results_base_path / "experiment_analysis_summary.csv"
