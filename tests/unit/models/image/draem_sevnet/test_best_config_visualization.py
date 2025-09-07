@@ -113,16 +113,16 @@ def create_best_config_generator() -> HDMAPCutPasteSyntheticGenerator:
         Configured HDMAPCutPasteSyntheticGenerator
     """
     generator = HDMAPCutPasteSyntheticGenerator(
-        patch_width_range=(20, 60),      # From best config
-        patch_ratio_range=(0.3, 0.7),   # From best config  
-        severity_max=1.0,                # From best config
+        patch_width_range=(25, 188),      # From best config
+        patch_ratio_range=(0.03, 0.1),   # From best config  
+        severity_max=5.0,                # From best config
         patch_count=1,                   # From best config
         probability=1.0                  # Always generate for visualization
     )
     
     print("Created generator with best performing configuration:")
-    print(f"  - patch_width_range: (20, 60)")
-    print(f"  - patch_ratio_range: (0.3, 0.7)")
+    print(f"  - patch_width_range: (25, 188)")
+    print(f"  - patch_ratio_range: (0.03, 0.1)")
     print(f"  - severity_max: 1.0")
     print(f"  - patch_count: 1")
     print(f"  - probability: 1.0")

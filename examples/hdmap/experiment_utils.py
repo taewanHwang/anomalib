@@ -1336,7 +1336,9 @@ def create_single_domain_datamodule(
     dataset_root: str = None,
     val_split_ratio: float = 0.2,
     num_workers: int = 4,
-    seed: int = 42
+    seed: int = 42,
+    num_training_samples: int = 1000,
+    image_preprocess: str = "8bit_resize"
 ):
     """Single Domain용 HDMAPDataModule 생성 및 설정.
     
@@ -1348,6 +1350,8 @@ def create_single_domain_datamodule(
         val_split_ratio: train에서 validation 분할 비율
         num_workers: 워커 수
         seed: 랜덤 시드
+        num_training_samples: 훈련 샘플 수 (예: 1000)
+        image_preprocess: 이미지 전처리 방식 (예: "8bit_resize", "8bit_3ch_resize")
         
     Returns:
         설정된 HDMAPDataModule
@@ -1367,9 +1371,9 @@ def create_single_domain_datamodule(
         current_dir = os.getcwd()
         # working directory가 examples/hdmap/single_domain일 때를 고려
         if current_dir.endswith('single_domain'):
-            dataset_root = os.path.join(current_dir, "..", "..", "..", "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
+            dataset_root = os.path.join(current_dir, "..", "..", "..", "datasets", "HDMAP", f"{num_training_samples}_{image_preprocess}_{image_size}")
         else:
-            dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
+            dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"{num_training_samples}_{image_preprocess}_{image_size}")
         
         # 절대 경로로 변환
         dataset_root = os.path.abspath(dataset_root)
@@ -1400,3 +1404,328 @@ def create_single_domain_datamodule(
     print(f"   테스트 샘플: {len(datamodule.test_data)}개")
     
     return datamodule
+
+
+# =============================================================================
+# 상세 분석 함수들
+# =============================================================================
+
+def save_detailed_test_results(
+    predictions: Dict[str, Any],
+    ground_truth: Dict[str, Any], 
+    image_paths: List[str],
+    result_dir: Path,
+    model_type: str = "unknown"
+) -> None:
+    """
+    테스트 결과를 이미지별로 상세하게 CSV 파일로 저장합니다.
+    
+    Args:
+        predictions: 모델 예측 결과 딕셔너리
+        ground_truth: 실제 정답 딕셔너리
+        image_paths: 이미지 경로 리스트
+        result_dir: 결과 저장 디렉토리
+        model_type: 모델 타입 (draem_sevnet, patchcore 등)
+    """
+    import pandas as pd
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    
+    # 결과 데이터 수집
+    results_data = []
+    
+    for i, img_path in enumerate(image_paths):
+        row = {
+            "image_path": img_path,
+            "ground_truth": ground_truth.get("labels", [0] * len(image_paths))[i] if isinstance(ground_truth.get("labels"), list) else ground_truth.get("label", [0])[i],
+            "anomaly_score": predictions.get("pred_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("pred_scores"), list) else 0,
+        }
+        
+        # DRAEM-SevNet의 경우 추가 점수들
+        if model_type.lower() in ["draem_sevnet", "draem-sevnet"]:
+            row.update({
+                "mask_score": predictions.get("mask_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("mask_scores"), list) else 0,
+                "severity_score": predictions.get("severity_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("severity_scores"), list) else 0,
+            })
+        
+        # 예측 레이블 계산 (기본 threshold 0.5 사용)
+        row["predicted_label"] = 1 if row["anomaly_score"] > 0.5 else 0
+        
+        results_data.append(row)
+    
+    # DataFrame 생성 및 저장
+    df = pd.DataFrame(results_data)
+    csv_path = analysis_dir / "test_results.csv"
+    df.to_csv(csv_path, index=False)
+    
+    print(f"📊 테스트 결과 CSV 저장: {csv_path}")
+
+
+def plot_roc_curve(
+    ground_truth: List[int],
+    scores: List[float], 
+    result_dir: Path,
+    experiment_name: str = "Experiment"
+) -> float:
+    """
+    ROC curve를 그리고 AUROC 값을 반환합니다.
+    
+    Args:
+        ground_truth: 실제 정답 리스트 (0 또는 1)
+        scores: 예측 점수 리스트
+        result_dir: 결과 저장 디렉토리
+        experiment_name: 실험 이름
+        
+    Returns:
+        AUROC 값
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_curve, auc
+    import numpy as np
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    
+    # ROC curve 계산
+    fpr, tpr, thresholds = roc_curve(ground_truth, scores)
+    auroc = auc(fpr, tpr)
+    
+    # 최적 threshold 계산 (Youden's index)
+    optimal_idx = np.argmax(tpr - fpr)
+    optimal_threshold = thresholds[optimal_idx]
+    
+    # 플롯 생성
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUROC = {auroc:.3f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', alpha=0.6)
+    plt.scatter(fpr[optimal_idx], tpr[optimal_idx], color='red', s=100, 
+                label=f'Optimal threshold = {optimal_threshold:.3f}')
+    
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(f'ROC Curve - {experiment_name}')
+    plt.legend(loc="lower right")
+    plt.grid(True, alpha=0.3)
+    
+    # 저장
+    roc_path = analysis_dir / "roc_curve.png"
+    plt.savefig(roc_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"📈 ROC Curve 저장: {roc_path}")
+    return auroc
+
+
+def save_metrics_report(
+    ground_truth: List[int],
+    predictions: List[int],
+    scores: List[float],
+    result_dir: Path,
+    auroc: float,
+    optimal_threshold: float = 0.5
+) -> None:
+    """
+    성능 메트릭을 JSON 파일로 저장합니다.
+    
+    Args:
+        ground_truth: 실제 정답 리스트
+        predictions: 예측 결과 리스트  
+        scores: 예측 점수 리스트
+        result_dir: 결과 저장 디렉토리
+        auroc: AUROC 값
+        optimal_threshold: 최적 threshold
+    """
+    from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+    import json
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    
+    # 메트릭 계산
+    precision = precision_score(ground_truth, predictions, zero_division=0)
+    recall = recall_score(ground_truth, predictions, zero_division=0)
+    f1 = f1_score(ground_truth, predictions, zero_division=0)
+    cm = confusion_matrix(ground_truth, predictions).tolist()
+    
+    # 메트릭 보고서 생성
+    metrics_report = {
+        "auroc": float(auroc),
+        "optimal_threshold": float(optimal_threshold),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1_score": float(f1),
+        "confusion_matrix": cm,
+        "total_samples": len(ground_truth),
+        "positive_samples": sum(ground_truth),
+        "negative_samples": len(ground_truth) - sum(ground_truth)
+    }
+    
+    # JSON 파일로 저장
+    metrics_path = analysis_dir / "metrics_report.json"
+    with open(metrics_path, 'w', encoding='utf-8') as f:
+        json.dump(metrics_report, f, indent=2, ensure_ascii=False)
+    
+    print(f"📋 메트릭 보고서 저장: {metrics_path}")
+
+
+def plot_score_distributions(
+    normal_scores: List[float],
+    anomaly_scores: List[float], 
+    result_dir: Path,
+    experiment_name: str = "Experiment"
+) -> None:
+    """
+    정상/이상 샘플의 점수 분포를 히스토그램으로 시각화합니다.
+    
+    Args:
+        normal_scores: 정상 샘플 점수 리스트
+        anomaly_scores: 이상 샘플 점수 리스트
+        result_dir: 결과 저장 디렉토리
+        experiment_name: 실험 이름
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    
+    # 히스토그램 생성
+    plt.figure(figsize=(10, 6))
+    
+    # 정상 샘플 분포
+    plt.hist(normal_scores, bins=50, alpha=0.6, label=f'Normal (n={len(normal_scores)})', 
+             color='blue', density=True)
+    
+    # 이상 샘플 분포  
+    plt.hist(anomaly_scores, bins=50, alpha=0.6, label=f'Anomaly (n={len(anomaly_scores)})', 
+             color='red', density=True)
+    
+    plt.xlabel('Anomaly Score')
+    plt.ylabel('Density')
+    plt.title(f'Score Distributions - {experiment_name}')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    # 통계 정보 텍스트 추가
+    normal_mean, normal_std = np.mean(normal_scores), np.std(normal_scores)
+    anomaly_mean, anomaly_std = np.mean(anomaly_scores), np.std(anomaly_scores)
+    
+    stats_text = f'Normal: μ={normal_mean:.3f}, σ={normal_std:.3f}\\nAnomaly: μ={anomaly_mean:.3f}, σ={anomaly_std:.3f}'
+    plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes, 
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    
+    # 저장
+    dist_path = analysis_dir / "score_distributions.png"
+    plt.savefig(dist_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"📊 점수 분포 저장: {dist_path}")
+
+
+def save_extreme_samples(
+    image_paths: List[str],
+    ground_truth: List[int],
+    scores: List[float],
+    predictions: List[int],
+    result_dir: Path,
+    n_samples: int = 10
+) -> None:
+    """
+    극값 샘플들(고신뢰도 맞춤/틀림, 저신뢰도)의 경로를 저장합니다.
+    
+    Args:
+        image_paths: 이미지 경로 리스트
+        ground_truth: 실제 정답 리스트
+        scores: 예측 점수 리스트
+        predictions: 예측 결과 리스트
+        result_dir: 결과 저장 디렉토리  
+        n_samples: 각 카테고리별 저장할 샘플 수
+    """
+    import numpy as np
+    import pandas as pd
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    extreme_dir = analysis_dir / "extreme_samples"
+    extreme_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 데이터 정리
+    data = pd.DataFrame({
+        'image_path': image_paths,
+        'ground_truth': ground_truth,
+        'score': scores,
+        'prediction': predictions
+    })
+    
+    # 정확도 계산
+    data['correct'] = (data['ground_truth'] == data['prediction'])
+    data['confidence'] = np.abs(data['score'] - 0.5)  # 0.5에서 얼마나 먼지로 신뢰도 측정
+    
+    # 카테고리별 샘플 추출
+    categories = {
+        'high_confidence_correct': data[(data['correct'] == True)].nlargest(n_samples, 'confidence'),
+        'high_confidence_wrong': data[(data['correct'] == False)].nlargest(n_samples, 'confidence'), 
+        'low_confidence_samples': data.nsmallest(n_samples, 'confidence')
+    }
+    
+    # 각 카테고리별로 CSV 저장
+    for category, samples in categories.items():
+        if len(samples) > 0:
+            csv_path = extreme_dir / f"{category}.csv"
+            samples.to_csv(csv_path, index=False)
+            print(f"📸 {category} 샘플 저장: {csv_path}")
+
+
+def save_experiment_summary(
+    experiment_config: Dict[str, Any],
+    results: Dict[str, float],
+    result_dir: Path,
+    training_time: Optional[str] = None
+) -> None:
+    """
+    실험 설정과 결과를 YAML 파일로 요약 저장합니다.
+    
+    Args:
+        experiment_config: 실험 설정 딕셔너리
+        results: 실험 결과 딕셔너리
+        result_dir: 결과 저장 디렉토리
+        training_time: 학습 시간 (선택적)
+    """
+    import yaml
+    from datetime import datetime
+    
+    # analysis 폴더 생성
+    analysis_dir = Path(result_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    
+    # 요약 정보 생성
+    summary = {
+        'experiment_info': {
+            'name': experiment_config.get('name', 'unknown'),
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'training_time': training_time or 'N/A'
+        },
+        'hyperparameters': experiment_config,
+        'results': results,
+        'analysis_files': [
+            'test_results.csv',
+            'roc_curve.png', 
+            'metrics_report.json',
+            'score_distributions.png',
+            'extreme_samples/'
+        ]
+    }
+    
+    # YAML 파일로 저장
+    summary_path = analysis_dir / "experiment_summary.yaml"
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        yaml.dump(summary, f, default_flow_style=False, allow_unicode=True, indent=2)
+    
+    print(f"📄 실험 요약 저장: {summary_path}")

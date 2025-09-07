@@ -11,6 +11,7 @@ image_AUROC 값을 추출합니다.
 
 1. 모든 실험 분석:
    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models
+   examples/hdmap/analyze_experiment_results.py --results_dir results4 --all-models
 
 2. 결과 CSV로 저장:
    .venv/bin/python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models --output comparison.csv
