@@ -1,9 +1,16 @@
 #!/bin/bash
-# nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/multi_domain_hdmap_draem-run.sh 3 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
-# nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh 10 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
-
-# GPU 모니터링 기반 자동 실험 실행 스크립트
-# GPU가 모두 유휴 상태가 되면 자동으로 다음 실험을 시작합니다
+# 
+# 🚀 GPU 모니터링 기반 자동 실험 반복 실행 스크립트 (v2.0)
+#
+# 사용 예시:
+#   nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a all 3 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+#   nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a 0,1,2 5 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+#
+# 주요 변경사항:
+#   - single_domain/base-run.sh 새로운 구조 지원
+#   - 실험 인자(-a) 옵션 추가 (all, 특정 ID, ID 범위 등)
+#   - 더 정확한 GPU 모니터링
+#   - 실험별 결과 디렉터리 자동 관리
 
 set -e  # 오류 발생 시 중단
 
@@ -12,20 +19,24 @@ set -e  # 오류 발생 시 중단
 # =============================================================================
 
 # 기본 설정
-EXPERIMENT_SCRIPT=""  # 필수 옵션으로 변경
-RESULTS_BASE_DIR="results/draem"
+EXPERIMENT_SCRIPT=""              # 필수: 실험 스크립트 경로
+EXPERIMENT_ARGS="all"             # 실험 인자 (all, 0, 0,1,2 등)
 DEFAULT_EXPERIMENTS=3
 
 # GPU 모니터링 설정
-GPU_CHECK_INTERVAL=30          # GPU 상태 확인 간격 (초)
-GPU_IDLE_THRESHOLD=10          # GPU 사용률 임계값 (% 이하면 유휴)
-MEMORY_IDLE_THRESHOLD=2000     # 메모리 사용량 임계값 (MB 이하면 유휴)
-MAX_WAIT_TIME=7200             # 최대 대기 시간 (초, 2시간)
+GPU_CHECK_INTERVAL=30             # GPU 상태 확인 간격 (초)
+GPU_IDLE_THRESHOLD=10             # GPU 사용률 임계값 (% 이하면 유휴)
+MEMORY_IDLE_THRESHOLD=2000        # 메모리 사용량 임계값 (MB 이하면 유휴)
+MAX_WAIT_TIME=7200                # 최대 대기 시간 (초, 2시간)
+SAFETY_WAIT=60                    # 실험 사이 안전 대기 시간 (초)
 
 # 로그 설정
 LOG_PREFIX="auto_experiment"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${LOG_PREFIX}_${TIMESTAMP}.log"
+
+# 결과 디렉터리 설정 (base-run.sh가 자체적으로 results/timestamp 폴더 생성)
+RESULTS_BASE_DIR="results"
 
 # =============================================================================
 # 함수 정의
@@ -43,28 +54,46 @@ log() {
 # 도움말 출력
 show_help() {
     cat << EOF
-GPU 모니터링 기반 자동 실험 실행 스크립트
+🚀 GPU 모니터링 기반 자동 실험 반복 실행 스크립트 (v2.0)
 
 사용법:
-    $0 -s <실험_스크립트> [OPTIONS] <실험_횟수>
+    $0 -s <실험_스크립트> [-a <실험_인자>] [OPTIONS] <반복_횟수>
 
 필수 옵션:
-    -s, --script PATH       실험 스크립트 경로 (필수)
+    -s, --script PATH           실험 스크립트 경로 (필수)
 
-기타 옵션:
-    -r, --results PATH      결과 저장 디렉토리 (기본: $RESULTS_BASE_DIR)
-    -i, --interval SEC      GPU 확인 간격 (기본: ${GPU_CHECK_INTERVAL}초)
-    -t, --threshold PERCENT GPU 유휴 임계값 (기본: ${GPU_IDLE_THRESHOLD}%)
-    -w, --wait SEC          최대 대기 시간 (기본: ${MAX_WAIT_TIME}초)
-    -c, --check-only        GPU 상태만 확인하고 종료
-    -h, --help              이 도움말 출력
+선택 옵션:
+    -a, --args ARGS             실험 인자 (기본: all)
+                                - all: 전체 실험
+                                - 0: 특정 실험 ID
+                                - 0,1,2: 여러 실험 ID
+                                - 0-5: 실험 ID 범위
+    -r, --results PATH          결과 저장 기본 디렉토리 (기본: $RESULTS_BASE_DIR)
+    -i, --interval SEC          GPU 확인 간격 (기본: ${GPU_CHECK_INTERVAL}초)
+    -t, --threshold PERCENT     GPU 유휴 임계값 (기본: ${GPU_IDLE_THRESHOLD}%)
+    -w, --wait SEC              최대 대기 시간 (기본: ${MAX_WAIT_TIME}초)
+    -safety, --safety-wait SEC  실험 사이 안전 대기 시간 (기본: ${SAFETY_WAIT}초)
+    -c, --check-only            GPU 상태만 확인하고 종료
+    -h, --help                  이 도움말 출력
 
 예시:
-    $0 -s examples/hdmap/multi_domain_hdmap_draem-run.sh 5     # DRAEM 스크립트로 5회 반복
-    $0 -s examples/hdmap/multi_domain_hdmap_draem_sevnet-run.sh 5     # DRAEM-SevNet 스크립트로 5회 반복
-    $0 -s my_experiment.sh -i 60 -t 5 3                                # 커스텀 스크립트, 60초 간격, 5% 임계값으로 3회
-    $0 --check-only                                                     # GPU 상태만 확인
-    $0 -s examples/hdmap/my_custom_experiment.sh 2                     # 커스텀 스크립트로 2회 실험
+    # 전체 실험을 3회 반복 (가장 일반적)
+    $0 -s examples/hdmap/single_domain/base-run.sh -a all 3
+
+    # 특정 실험(0,1,2)을 5회 반복
+    $0 -s examples/hdmap/single_domain/base-run.sh -a 0,1,2 5
+
+    # 커스텀 설정으로 실험
+    $0 -s examples/hdmap/single_domain/base-run.sh -a all -i 60 -t 5 --safety-wait 120 3
+
+    # DinomaLy 실험만 2회 반복 (condition1.json 사용)
+    $0 -s examples/hdmap/single_domain/base-run.sh -a 0 2
+
+    # GPU 상태만 확인
+    $0 --check-only
+
+백그라운드 실행 (추천):
+    nohup $0 -s examples/hdmap/single_domain/base-run.sh -a all 3 > auto_experiment_\$(date +%Y%m%d_%H%M%S).log 2>&1 &
 
 EOF
 }
@@ -103,7 +132,7 @@ check_gpu_status() {
             log "INFO" "GPU $index: ${util}% 사용률, ${mem_used}MB 메모리, ${temp}°C"
         fi
         
-        # 유휴 상태 판단
+        # 유휴 상태 판단 (더 엄격한 기준)
         if [[ $util -le $GPU_IDLE_THRESHOLD ]] && [[ $mem_used -le $MEMORY_IDLE_THRESHOLD ]]; then
             idle_gpus+=("$index")
         else
@@ -156,33 +185,36 @@ wait_for_gpu_idle() {
     return 1
 }
 
-# 실험 실행 함수
+# 실험 결과 디렉터리 정리 함수
+cleanup_old_results() {
+    log "INFO" "🧹 이전 실험 결과 정리 중..."
+    
+    # 3시간 이상 된 임시 파일들 정리
+    find "$RESULTS_BASE_DIR" -type f -name "*.tmp" -mtime +0.125 -delete 2>/dev/null || true
+    
+    # GPU 프로세스가 완전히 종료되었는지 확인
+    if pgrep -f "base-training.py" > /dev/null; then
+        log "WARN" "⚠️ 이전 training 프로세스가 아직 실행 중입니다"
+        log "INFO" "   대기 중인 프로세스:"
+        pgrep -af "base-training.py" || true
+    fi
+}
+
+# 단일 실험 실행 함수
 run_single_experiment() {
     local experiment_num=$1
     local total_experiments=$2
     
     log "INFO" "🚀 실험 ${experiment_num}/${total_experiments} 시작"
     log "INFO" "   스크립트: $EXPERIMENT_SCRIPT"
+    log "INFO" "   인자: $EXPERIMENT_ARGS"
     
     local start_time=$(date +%s)
     
-    # 실험 스크립트 실행 (subshell에서 안전하게 실행)
-    (
-        # subshell에서 실행하여 메인 shell에 영향 없도록 함
-        cd "$(dirname "$0")/../.."
-        
-        # CUDA 환경변수 설정
-        export LD_LIBRARY_PATH="/usr/local/cuda-12.4/targets/x86_64-linux/lib:$LD_LIBRARY_PATH"
-        export PATH="/usr/local/cuda-12.4/bin:$PATH"
-        export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
-        
-        # 가상환경 활성화
-        source .venv/bin/activate
-        
-        # 실험 스크립트 실행
-        bash "$EXPERIMENT_SCRIPT"
-    )
-    local exit_code=$?
+    # 실험 스크립트를 직접 실행 (base-run.sh가 자체적으로 results/timestamp 폴더 생성)
+    local exit_code=0
+    bash "$EXPERIMENT_SCRIPT" $EXPERIMENT_ARGS
+    exit_code=$?
     
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
@@ -208,6 +240,13 @@ cleanup() {
         wait $children 2>/dev/null
     fi
     
+    # 실행 중인 training 프로세스들도 종료
+    if pgrep -f "base-training.py" > /dev/null; then
+        log "INFO" "실행 중인 training 프로세스들을 종료합니다..."
+        pkill -f "base-training.py" 2>/dev/null || true
+        sleep 5
+    fi
+    
     log "INFO" "프로그램을 종료합니다."
     exit 130
 }
@@ -229,6 +268,10 @@ while [[ $# -gt 0 ]]; do
             EXPERIMENT_SCRIPT="$2"
             shift 2
             ;;
+        -a|--args)
+            EXPERIMENT_ARGS="$2"
+            shift 2
+            ;;
         -r|--results)
             RESULTS_BASE_DIR="$2"
             shift 2
@@ -243,6 +286,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -w|--wait)
             MAX_WAIT_TIME="$2"
+            shift 2
+            ;;
+        -safety|--safety-wait)
+            SAFETY_WAIT="$2"
             shift 2
             ;;
         -c|--check-only)
@@ -295,70 +342,75 @@ fi
 
 # 실험 횟수 검증
 if [[ -z "$NUM_EXPERIMENTS" ]]; then
-    log "ERROR" "실험 횟수를 지정해주세요"
+    log "ERROR" "실험 반복 횟수를 지정해주세요"
     show_help
     exit 1
 fi
 
 if ! [[ "$NUM_EXPERIMENTS" =~ ^[0-9]+$ ]] || [[ $NUM_EXPERIMENTS -le 0 ]]; then
-    log "ERROR" "실험 횟수는 양의 정수여야 합니다: $NUM_EXPERIMENTS"
+    log "ERROR" "실험 반복 횟수는 양의 정수여야 합니다: $NUM_EXPERIMENTS"
     exit 1
 fi
 
-# 결과 디렉토리 생성
+# 결과 디렉터리 생성 
 mkdir -p "$RESULTS_BASE_DIR"
 
 # 시작 정보 출력
-log "INFO" "=" | tr ' ' '='  # 구분선
-log "INFO" "🎯 자동 실험 실행 시작"
-log "INFO" "=" | tr ' ' '='  # 구분선
+log "INFO" "==============================================="
+log "INFO" "🎯 자동 실험 반복 실행 시작"
+log "INFO" "==============================================="
 log "INFO" "📊 설정 정보:"
-log "INFO" "   총 실험 횟수: $NUM_EXPERIMENTS"
 log "INFO" "   실험 스크립트: $EXPERIMENT_SCRIPT"
-log "INFO" "   결과 디렉토리: $RESULTS_BASE_DIR"
+log "INFO" "   실험 인자: $EXPERIMENT_ARGS"
+log "INFO" "   반복 횟수: $NUM_EXPERIMENTS"
+log "INFO" "   결과 디렉토리: $RESULTS_BASE_DIR (base-run.sh가 타임스탬프 폴더 생성)"
 log "INFO" "   GPU 확인 간격: ${GPU_CHECK_INTERVAL}초"
 log "INFO" "   GPU 유휴 임계값: ${GPU_IDLE_THRESHOLD}%"
 log "INFO" "   메모리 임계값: ${MEMORY_IDLE_THRESHOLD}MB"
 log "INFO" "   최대 대기 시간: ${MAX_WAIT_TIME}초"
+log "INFO" "   안전 대기 시간: ${SAFETY_WAIT}초"
 log "INFO" "   로그 파일: $LOG_FILE"
 
 # 초기 GPU 상태 확인
+log "INFO" ""
 log "INFO" "🔍 초기 GPU 상태 확인:"
 check_gpu_status true
 
-# 실험 실행
+# 이전 결과 정리
+cleanup_old_results
+
+# 실험 반복 실행
 successful_experiments=0
 failed_experiments=0
 
 for ((i=1; i<=NUM_EXPERIMENTS; i++)); do
     log "INFO" ""
     log "INFO" "=========================================="
-    log "INFO" "📋 실험 $i/$NUM_EXPERIMENTS 준비"
+    log "INFO" "📋 실험 반복 $i/$NUM_EXPERIMENTS 준비"
     log "INFO" "=========================================="
-
     
     # 첫 번째 실험이 아니면 GPU 유휴 상태 대기
     if [[ $i -gt 1 ]]; then
         log "INFO" "⏳ 이전 실험 완료 대기 중..."
         
         if ! wait_for_gpu_idle; then
-            log "ERROR" "❌ GPU 대기 타임아웃. 실험 $i 건너뜀"
+            log "ERROR" "❌ GPU 대기 타임아웃. 실험 반복 $i 건너뜀"
             ((failed_experiments++))
             continue
         fi
         
-        # 추가 안전 대기 시간
-        log "INFO" "😴 안전을 위해 30초 추가 대기..."
-        sleep 30
+        # 안전 대기 시간
+        log "INFO" "😴 안전을 위해 ${SAFETY_WAIT}초 추가 대기..."
+        sleep "$SAFETY_WAIT"
     fi
     
     # 실험 실행
     if run_single_experiment "$i" "$NUM_EXPERIMENTS"; then
         successful_experiments=$((successful_experiments + 1))
-        log "INFO" "🎉 실험 $i 성공!"
+        log "INFO" "🎉 실험 반복 $i 성공!"
     else
         failed_experiments=$((failed_experiments + 1))
-        log "ERROR" "💥 실험 $i 실패!"
+        log "ERROR" "💥 실험 반복 $i 실패!"
     fi
     
     # 중간 상태 출력
@@ -369,7 +421,7 @@ for ((i=1; i<=NUM_EXPERIMENTS; i++)); do
     fi
     
     log "INFO" "📊 현재 상태: 성공 $successful_experiments, 실패 $failed_experiments (성공률: ${success_rate}%)"
-    log "INFO" "🔄 실험 $i 완료. 다음 실험 준비 중..."
+    log "INFO" "🔄 실험 반복 $i 완료. 다음 실험 준비 중..."
 done
 
 # 최종 결과 출력
@@ -381,20 +433,45 @@ fi
 
 log "INFO" ""
 log "INFO" "=============================================="
-log "INFO" "🏁 모든 실험 완료!"
+log "INFO" "🏁 모든 실험 반복 완료!"
 log "INFO" "=============================================="
 log "INFO" "📊 최종 결과:"
-log "INFO" "   전체 실험: $total_experiments개"
-log "INFO" "   성공: $successful_experiments개"
-log "INFO" "   실패: $failed_experiments개"
+log "INFO" "   전체 실험 반복: $total_experiments회"
+log "INFO" "   성공: $successful_experiments회"
+log "INFO" "   실패: $failed_experiments회"
 log "INFO" "   성공률: ${final_success_rate}%"
+log "INFO" "📁 모든 결과: $RESULTS_BASE_DIR"
 log "INFO" "📄 상세 로그: $LOG_FILE"
+
+# 결과 요약 생성
+SUMMARY_FILE="$RESULTS_BASE_DIR/experiment_summary_${TIMESTAMP}.txt"
+cat > "$SUMMARY_FILE" << EOF
+🎯 자동 실험 반복 실행 요약
+========================================
+
+실행 시간: $(date)
+실험 스크립트: $EXPERIMENT_SCRIPT
+실험 인자: $EXPERIMENT_ARGS
+반복 횟수: $NUM_EXPERIMENTS
+
+📊 결과:
+- 성공: $successful_experiments회
+- 실패: $failed_experiments회  
+- 성공률: ${final_success_rate}%
+
+📁 결과 위치: $RESULTS_BASE_DIR
+📄 상세 로그: $LOG_FILE
+
+========================================
+EOF
+
+log "INFO" "📋 실험 요약 파일: $SUMMARY_FILE"
 
 # 종료 코드 설정
 if [[ $failed_experiments -eq 0 ]]; then
-    log "INFO" "✅ 모든 실험이 성공적으로 완료되었습니다!"
+    log "INFO" "✅ 모든 실험 반복이 성공적으로 완료되었습니다!"
     exit 0
 else
-    log "WARN" "⚠️ 일부 실험이 실패했습니다."
+    log "WARN" "⚠️ 일부 실험 반복이 실패했습니다."
     exit 1
 fi

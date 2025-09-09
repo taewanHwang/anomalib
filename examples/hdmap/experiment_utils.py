@@ -1387,7 +1387,7 @@ def create_single_domain_datamodule(
         train_batch_size=batch_size,
         eval_batch_size=batch_size,
         num_workers=num_workers,
-        val_split_mode=ValSplitMode.FROM_TRAIN,  # train에서 validation 분할
+        val_split_mode=ValSplitMode.FROM_TEST,  # test에서 validation 분할 (MVTec 방식)
         val_split_ratio=val_split_ratio,
         seed=seed
     )
@@ -1429,9 +1429,8 @@ def save_detailed_test_results(
     """
     import pandas as pd
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
-    analysis_dir.mkdir(exist_ok=True)
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
+    analysis_dir = Path(result_dir)
     
     # 결과 데이터 수집
     results_data = []
@@ -1443,12 +1442,16 @@ def save_detailed_test_results(
             "anomaly_score": predictions.get("pred_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("pred_scores"), list) else 0,
         }
         
-        # DRAEM-SevNet의 경우 추가 점수들
-        if model_type.lower() in ["draem_sevnet", "draem-sevnet"]:
-            row.update({
-                "mask_score": predictions.get("mask_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("mask_scores"), list) else 0,
-                "severity_score": predictions.get("severity_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("severity_scores"), list) else 0,
-            })
+        # 모델별 추가 점수들 (있는 경우에만)
+        if predictions.get("mask_scores") and isinstance(predictions.get("mask_scores"), list) and len(predictions.get("mask_scores")) > i:
+            row["mask_score"] = predictions["mask_scores"][i]
+        else:
+            row["mask_score"] = 0.0
+            
+        if predictions.get("severity_scores") and isinstance(predictions.get("severity_scores"), list) and len(predictions.get("severity_scores")) > i:
+            row["severity_score"] = predictions["severity_scores"][i]
+        else:
+            row["severity_score"] = 0.0
         
         # 예측 레이블 계산 (기본 threshold 0.5 사용)
         row["predicted_label"] = 1 if row["anomaly_score"] > 0.5 else 0
@@ -1485,9 +1488,8 @@ def plot_roc_curve(
     from sklearn.metrics import roc_curve, auc
     import numpy as np
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
-    analysis_dir.mkdir(exist_ok=True)
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
+    analysis_dir = Path(result_dir)
     
     # ROC curve 계산
     fpr, tpr, thresholds = roc_curve(ground_truth, scores)
@@ -1543,9 +1545,8 @@ def save_metrics_report(
     from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
     import json
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
-    analysis_dir.mkdir(exist_ok=True)
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
+    analysis_dir = Path(result_dir)
     
     # 메트릭 계산
     precision = precision_score(ground_truth, predictions, zero_division=0)
@@ -1592,9 +1593,8 @@ def plot_score_distributions(
     import matplotlib.pyplot as plt
     import numpy as np
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
-    analysis_dir.mkdir(exist_ok=True)
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
+    analysis_dir = Path(result_dir)
     
     # 히스토그램 생성
     plt.figure(figsize=(10, 6))
@@ -1651,8 +1651,8 @@ def save_extreme_samples(
     import numpy as np
     import pandas as pd
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)  
+    analysis_dir = Path(result_dir)
     extreme_dir = analysis_dir / "extreme_samples"
     extreme_dir.mkdir(parents=True, exist_ok=True)
     
@@ -1701,9 +1701,8 @@ def save_experiment_summary(
     import yaml
     from datetime import datetime
     
-    # analysis 폴더 생성
-    analysis_dir = Path(result_dir) / "analysis"
-    analysis_dir.mkdir(exist_ok=True)
+    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
+    analysis_dir = Path(result_dir)
     
     # 요약 정보 생성
     summary = {

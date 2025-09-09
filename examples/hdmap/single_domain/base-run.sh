@@ -52,7 +52,7 @@ AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 # 기본 설정
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
-CONFIG_FILE="$SCRIPT_DIR/base-exp_condition15.json"
+CONFIG_FILE="$SCRIPT_DIR/base-exp_condition3.json"
 
 # 인자 처리
 MODE=${1:-0}

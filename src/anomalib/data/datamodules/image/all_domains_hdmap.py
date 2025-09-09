@@ -15,13 +15,13 @@ Designed for Multi-class Unified Model Anomaly Detection.
     ...     root="./datasets/HDMAP/1000_8bit_resize_224x224",
     ...     train_batch_size=32,
     ...     eval_batch_size=32,
-    ...     val_split_ratio=0.2  # train에서 20% validation 분할
+    ...     val_split_ratio=0.2  # test에서 20% validation 분할 (MVTec 방식)
     ... )
     >>> datamodule.setup()
     >>> 
     >>> # 통합된 데이터로더들 / Integrated dataloaders
     >>> train_loader = datamodule.train_dataloader()  # 모든 도메인의 train 데이터
-    >>> val_loader = datamodule.val_dataloader()      # train에서 분할한 validation 데이터
+    >>> val_loader = datamodule.val_dataloader()      # test에서 분할한 validation 데이터 (MVTec 방식)
     >>> test_loader = datamodule.test_dataloader()    # 모든 도메인의 test 데이터
     >>> 
     >>> # 모델 학습 / Model training
@@ -177,8 +177,8 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
         num_workers (int): Number of workers for data loading. Defaults to 8.
             / 데이터 로딩 워커 수.
         val_split_mode (ValSplitMode): Validation split mode. 
-            Defaults to ValSplitMode.FROM_TRAIN (train에서 validation 분할).
-            / 검증 데이터 분할 방식. 기본값은 train에서 분할.
+            Defaults to ValSplitMode.FROM_TEST (test에서 validation 분할, MVTec 방식).
+            / 검증 데이터 분할 방식. 기본값은 test에서 분할.
         val_split_ratio (float): Fraction of train data for validation. Defaults to 0.2.
             / 검증용 train 데이터 비율.
         
@@ -194,7 +194,7 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
         >>> 
         >>> # 통합된 데이터로더 / Integrated dataloaders
         >>> train_loader = datamodule.train_dataloader()  # 모든 도메인 train (80%)
-        >>> val_loader = datamodule.val_dataloader()      # 모든 도메인 train에서 분할 (20%)  
+        >>> val_loader = datamodule.val_dataloader()      # 모든 도메인 test에서 분할 (20%, MVTec 방식)  
         >>> test_loader = datamodule.test_dataloader()    # 모든 도메인 test (100%)
         >>> 
         >>> print(f"Train samples: {len(datamodule.train_data)}")  # ~3200 (4000 * 0.8)
@@ -216,7 +216,7 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
         train_batch_size: int = 32,
         eval_batch_size: int = 32,
         num_workers: int = 8,
-        val_split_mode: ValSplitMode | str = ValSplitMode.FROM_TRAIN,  # train에서 validation 분할
+        val_split_mode: ValSplitMode | str = ValSplitMode.FROM_TEST,  # test에서 validation 분할 (MVTec 방식)
         val_split_ratio: float = 0.2,
         test_split_mode: TestSplitMode | str = TestSplitMode.FROM_DIR,  # 별도 test 디렉토리 사용
         test_split_ratio: float = 0.2,

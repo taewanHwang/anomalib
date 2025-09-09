@@ -126,10 +126,10 @@ class HDMAPDataModule(AnomalibDataModule):
         self.root = Path(root)
         self.domain = domain
 
-        # HDMAP은 별도 테스트 디렉토리 제공, 기본값: 테스트에서 검증 분할
-        # HDMAP provides separate test directory, default: split validation from test
-        # 이는 실제 산업 환경에서 정상 데이터는 충분하지만 결함 데이터는 제한적인 상황을 반영
-        # This reflects real industrial scenarios where normal data is abundant but fault data is limited
+        # HDMAP은 별도 테스트 디렉토리 제공, 기본값: 테스트에서 검증 분할 (MVTec 방식)
+        # HDMAP provides separate test directory, default: split validation from test (MVTec style)
+        # 테스트 데이터에서 일부를 검증용으로 분할하여 균형잡힌 평가
+        # Split some test data for validation to ensure balanced evaluation
 
     @property
     def name(self) -> str:
