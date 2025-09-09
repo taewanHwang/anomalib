@@ -1,7 +1,7 @@
 """Severity Head for DRAEM-SevNet.
 
 Global Average Pooling + MLP 구조로 discriminative encoder features를 
-severity score [0,1]로 변환하는 네트워크.
+severity score (실수 범위)로 변환하는 네트워크.
 
 Author: Taewan Hwang
 """
@@ -16,7 +16,7 @@ class SeverityHead(nn.Module):
     """Severity prediction head for DRAEM-SevNet.
     
     Discriminative encoder의 features (act6 또는 multi-scale)를 입력으로 받아
-    Global Average Pooling과 MLP를 통해 severity score [0,1]를 출력합니다.
+    Global Average Pooling과 MLP를 통해 severity score (실수 범위)를 출력합니다.
     
     Args:
         in_dim (int): 입력 feature dimension
@@ -90,8 +90,8 @@ class SeverityHead(nn.Module):
                 nn.Linear(hidden_dim, hidden_dim // 2),
                 nn.ReLU(inplace=True),
                 nn.Dropout(dropout_rate),
-                nn.Linear(hidden_dim // 2, 1),
-                nn.Sigmoid()  # [0, 1] 범위로 제한
+                nn.Linear(hidden_dim // 2, 1)
+                # 활성화 함수 없음 - 원본 severity 값 출력 [-∞, ∞]
             )
         elif pooling_type == "spatial_aware":
             # 새로운 Spatial-Aware 방식
@@ -131,8 +131,8 @@ class SeverityHead(nn.Module):
                 nn.Linear(hidden_dim, hidden_dim // 2),
                 nn.ReLU(inplace=True),
                 nn.Dropout(dropout_rate),
-                nn.Linear(hidden_dim // 2, 1),
-                nn.Sigmoid()
+                nn.Linear(hidden_dim // 2, 1)
+                # 활성화 함수 없음 - 원본 severity 값 출력 [-∞, ∞]
             )
         
         elif self.mode == "multi_scale":
@@ -160,8 +160,8 @@ class SeverityHead(nn.Module):
                 nn.Linear(hidden_dim * 2, hidden_dim),
                 nn.ReLU(inplace=True),
                 nn.Dropout(dropout_rate),
-                nn.Linear(hidden_dim, 1),
-                nn.Sigmoid()
+                nn.Linear(hidden_dim, 1)
+                # 활성화 함수 없음 - 원본 severity 값 출력 [-∞, ∞]
             )
     
     def _make_spatial_processor(self, in_channels: int, out_channels: int) -> nn.Module:
@@ -247,7 +247,7 @@ class SeverityHead(nn.Module):
                 - For multi_scale mode: Dict containing act2~act6 features
                 
         Returns:
-            torch.Tensor: Severity scores of shape [B] with values in [0, 1]
+            torch.Tensor: Severity scores of shape [B] with real values
         """
         if self.pooling_type == "gap":
             # 기존 GAP 방식

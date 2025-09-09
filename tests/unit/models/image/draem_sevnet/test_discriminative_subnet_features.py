@@ -287,7 +287,8 @@ class TestDiscriminativeSubNetworkIntegration:
         # 출력 검증
         assert mask_logits.shape == (batch_size, 2, 224, 224)
         assert severity_scores.shape == (batch_size,)
-        assert torch.all((severity_scores >= 0) & (severity_scores <= 1))
+        # SeverityHead는 dual-scale 아키텍처에서 실수 전체 범위 출력
+        assert torch.all(torch.isfinite(severity_scores))
         
     def test_multi_scale_severity_head_integration(self):
         """Multi-scale SeverityHead와의 통합 테스트"""
@@ -315,7 +316,8 @@ class TestDiscriminativeSubNetworkIntegration:
         # 출력 검증
         assert mask_logits.shape == (batch_size, 2, 224, 224)
         assert severity_scores.shape == (batch_size,)
-        assert torch.all((severity_scores >= 0) & (severity_scores <= 1))
+        # Multi-scale SeverityHead도 dual-scale 아키텍처에서 실수 전체 범위 출력
+        assert torch.all(torch.isfinite(severity_scores))
 
 
 # pytest로 실행 시 자동으로 실행되는 통합 테스트

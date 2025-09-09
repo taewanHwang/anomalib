@@ -90,8 +90,8 @@ class TestDraemSevNetModelRewrite:
             assert mask_logits.shape == (batch_size, 2, 224, 224)
             assert severity_score.shape == (batch_size,)
             
-            # Value range verification
-            assert torch.all((severity_score >= 0) & (severity_score <= 1))
+            # Value validity verification (training mode allows real values)
+            assert torch.all(torch.isfinite(severity_score))
             
     def test_inference_mode_forward(self):
         """Inference 모드 forward pass 테스트"""
@@ -110,13 +110,15 @@ class TestDraemSevNetModelRewrite:
             # Shape verification
             assert output.reconstruction.shape == (batch_size, 3, 224, 224)
             assert output.mask_logits.shape == (batch_size, 2, 224, 224)
-            assert output.severity_score.shape == (batch_size,)
+            assert output.normalized_severity_score.shape == (batch_size,)
+            assert output.raw_severity_score.shape == (batch_size,)
             assert output.mask_score.shape == (batch_size,)
             assert output.final_score.shape == (batch_size,)
             assert output.anomaly_map.shape == (batch_size, 224, 224)
             
             # Value range verification
-            assert torch.all((output.severity_score >= 0) & (output.severity_score <= 1))
+            assert torch.all((output.normalized_severity_score >= 0) & (output.normalized_severity_score <= 1))
+            assert torch.all(output.raw_severity_score >= 0)  # Inference mode clamps to [0, ∞]
             assert torch.all((output.mask_score >= 0) & (output.mask_score <= 1))
             assert torch.all((output.final_score >= 0) & (output.final_score <= 1))
             assert torch.all((output.anomaly_map >= 0) & (output.anomaly_map <= 1))
@@ -144,7 +146,7 @@ class TestDraemSevNetModelRewrite:
             
             # Verify final_score is calculated correctly
             mask_score = output.mask_score
-            severity_score = output.severity_score
+            severity_score = output.normalized_severity_score  # Use normalized for final_score
             final_score = output.final_score
             
             if combination == "simple_average":
@@ -265,7 +267,7 @@ class TestDraemSevNetModelRewrite:
         
         # Should produce outputs with same shapes
         assert output1.final_score.shape == output2.final_score.shape
-        assert output1.severity_score.shape == output2.severity_score.shape
+        assert output1.normalized_severity_score.shape == output2.normalized_severity_score.shape
 
 
 class TestDraemSevNetOutput:
@@ -279,7 +281,8 @@ class TestDraemSevNetOutput:
         output = DraemSevNetOutput(
             reconstruction=torch.randn(batch_size, 3, height, width),
             mask_logits=torch.randn(batch_size, 2, height, width),
-            severity_score=torch.rand(batch_size),
+            raw_severity_score=torch.rand(batch_size),
+            normalized_severity_score=torch.rand(batch_size),
             mask_score=torch.rand(batch_size),
             final_score=torch.rand(batch_size),
             anomaly_map=torch.rand(batch_size, height, width)
@@ -288,14 +291,16 @@ class TestDraemSevNetOutput:
         # Verify all attributes exist and have correct shapes
         assert hasattr(output, 'reconstruction')
         assert hasattr(output, 'mask_logits')
-        assert hasattr(output, 'severity_score')
+        assert hasattr(output, 'raw_severity_score')
+        assert hasattr(output, 'normalized_severity_score')
         assert hasattr(output, 'mask_score')
         assert hasattr(output, 'final_score')
         assert hasattr(output, 'anomaly_map')
         
         assert output.reconstruction.shape == (batch_size, 3, height, width)
         assert output.mask_logits.shape == (batch_size, 2, height, width)
-        assert output.severity_score.shape == (batch_size,)
+        assert output.raw_severity_score.shape == (batch_size,)
+        assert output.normalized_severity_score.shape == (batch_size,)
         assert output.mask_score.shape == (batch_size,)
         assert output.final_score.shape == (batch_size,)
         assert output.anomaly_map.shape == (batch_size, height, width)

@@ -26,14 +26,16 @@ class DraemSevNetOutput:
     Attributes:
         reconstruction (torch.Tensor): Reconstructed images
         mask_logits (torch.Tensor): Raw mask prediction logits
-        severity_score (torch.Tensor): Severity prediction scores [0,1]
+        raw_severity_score (torch.Tensor): Raw severity prediction [0,∞] for user interpretation
+        normalized_severity_score (torch.Tensor): Normalized severity [0,1] for final_score calculation
         mask_score (torch.Tensor): Mask-based anomaly scores [0,1]
         final_score (torch.Tensor): Combined final anomaly scores [0,1]
         anomaly_map (torch.Tensor): Processed anomaly probability map
     """
     reconstruction: torch.Tensor
     mask_logits: torch.Tensor
-    severity_score: torch.Tensor
+    raw_severity_score: torch.Tensor
+    normalized_severity_score: torch.Tensor
     mask_score: torch.Tensor  
     final_score: torch.Tensor
     anomaly_map: torch.Tensor
@@ -157,6 +159,7 @@ class DraemSevNetModel(nn.Module):
         severity_head_hidden_dim: int = 128,
         score_combination: str = "simple_average",
         severity_weight_for_combination: float = 0.5,
+        severity_max: float = 1.0,                         # 🆕 Severity normalization factor
         # 🆕 새로운 Spatial-Aware 옵션들
         severity_head_pooling_type: str = "gap",           # "gap", "spatial_aware"
         severity_head_spatial_size: int = 4,               # spatial_aware 모드 공간 크기
@@ -167,6 +170,7 @@ class DraemSevNetModel(nn.Module):
         self.severity_head_mode = severity_head_mode
         self.score_combination = score_combination
         self.severity_weight_for_combination = severity_weight_for_combination
+        self.severity_max = severity_max
         
         # DRAEM backbone components
         draem_backbone = DraemModel(sspcab=sspcab)
@@ -262,7 +266,7 @@ class DraemSevNetModel(nn.Module):
                 tuple: Tuple containing:
                     - reconstruction: Reconstructed images (batch_size, 3, H, W)
                     - mask_logits: Raw mask prediction logits (batch_size, 2, H, W)
-                    - severity_score: Severity prediction scores (batch_size,) in [0, 1]
+                    - raw_severity_score: Raw severity prediction scores (batch_size,) in [0, ∞]
             During inference:
                 DraemSevNetOutput: Complete output containing all scores and intermediate results
         """
@@ -276,28 +280,34 @@ class DraemSevNetModel(nn.Module):
         # 3. Severity prediction from encoder features
         if self.severity_head_mode == "single_scale":
             # Use act6 features only
-            severity_score = self.severity_head(encoder_features['act6'])
+            raw_severity_score = self.severity_head(encoder_features['act6'])
         elif self.severity_head_mode == "multi_scale":
             # Use act2~act6 features
             multi_scale_features = {
                 key: encoder_features[key] 
                 for key in ['act2', 'act3', 'act4', 'act5', 'act6']
             }
-            severity_score = self.severity_head(multi_scale_features)
+            raw_severity_score = self.severity_head(multi_scale_features)
         else:
             raise ValueError(f"Unsupported severity_head_mode: {self.severity_head_mode}")
         
         if self.training:
-            # Training mode: return components for loss calculation
-            return reconstruction, mask_logits, severity_score
+            # Training mode: return raw scores without clipping for gradient flow
+            return reconstruction, mask_logits, raw_severity_score
+        
+        # Inference mode: clip negative values to 0 [0, ∞]
+        raw_severity_score = torch.clamp(raw_severity_score, min=0.0)
         
         # 4. Inference mode: calculate final scores
+        
+        # Normalize severity for final_score calculation [0, 1]
+        normalized_severity_score = torch.clamp(raw_severity_score / self.severity_max, 0.0, 1.0)
         
         # Calculate reliable mask-based score
         mask_score = self._get_mask_score(mask_logits)
         
-        # Combine mask and severity scores
-        final_score = self._combine_scores(mask_score, severity_score)
+        # Combine mask and normalized severity scores
+        final_score = self._combine_scores(mask_score, normalized_severity_score)
         
         # Generate anomaly probability map for visualization
         anomaly_map = torch.softmax(mask_logits, dim=1)[:, 1, ...]  # (B, H, W)
@@ -305,7 +315,8 @@ class DraemSevNetModel(nn.Module):
         return DraemSevNetOutput(
             reconstruction=reconstruction,
             mask_logits=mask_logits,
-            severity_score=severity_score,
+            raw_severity_score=raw_severity_score,                    # [0, ∞] for user interpretation
+            normalized_severity_score=normalized_severity_score,      # [0, 1] for final_score
             mask_score=mask_score,
             final_score=final_score,
             anomaly_map=anomaly_map

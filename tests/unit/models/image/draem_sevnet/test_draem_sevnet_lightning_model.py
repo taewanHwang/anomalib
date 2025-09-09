@@ -80,91 +80,79 @@ class TestDraemSevNetLightningModel:
         model = DraemSevNet()
         model.eval()
         
-        # Initialize validation collections
-        model._val_mask_scores = []
-        model._val_severity_scores = []
-        model._val_final_scores = []
-        model._val_labels = []
-        
         batch_size = 4
         batch = MagicMock()
         batch.image = torch.randn(batch_size, 3, 224, 224)
         batch.gt_label = torch.randint(0, 2, (batch_size,))
         
+        # Mock batch.update method to return the batch itself
+        def mock_update(**kwargs):
+            for key, value in kwargs.items():
+                setattr(batch, key, value)
+            return batch
+        batch.update = mock_update
+        
         # Validation step
         with torch.no_grad():
             output = model.validation_step(batch)
         
-        # Check output and internal state
-        assert isinstance(output, dict)
-        assert "final_score" in output
+        # Check that output is the updated batch (Lightning pattern)
+        assert output == batch
+        assert hasattr(output, 'pred_score')
+        assert hasattr(output, 'anomaly_map')
+        assert hasattr(output, 'pred_label')
         
-        # Check that scores were collected
-        assert len(model._val_mask_scores) == batch_size
-        assert len(model._val_severity_scores) == batch_size
-        assert len(model._val_final_scores) == batch_size
-        assert len(model._val_labels) == batch_size
+        # Check shapes
+        assert output.pred_score.shape == (batch_size,)
+        assert output.anomaly_map.shape == (batch_size, 224, 224)
+        assert output.pred_label.shape == (batch_size,)
         
     def test_on_validation_epoch_end(self):
         """Validation epoch end 테스트"""
         model = DraemSevNet()
         
-        # Simulate collected validation data
-        batch_size = 10
-        model._val_mask_scores = torch.rand(batch_size).tolist()
-        model._val_severity_scores = torch.rand(batch_size).tolist()
-        model._val_final_scores = torch.rand(batch_size).tolist()
-        model._val_labels = torch.randint(0, 2, (batch_size,)).tolist()
+        # DraemSevNet uses anomalib's Evaluator which handles validation metrics automatically
+        # The on_validation_epoch_end is handled by parent AnomalibModule
+        # This test just ensures it doesn't crash
         
-        # Mock logging method
-        logged_metrics = {}
-        def mock_log(key, value, **kwargs):
-            logged_metrics[key] = value
-        model.log = mock_log
+        # Mock trainer to avoid errors
+        trainer_mock = MagicMock()
+        model.trainer = trainer_mock
         
-        # Call validation epoch end
-        model.on_validation_epoch_end()
+        # Test that on_validation_epoch_end can be called without error
+        try:
+            model.on_validation_epoch_end()
+            success = True
+        except Exception:
+            success = False
         
-        # Check that all AUROC metrics were logged
-        expected_keys = [
-            "val_mask_AUROC", "val_severity_AUROC", 
-            "val_combined_AUROC", "val_image_AUROC"
-        ]
-        for key in expected_keys:
-            assert key in logged_metrics
-            assert 0 <= logged_metrics[key] <= 1
-        
-        # Check that collections were reset
-        assert len(model._val_mask_scores) == 0
-        assert len(model._val_severity_scores) == 0
-        assert len(model._val_final_scores) == 0
-        assert len(model._val_labels) == 0
+        assert success, "on_validation_epoch_end should not crash"
         
     def test_single_class_validation(self):
         """단일 클래스 validation 테스트"""
         model = DraemSevNet()
         
-        # All labels are the same (single class)
+        # Test validation step with single class scenario
         batch_size = 5
-        model._val_mask_scores = torch.rand(batch_size).tolist()
-        model._val_severity_scores = torch.rand(batch_size).tolist()
-        model._val_final_scores = torch.rand(batch_size).tolist()
-        model._val_labels = [1] * batch_size  # All same class
+        batch = MagicMock()
+        batch.image = torch.randn(batch_size, 3, 224, 224)
+        batch.gt_label = torch.ones(batch_size, dtype=torch.long)  # All same class
         
-        logged_metrics = {}
-        def mock_log(key, value, **kwargs):
-            logged_metrics[key] = value
-        model.log = mock_log
+        # Mock batch.update method
+        def mock_update(**kwargs):
+            for key, value in kwargs.items():
+                setattr(batch, key, value)
+            return batch
+        batch.update = mock_update
         
-        model.on_validation_epoch_end()
+        # Test that validation step works even with single class
+        model.eval()
+        with torch.no_grad():
+            output = model.validation_step(batch)
         
-        # All AUROCs should be 0.5 (random performance)
-        expected_keys = [
-            "val_mask_AUROC", "val_severity_AUROC", 
-            "val_combined_AUROC", "val_image_AUROC"
-        ]
-        for key in expected_keys:
-            assert logged_metrics[key] == 0.5
+        assert output == batch
+        assert hasattr(output, 'pred_score')
+        assert output.pred_score.shape == (batch_size,)
             
     def test_different_score_combinations(self):
         """다양한 score combination 방식 테스트"""
@@ -181,10 +169,17 @@ class TestDraemSevNetLightningModel:
             batch.image = torch.randn(2, 3, 224, 224)
             batch.gt_label = torch.randint(0, 2, (2,))
             
+            # Mock batch.update method
+            def mock_update(**kwargs):
+                for key, value in kwargs.items():
+                    setattr(batch, key, value)
+                return batch
+            batch.update = mock_update
+            
             # Should work without errors
             with torch.no_grad():
                 output = model.validation_step(batch)
-                assert "final_score" in output
+                assert hasattr(output, 'pred_score')
                 
     def test_severity_head_modes(self):
         """다양한 severity head 모드 테스트"""
@@ -197,6 +192,13 @@ class TestDraemSevNetLightningModel:
             batch.image = torch.randn(2, 3, 224, 224)
             batch.gt_label = torch.randint(0, 2, (2,))
             
+            # Mock batch.update method for validation
+            def mock_update(**kwargs):
+                for key, value in kwargs.items():
+                    setattr(batch, key, value)
+                return batch
+            batch.update = mock_update
+            
             # Training mode
             model.train()
             train_output = model.training_step(batch)
@@ -206,7 +208,7 @@ class TestDraemSevNetLightningModel:
             model.eval()
             with torch.no_grad():
                 val_output = model.validation_step(batch)
-                assert "final_score" in val_output
+                assert hasattr(val_output, 'pred_score')
                 
     def test_loss_function_integration(self):
         """Loss function 통합 테스트"""
@@ -252,24 +254,30 @@ class TestDraemSevNetLightningModel:
         """기존 코드와의 호환성 테스트"""
         model = DraemSevNet()
         
-        # Should have val_image_AUROC for backward compatibility
-        model._val_mask_scores = [0.1, 0.8, 0.3, 0.9]
-        model._val_severity_scores = [0.2, 0.7, 0.4, 0.8]
-        model._val_final_scores = [0.15, 0.75, 0.35, 0.85]
-        model._val_labels = [0, 1, 0, 1]
+        # Test that DraemSevNet is compatible with anomalib's evaluation system
+        # The evaluator is configured to log val_image_AUROC for compatibility
+        assert hasattr(model, 'evaluator')
+        assert model.evaluator is not None
         
-        logged_metrics = {}
-        def mock_log(key, value, **kwargs):
-            logged_metrics[key] = value
-        model.log = mock_log
+        # Test validation step output format compatibility
+        batch = MagicMock()
+        batch.image = torch.randn(4, 3, 224, 224)
+        batch.gt_label = torch.randint(0, 2, (4,))
         
-        model.on_validation_epoch_end()
+        # Mock batch.update method
+        def mock_update(**kwargs):
+            for key, value in kwargs.items():
+                setattr(batch, key, value)
+            return batch
+        batch.update = mock_update
         
-        # val_image_AUROC should exist for backward compatibility
-        assert "val_image_AUROC" in logged_metrics
-        assert "val_combined_AUROC" in logged_metrics
-        # They should be the same (combined score)
-        assert logged_metrics["val_image_AUROC"] == logged_metrics["val_combined_AUROC"]
+        model.eval()
+        with torch.no_grad():
+            output = model.validation_step(batch)
+        
+        # Should have pred_score field expected by anomalib evaluator
+        assert hasattr(output, 'pred_score')
+        assert output.pred_score.shape == (4,)
 
 
 # pytest로 실행 시 자동으로 실행되는 통합 테스트

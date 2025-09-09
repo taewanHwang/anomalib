@@ -214,6 +214,114 @@ def test_severity_levels():
         assert severity_name in [s[0] for s in severity_ranges], f"Unexpected severity name: {severity_name}"
 
 
+def test_patch_normalization():
+    """Test patch normalization behavior with different brightness levels."""
+    print("\n🧪 Testing patch normalization with different brightness levels...")
+    
+    # Create test patches with different brightness levels
+    test_patches = {
+        "Low brightness (0.2)": torch.full((3, 50, 50), 0.2),
+        "Medium brightness (0.5)": torch.full((3, 50, 50), 0.5),
+        "High brightness (0.8)": torch.full((3, 50, 50), 0.8),
+        "Mixed random": torch.rand(3, 50, 50),
+        "Very dark (0.1)": torch.full((3, 50, 50), 0.1),
+        "Maximum (1.0)": torch.full((3, 50, 50), 1.0)
+    }
+    
+    generator = HDMAPCutPasteSyntheticGenerator(probability=1.0, severity_max=1.0)
+    severity_value = 0.5  # Fixed severity for testing
+    
+    print(f"   Testing with severity_value = {severity_value}")
+    print(f"   Expected fault signature max = {severity_value} (after normalization)")
+    print()
+    
+    results = []
+    
+    for patch_name, patch in test_patches.items():
+        # Test the _apply_severity_modification function directly
+        fault_signature = generator._apply_severity_modification(patch, severity_value)
+        
+        orig_min = patch.min().item()
+        orig_max = patch.max().item()
+        sig_min = fault_signature.min().item()
+        sig_max = fault_signature.max().item()
+        
+        print(f"   {patch_name}:")
+        print(f"      Original: [{orig_min:.3f}, {orig_max:.3f}]")
+        print(f"      Fault signature: [{sig_min:.3f}, {sig_max:.3f}]")
+        print(f"      ✓ Normalized correctly: {abs(sig_max - severity_value) < 1e-6}")
+        print()
+        
+        # Store results for potential saving
+        results.append((patch_name, patch, fault_signature, orig_max, sig_max))
+        
+        # Verify normalization worked correctly
+        if orig_max > 0:
+            assert abs(sig_max - severity_value) < 1e-6, f"Normalization failed for {patch_name}"
+    
+    print(f"   ✅ All {len(test_patches)} patch normalization tests passed!")
+    
+    # Test with different severity values
+    print(f"\n   Testing normalization consistency across different severity values...")
+    test_patch = torch.rand(3, 30, 30)  # Random test patch
+    severity_values = [0.1, 0.3, 0.5, 0.7, 1.0]
+    
+    for sev in severity_values:
+        fault_sig = generator._apply_severity_modification(test_patch, sev)
+        sig_max = fault_sig.max().item()
+        print(f"      Severity {sev:.1f}: fault max = {sig_max:.3f} (expected: {sev:.3f})")
+        assert abs(sig_max - sev) < 1e-6, f"Severity consistency failed for {sev}"
+    
+    print(f"   ✅ Severity consistency test passed!")
+    
+    return results
+
+
+def save_patch_normalization_results(
+    patch_results: list,
+    output_dir: str,
+    test_name: str = "normalization"
+):
+    """Save patch normalization test results as PNG files.
+    
+    Args:
+        patch_results: List of (patch_name, original_patch, fault_signature, orig_max, sig_max)
+        output_dir: Directory to save results
+        test_name: Name prefix for saved files
+    """
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    print(f"   💾 Saving patch normalization results to: {output_dir}/{test_name}_*.png")
+    
+    for i, (patch_name, original_patch, fault_signature, orig_max, sig_max) in enumerate(patch_results):
+        # Convert tensors to numpy arrays (take first channel for visualization)
+        orig_array = original_patch[0].cpu().numpy()  # (H, W)
+        fault_array = fault_signature[0].cpu().numpy()  # (H, W)
+        
+        # Convert to [0, 255] uint8 for PNG saving
+        orig_img = Image.fromarray((orig_array * 255).astype(np.uint8))
+        fault_img = Image.fromarray((fault_array * 255).astype(np.uint8))
+        
+        # Create difference map to show normalization effect
+        if orig_max > 0:
+            normalized_orig = orig_array / orig_max
+            diff_array = np.abs(fault_array - normalized_orig * 0.5)  # Compare with expected
+        else:
+            diff_array = fault_array
+        diff_img = Image.fromarray((diff_array * 255).astype(np.uint8))
+        
+        # Clean patch name for filename
+        clean_name = patch_name.replace(" ", "_").replace("(", "").replace(")", "").replace(".", "")
+        
+        # Save images
+        orig_img.save(f"{output_dir}/{test_name}_{i+1:02d}_{clean_name}_original.png")
+        fault_img.save(f"{output_dir}/{test_name}_{i+1:02d}_{clean_name}_fault_sig.png")
+        diff_img.save(f"{output_dir}/{test_name}_{i+1:02d}_{clean_name}_diff.png")
+        
+        print(f"      {patch_name}: orig_max={orig_max:.3f} → fault_max={sig_max:.3f}")
+
+
 def save_test_results(
     original_image: torch.Tensor,
     synthetic_image: torch.Tensor,
@@ -453,7 +561,14 @@ def main():
             save_test_results(image, synthetic_image, fault_mask, severity_map, severity_label,
                              output_dir, f"multipatch_{patch_count}")
         
-        # Test 4: Severity levels
+        # Test 4: Patch normalization
+        print("\n📊 Running patch normalization tests...")
+        patch_results = test_patch_normalization()
+        
+        # Save patch normalization results
+        save_patch_normalization_results(patch_results, output_dir, "patch_normalization")
+        
+        # Test 5: Severity levels
         print("\n📊 Running severity level tests...")
         severity_ranges = [("low", 3.0), ("medium", 6.0), ("high", 10.0)]
         
@@ -475,7 +590,7 @@ def main():
             save_test_results(image, synthetic_image, fault_mask, severity_map, severity_label,
                              output_dir, f"severity_{severity_name}")
         
-        # Test 5: Real HDMAP data (if available)
+        # Test 6: Real HDMAP data (if available)
         print("\n📊 Running real HDMAP data tests...")
         possible_paths = [
             "./datasets/HDMAP/1000_8bit_resize_224x224/domain_A/train/good/000065.png",
@@ -501,7 +616,7 @@ def main():
                 generator = HDMAPCutPasteSyntheticGenerator(
                     patch_width_range=(64, 128),
                     patch_ratio_range=(0.1, 0.2),
-                    severity_max=0.5,
+                    severity_max=5,
                     patch_count=1,
                     probability=1.0  # Always generate faults for testing
                 )

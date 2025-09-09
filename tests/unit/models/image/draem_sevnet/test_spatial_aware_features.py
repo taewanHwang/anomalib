@@ -104,9 +104,9 @@ class TestSpatialAwareSeverityHead:
         assert score_gap.shape == (batch_size,)
         assert score_spatial.shape == (batch_size,)
         
-        # 값 범위 검증
-        assert torch.all((score_gap >= 0) & (score_gap <= 1))
-        assert torch.all((score_spatial >= 0) & (score_spatial <= 1))
+        # 값 유효성 검증 (실수 범위)
+        assert torch.all(torch.isfinite(score_gap))
+        assert torch.all(torch.isfinite(score_spatial))
         
         verbose_print(f"GAP scores: {score_gap.tolist()}")
         verbose_print(f"Spatial-Aware scores: {score_spatial.tolist()}")
@@ -167,9 +167,9 @@ class TestSpatialAwareSeverityHead:
         assert score_gap.shape == (batch_size,)
         assert score_spatial.shape == (batch_size,)
         
-        # 값 범위 검증
-        assert torch.all((score_gap >= 0) & (score_gap <= 1))
-        assert torch.all((score_spatial >= 0) & (score_spatial <= 1))
+        # 값 유효성 검증 (실수 범위)
+        assert torch.all(torch.isfinite(score_gap))
+        assert torch.all(torch.isfinite(score_spatial))
         
         verbose_print(f"Multi-scale GAP scores: {score_gap.tolist()}")
         verbose_print(f"Multi-scale Spatial-Aware scores: {score_spatial.tolist()}")
@@ -249,9 +249,9 @@ class TestSpatialAwareSeverityHead:
         assert scores_with.shape == (batch_size,)
         assert scores_without.shape == (batch_size,)
         
-        # 값 범위 검증
-        assert torch.all((scores_with >= 0) & (scores_with <= 1))
-        assert torch.all((scores_without >= 0) & (scores_without <= 1))
+        # 값 유효성 검증 (실수 범위)
+        assert torch.all(torch.isfinite(scores_with))
+        assert torch.all(torch.isfinite(scores_without))
         
         # 파라미터 수 비교
         params_with = sum(p.numel() for p in head_with_attention.parameters())
@@ -396,8 +396,8 @@ class TestSpatialAwareDraemSevNetModel:
             assert mask_logits.shape == (batch_size, 2, 224, 224)
             assert severity_score.shape == (batch_size,)
             
-            # 값 범위 검증
-            assert torch.all((severity_score >= 0) & (severity_score <= 1))
+            # 값 유효성 검증 (training mode - 실수 범위)
+            assert torch.all(torch.isfinite(severity_score))
             
             verbose_print(f"{name} training - severity range: [{severity_score.min():.4f}, {severity_score.max():.4f}]")
         
@@ -435,17 +435,17 @@ class TestSpatialAwareDraemSevNetModel:
             
             # Shape 검증
             assert output.final_score.shape == (batch_size,)
-            assert output.severity_score.shape == (batch_size,)
+            assert output.normalized_severity_score.shape == (batch_size,)
             assert output.mask_score.shape == (batch_size,)
             assert output.anomaly_map.shape == (batch_size, 224, 224)
             
             # 값 범위 검증
             assert torch.all((output.final_score >= 0) & (output.final_score <= 1))
-            assert torch.all((output.severity_score >= 0) & (output.severity_score <= 1))
+            assert torch.all((output.normalized_severity_score >= 0) & (output.normalized_severity_score <= 1))
             assert torch.all((output.mask_score >= 0) & (output.mask_score <= 1))
             
             verbose_print(f"{name} inference - final_score: [{output.final_score.min():.4f}, {output.final_score.max():.4f}]")
-            verbose_print(f"{name} inference - severity_score: [{output.severity_score.min():.4f}, {output.severity_score.max():.4f}]")
+            verbose_print(f"{name} inference - normalized_severity_score: [{output.normalized_severity_score.min():.4f}, {output.normalized_severity_score.max():.4f}]")
         
         verbose_print("Spatial-Aware model inference forward test passed!", "SUCCESS")
     
@@ -602,20 +602,24 @@ class TestSpatialAwarePerformance:
     """Spatial-Aware 성능 비교 테스트"""
     
     def test_inference_speed_comparison(self):
-        """추론 속도 비교 테스트"""
+        """추론 속도 비교 테스트 (GPU 지원)"""
         verbose_print("Testing inference speed comparison...")
         
-        batch_size = 8
-        input_tensor = torch.randn(batch_size, 3, 224, 224)
-        num_runs = 50
+        # GPU 사용 가능한지 확인
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        verbose_print(f"Using device: {device}")
+        
+        batch_size = 4  # GPU 메모리 고려하여 감소
+        input_tensor = torch.randn(batch_size, 3, 224, 224).to(device)
+        num_runs = 10 if device.type == "cpu" else 50  # CPU에서는 실행 횟수 감소
         
         models = {
-            "GAP": DraemSevNetModel(severity_head_pooling_type="gap"),
+            "GAP": DraemSevNetModel(severity_head_pooling_type="gap").to(device),
             "Spatial-Aware": DraemSevNetModel(
                 severity_head_pooling_type="spatial_aware",
                 severity_head_spatial_size=4,
                 severity_head_use_spatial_attention=True
-            )
+            ).to(device)
         }
         
         results = {}
@@ -623,16 +627,24 @@ class TestSpatialAwarePerformance:
         for name, model in models.items():
             model.eval()
             
-            # Warmup
+            # GPU 동기화를 위한 warmup
             with torch.no_grad():
-                for _ in range(10):
-                    model(input_tensor)
+                for _ in range(5):
+                    output = model(input_tensor)
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()  # GPU 동기화
             
-            # Timing
+            # Timing with GPU synchronization
+            if device.type == "cuda":
+                torch.cuda.synchronize()
             start_time = time.time()
+            
             with torch.no_grad():
                 for _ in range(num_runs):
                     output = model(input_tensor)
+                    
+            if device.type == "cuda":
+                torch.cuda.synchronize()
             end_time = time.time()
             
             avg_time = (end_time - start_time) / num_runs
@@ -641,14 +653,15 @@ class TestSpatialAwarePerformance:
                 'final_score': output.final_score.mean().item()
             }
             
-            verbose_print(f"{name}: {avg_time*1000:.2f}ms per batch, avg_score: {output.final_score.mean():.4f}")
+            verbose_print(f"{name}: {avg_time*1000:.2f}ms per batch (batch_size={batch_size}), avg_score: {output.final_score.mean():.4f}")
         
         # 속도 비교 (Spatial-Aware가 더 느릴 수 있음)
         speed_ratio = results["Spatial-Aware"]["avg_time"] / results["GAP"]["avg_time"]
         verbose_print(f"Speed ratio (Spatial-Aware / GAP): {speed_ratio:.2f}x", "COMPARE")
         
-        # 합리적인 속도 차이인지 확인 (10배 이상 느리면 안됨)
-        assert speed_ratio < 10.0, f"Spatial-Aware is too slow: {speed_ratio:.2f}x"
+        # 합리적인 속도 차이인지 확인 (5배 이상 느리면 안됨 - GPU에서는 더 엄격)
+        max_ratio = 5.0 if device.type == "cuda" else 10.0
+        assert speed_ratio < max_ratio, f"Spatial-Aware is too slow: {speed_ratio:.2f}x (max: {max_ratio}x)"
         
         verbose_print("Inference speed comparison test passed!", "SUCCESS")
     
@@ -687,8 +700,12 @@ class TestSpatialAwareArchitectureCoverage:
     """다양한 Spatial-Aware 아키텍처 조합 완전 테스트"""
     
     def test_all_architecture_combinations(self):
-        """모든 가능한 아키텍처 조합 매트릭스 테스트"""
+        """모든 가능한 아키텍처 조합 매트릭스 테스트 (GPU 지원)"""
         verbose_print("Testing all possible architecture combinations...")
+        
+        # GPU 사용 가능한지 확인
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        verbose_print(f"Using device: {device}")
         
         # 테스트할 모든 조합 정의
         test_combinations = [
@@ -723,21 +740,21 @@ class TestSpatialAwareArchitectureCoverage:
         ]
         
         batch_size = 2
-        input_tensor = torch.randn(batch_size, 3, 224, 224)
+        input_tensor = torch.randn(batch_size, 3, 224, 224).to(device)
         
         successful_combinations = 0
         total_combinations = len(test_combinations)
         
         for i, (mode, pooling_type, spatial_size, use_attention, score_combination) in enumerate(test_combinations):
             try:
-                # 모델 생성
+                # 모델 생성 및 GPU 이동
                 if pooling_type == "gap":
                     model = DraemSevNetModel(
                         severity_head_mode=mode,
                         severity_head_pooling_type=pooling_type,
                         score_combination=score_combination,
                         severity_weight_for_combination=0.3
-                    )
+                    ).to(device)
                 else:  # spatial_aware
                     model = DraemSevNetModel(
                         severity_head_mode=mode,
@@ -746,7 +763,7 @@ class TestSpatialAwareArchitectureCoverage:
                         severity_head_use_spatial_attention=use_attention,
                         score_combination=score_combination,
                         severity_weight_for_combination=0.3
-                    )
+                    ).to(device)
                 
                 # Training mode 테스트
                 model.train()
@@ -755,7 +772,8 @@ class TestSpatialAwareArchitectureCoverage:
                 assert reconstruction.shape == (batch_size, 3, 224, 224)
                 assert mask_logits.shape == (batch_size, 2, 224, 224)
                 assert severity_score.shape == (batch_size,)
-                assert torch.all((severity_score >= 0) & (severity_score <= 1))
+                # Training mode allows any real values for gradient flow
+                assert torch.all(torch.isfinite(severity_score))
                 
                 # Inference mode 테스트
                 model.eval()
@@ -764,7 +782,7 @@ class TestSpatialAwareArchitectureCoverage:
                 
                 assert isinstance(output, DraemSevNetOutput)
                 assert torch.all((output.final_score >= 0) & (output.final_score <= 1))
-                assert torch.all((output.severity_score >= 0) & (output.severity_score <= 1))
+                assert torch.all((output.normalized_severity_score >= 0) & (output.normalized_severity_score <= 1))
                 
                 successful_combinations += 1
                 
@@ -784,8 +802,12 @@ class TestSpatialAwareArchitectureCoverage:
         verbose_print(f"🎉 All {total_combinations} architecture combinations passed!", "SUCCESS")
     
     def test_input_size_spatial_size_combinations(self):
-        """다양한 입력 크기와 spatial_size 조합 테스트"""
+        """다양한 입력 크기와 spatial_size 조합 테스트 (GPU 지원)"""
         verbose_print("Testing input size and spatial size combinations...")
+        
+        # GPU 사용 가능한지 확인
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        verbose_print(f"Using device: {device}")
         
         # (input_height, input_width, spatial_size) 조합
         size_combinations = [
@@ -810,10 +832,10 @@ class TestSpatialAwareArchitectureCoverage:
                     severity_head_pooling_type="spatial_aware",
                     severity_head_spatial_size=spatial_size,
                     severity_head_use_spatial_attention=True
-                )
+                ).to(device)
                 
                 batch_size = 2
-                input_tensor = torch.randn(batch_size, 3, height, width)
+                input_tensor = torch.randn(batch_size, 3, height, width).to(device)
                 
                 # Training mode
                 model.train()
@@ -863,7 +885,7 @@ class TestSpatialAwareArchitectureCoverage:
                 
                 # 기본 검증
                 assert severity_score.shape == (batch_size,)
-                assert torch.all((severity_score >= 0) & (severity_score <= 1))
+                assert torch.all(torch.isfinite(severity_score))
                 
                 # 파라미터 수 확인
                 total_params = sum(p.numel() for p in model.parameters())
@@ -914,7 +936,7 @@ class TestSpatialAwareArchitectureCoverage:
                 # 기본 검증
                 assert reconstruction.shape == (batch_size, 3, 224, 224)
                 assert severity_score.shape == (batch_size,)
-                assert torch.all((severity_score >= 0) & (severity_score <= 1))
+                assert torch.all(torch.isfinite(severity_score))
                 
                 verbose_print(f"✅ SSPCAB={sspcab} + {pooling_type}")
                 

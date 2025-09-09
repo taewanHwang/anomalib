@@ -340,8 +340,10 @@ class HDMAPCutPasteSyntheticGenerator(nn.Module):
             # No fault pattern - return zero tensor
             return torch.zeros_like(patch)
         else:
-            # Create fault signature proportional to severity
-            fault_signature = patch * severity_value
+            # Normalize patch to maximum value (1.0) then multiply by severity
+            # This ensures consistent fault intensity regardless of original patch brightness
+            normalized_patch = patch / patch.max() if patch.max() > 0 else patch
+            fault_signature = normalized_patch * severity_value
             return fault_signature
     
     def _rescale_image_if_needed(self, image: torch.Tensor) -> torch.Tensor:

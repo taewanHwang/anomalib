@@ -136,6 +136,7 @@ class DraemSevNet(AnomalibModule):
             severity_head_hidden_dim=severity_head_hidden_dim,
             score_combination=score_combination,
             severity_weight_for_combination=severity_weight_for_combination,
+            severity_max=severity_max,  # 🆕 severity_max 전달
             # 🆕 Spatial-Aware SeverityHead 설정 전달
             severity_head_pooling_type=severity_head_pooling_type,
             severity_head_spatial_size=severity_head_spatial_size,

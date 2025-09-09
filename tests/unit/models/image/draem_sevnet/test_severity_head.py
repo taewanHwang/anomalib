@@ -79,9 +79,10 @@ class TestSeverityHead:
         # Shape 검증
         assert severity_scores.shape == (batch_size,)
         
-        # 값 범위 검증 [0, 1]
-        assert torch.all(severity_scores >= 0.0)
-        assert torch.all(severity_scores <= 1.0)
+        # 값 유효성 검증 (실수 범위)
+        assert severity_scores.dtype == torch.float32
+        # 출력이 finite한 값인지 확인 (NaN, Inf 체크)
+        assert torch.all(torch.isfinite(severity_scores))
         
         verbose_print("Single scale forward pass test passed!", "SUCCESS")
         
@@ -115,9 +116,10 @@ class TestSeverityHead:
         # Shape 검증
         assert severity_scores.shape == (batch_size,)
         
-        # 값 범위 검증 [0, 1]
-        assert torch.all(severity_scores >= 0.0)
-        assert torch.all(severity_scores <= 1.0)
+        # 값 유효성 검증 (실수 범위)
+        assert severity_scores.dtype == torch.float32
+        # 출력이 finite한 값인지 확인 (NaN, Inf 체크)
+        assert torch.all(torch.isfinite(severity_scores))
         
         verbose_print("Multi-scale forward pass test passed!", "SUCCESS")
         
@@ -262,7 +264,8 @@ class TestSeverityHeadIntegration:
         
         single_scores = single_head(act6)
         assert single_scores.shape == (batch_size,)
-        assert torch.all((single_scores >= 0) & (single_scores <= 1))
+        # 값 유효성 검증 (실수 범위)
+        assert torch.all(torch.isfinite(single_scores))
         
         # Multi-scale test (act2~act6)
         realistic_features = {
@@ -277,7 +280,8 @@ class TestSeverityHeadIntegration:
         multi_scores = multi_head(realistic_features)
         
         assert multi_scores.shape == (batch_size,)
-        assert torch.all((multi_scores >= 0) & (multi_scores <= 1))
+        # 값 유효성 검증 (실수 범위)
+        assert torch.all(torch.isfinite(multi_scores))
         
     def test_performance_comparison(self):
         """Single-scale vs Multi-scale 성능 비교 테스트"""
