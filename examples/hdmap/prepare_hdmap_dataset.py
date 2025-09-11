@@ -3,6 +3,9 @@
 
 이 스크립트는 mat 파일 형태의 원본 HDMAP 데이터를 PNG 이미지로 변환합니다.
 프로토타입과 동일한 전역 정규화 방식을 사용하여 성능 저하 없이 변환합니다.
+
+실행 명령어:
+nohup python /mnt/ex-disk/taewan.hwang/study/anomalib/examples/hdmap/prepare_hdmap_dataset.py > hdmap_dataset.log 2>&1 &
 """
 
 import os
@@ -21,7 +24,7 @@ CLIP_MIN = -4.0  # 클리핑 최솟값 (z-score 기준)
 CLIP_MAX = 10.0  # 클리핑 최댓값 (z-score 기준)
 
 # 데이터 설정
-N_TRAINING = 100  # 훈련 샘플 수 (프로토타입과 동일)
+N_TRAINING = 10000  # 훈련 샘플 수 (프로토타입과 동일)
 N_TESTING = 2000     # 테스트 샘플 수
 BIT_DEPTH = '16bit'  # 비트 심도 ('8bit' 또는 '16bit')
 
@@ -286,52 +289,8 @@ def prepare_hdmap_dataset_multiple_modes():
             domain_paths = paths[domain]
             process_domain_data(domain, domain_paths, domain_stats, folder_name, processing_mode)
 
-def prepare_hdmap_dataset():
-    """단일 모드로 HDMAP 데이터셋 준비 (기본: 1ch_original 모드)"""
-    print("="*80)
-    print("🚀 HDMAP 데이터셋 변환 시작")
-    print("="*80)
-    print(f"훈련 샘플 수: {N_TRAINING:,}")
-    print(f"테스트 샘플 수: {N_TESTING:,}")
-    print(f"비트 심도: {BIT_DEPTH}")
-    
-    print(f"정규화: 전역 (클리핑: [{CLIP_MIN}, {CLIP_MAX}])")
-    
-    print("="*80)
-    
-    # 1. 폴더명 및 경로 준비
-    processing_mode = 'original'  # 기본 모드
-    folder_name = get_folder_name(processing_mode)
-    paths = generate_paths()
-    
-    # 2. 전역 통계량 계산
-    domain_stats = compute_domain_stats()
-    
-    # 3. 각 도메인별 데이터 처리
-    for domain in DOMAIN_CONFIG.keys():
-        domain_paths = paths[domain]
-        process_domain_data(domain, domain_paths, domain_stats, folder_name, processing_mode)
-    
-    # 4. 완료 메시지
-    print("\n" + "="*80)
-    print("🎉 HDMAP 데이터셋 변환 완료!")
-    print("="*80)
-    print(f"저장 위치: datasets/{BASE_FOLDER}/{get_folder_name('original')}/")
-    print("구조:")
-    for domain in DOMAIN_CONFIG.keys():
-        print(f"  domain_{domain}/")
-        print(f"    ├── train/good/     # 정상 훈련 ({N_TRAINING:,}개)")
-        print(f"    └── test/")
-        print(f"        ├── good/       # 정상 테스트 ({N_TESTING:,}개)")
-        print(f"        └── fault/      # 고장 테스트 ({N_TESTING:,}개)")
-    
-    print(f"\n🎯 전역 정규화 완료! 프로토타입과 동일한 방식으로 변환됨")
-    print(f"📝 로드 시 역변환: pixel / 65535 * ({CLIP_MAX} - ({CLIP_MIN})) + ({CLIP_MIN})")
-    print(f"✨ 이제 AUC 0.9999 성능을 재현할 수 있습니다!")
+    print(f"처리 완료")
 
 if __name__ == "__main__":
     # 전체 모드 (모든 처리 방식) - 2개 폴더 생성 (original, resize)
     prepare_hdmap_dataset_multiple_modes()
-    
-    # 단일 모드 (original 모드만)를 원하는 경우 아래 라인으로 변경
-    # prepare_hdmap_dataset()
