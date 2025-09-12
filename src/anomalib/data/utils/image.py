@@ -316,8 +316,28 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
         >>> type(image)
         <class 'torch.Tensor'>
     """
-    image = Image.open(path).convert("RGB")
-    return to_dtype(to_image(image), torch.float32, scale=True) if as_tensor else np.array(image) / 255.0
+    pil_image = Image.open(path)
+    
+    # 16bit 이미지 지원을 위한 처리
+    if pil_image.mode in ('I;16', 'I'):  # 16bit grayscale
+        # 16bit 이미지를 numpy로 변환 후 정규화
+        image_array = np.array(pil_image, dtype=np.float32)
+        # 16bit 범위(0-65535)에서 [0,1]로 정규화
+        max_val = 65535.0 if pil_image.mode == 'I;16' else image_array.max()
+        if max_val > 0:
+            image_array = image_array / max_val
+        # 그레이스케일을 RGB로 변환 (3채널 복사)
+        if len(image_array.shape) == 2:
+            image_array = np.stack([image_array] * 3, axis=-1)
+        
+        if as_tensor:
+            return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
+        else:
+            return image_array
+    else:
+        # 기존 8bit RGB 처리 방식
+        image = pil_image.convert("RGB")
+        return to_dtype(to_image(image), torch.float32, scale=True) if as_tensor else np.array(image) / 255.0
 
 
 def read_mask(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
