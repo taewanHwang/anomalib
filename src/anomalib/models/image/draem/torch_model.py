@@ -586,3 +586,4 @@ class DecoderReconstructive(nn.Module):
         db4 = self.db4(up4)
 
         return self.fin_out(db4)
+    

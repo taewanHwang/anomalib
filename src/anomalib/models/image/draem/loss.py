@@ -72,3 +72,4 @@ class DraemLoss(nn.Module):
         focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
         ssim_loss_val = self.ssim_loss(reconstruction, input_image) * 2
         return l2_loss_val + ssim_loss_val + focal_loss_val
+    

@@ -190,8 +190,6 @@ class Draem(AnomalibModule):
         """Perform validation step for DRAEM.
 
         Uses softmax predictions of the anomalous class as anomaly maps.
-        Performs inference in eval mode for consistent AUROC calculation.
-        Also computes and logs validation loss for early stopping.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -202,29 +200,8 @@ class Draem(AnomalibModule):
             STEP_OUTPUT: Dictionary containing predictions and metadata.
         """
         del args, kwargs  # These variables are not used.
-        
-        input_image = batch.image
-        
-        # Note: Lightning automatically sets model.eval() before validation_step
-        with torch.no_grad():
-            # Generate anomaly for validation loss calculation (same as training)
-            augmented_image, anomaly_mask = self.augmenter(input_image)
-            
-            # Temporarily set model to training mode for loss calculation
-            self.model.train()
-            reconstruction, prediction_logits = self.model(augmented_image)
-            # Compute validation loss
-            val_loss = self.loss(input_image, reconstruction, anomaly_mask, prediction_logits)
-            
-            # Log validation loss for early stopping
-            self.log("val_loss", val_loss.item(), on_epoch=True, prog_bar=True, logger=True)
-            
-            # Set back to eval mode for anomaly detection evaluation
-            self.model.eval()
-            # For anomaly detection evaluation, use clean image prediction
-            prediction = self.model(input_image)
-        
-        # Return updated batch - Evaluator will handle metrics automatically
+
+        prediction = self.model(batch.image)
         return batch.update(**prediction._asdict())
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
