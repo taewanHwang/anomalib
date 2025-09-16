@@ -43,9 +43,9 @@ class HDMAPDataModule(AnomalibDataModule):
     **Domain Transfer Learning**: Supports source/target domain experiments by independently configuring each domain.
 
     Args:
-        root (Path | str): Path to the root folder containing HDMAP dataset.
-            Defaults to ``"./datasets/HDMAP/1000_8bit_resize_256x256"``.
-            / HDMAP 데이터셋을 포함하는 루트 폴더 경로. 기본값은 전처리된 HDMAP 폴더
+        root (Path | str): Path to the root folder containing HDMAP TIFF dataset.
+            Defaults to ``"./datasets/HDMAP/10000_16bit_tiff_original"``.
+            / HDMAP TIFF 데이터셋을 포함하는 루트 폴더 경로. 기본값은 원본 TIFF 폴더
         domain (str): Domain name (domain_A, domain_B, domain_C, domain_D).
             Defaults to ``"domain_A"``.
             / 도메인 이름 (domain_A, domain_B, domain_C, domain_D). 기본값은 ``"domain_A"``
@@ -97,7 +97,7 @@ class HDMAPDataModule(AnomalibDataModule):
 
     def __init__(
         self,
-        root: Path | str = "./datasets/HDMAP/1000_8bit_resize_256x256",
+        root: Path | str = "./datasets/HDMAP/10000_16bit_tiff_original",
         domain: str = "domain_A",
         train_batch_size: int = 32,
         eval_batch_size: int = 32,
@@ -107,6 +107,8 @@ class HDMAPDataModule(AnomalibDataModule):
         test_split_mode: TestSplitMode | str = TestSplitMode.FROM_DIR,
         test_split_ratio: float = 0.2,
         seed: int | None = None,
+        target_size: tuple[int, int] | None = None,
+        resize_method: str = "resize",
         **kwargs: Any,
     ) -> None:
         # 부모 클래스 초기화 / Initialize parent class
@@ -125,6 +127,8 @@ class HDMAPDataModule(AnomalibDataModule):
         # HDMAP 특화 속성 설정 / Set HDMAP-specific attributes
         self.root = Path(root)
         self.domain = domain
+        self.target_size = target_size
+        self.resize_method = resize_method
 
         # HDMAP은 별도 테스트 디렉토리 제공, 기본값: 테스트에서 검증 분할 (MVTec 방식)
         # HDMAP provides separate test directory, default: split validation from test (MVTec style)
@@ -177,6 +181,8 @@ class HDMAPDataModule(AnomalibDataModule):
             domain=self.domain,
             split="train",
             augmentations=self.train_augmentations,
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
 
         # 테스트용 데이터셋 생성 / Create test dataset  
@@ -185,6 +191,8 @@ class HDMAPDataModule(AnomalibDataModule):
             domain=self.domain,
             split="test",
             augmentations=self.test_augmentations,
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
 
         # 검증 세트는 부모 클래스에서 자동으로 생성됨 / Validation set is automatically created by parent class
