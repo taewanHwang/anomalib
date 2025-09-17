@@ -189,8 +189,6 @@ class Draem(AnomalibModule):
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform validation step for DRAEM.
 
-        Uses softmax predictions of the anomalous class as anomaly maps.
-
         Args:
             batch (Batch): Input batch containing images and metadata.
             args: Additional positional arguments (unused).
@@ -201,8 +199,15 @@ class Draem(AnomalibModule):
         """
         del args, kwargs  # These variables are not used.
 
-        prediction = self.model(batch.image)
-        return batch.update(**prediction._asdict())
+        input_image = batch.image
+        
+        # Set model to eval mode to get InferenceBatch with pred_score
+        self.model.eval()
+        with torch.no_grad():
+            inference_output = self.model(input_image)
+        
+        # Use InferenceBatch directly - let Lightning's Evaluator handle AUROC calculation
+        return batch.update(**inference_output._asdict())
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
         """Perform test step for DRAEM.

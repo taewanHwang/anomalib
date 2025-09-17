@@ -33,6 +33,7 @@ Note:
 import logging
 from typing import Any
 
+import numpy as np
 from PIL import Image
 
 from anomalib.data import ImageItem, NumpyImageItem
@@ -337,7 +338,26 @@ def visualize_image_item(
             # Prefer loading from image_path if available, else use image attribute
             image_path = getattr(item, "image_path", None)
             if image_path is not None:
-                image = Image.open(image_path).convert("RGB")
+                pil_image = Image.open(image_path)
+                if pil_image.mode == 'F':
+                    # Handle 32-bit floating point TIFF images
+                    image_array = np.array(pil_image, dtype=np.float32)
+                    # Always normalize using min-max scaling to [0, 255] range
+                    min_val, max_val = image_array.min(), image_array.max()
+                    if max_val > min_val:
+                        image_array = ((image_array - min_val) / (max_val - min_val) * 255).astype(np.uint8)
+                    else:
+                        # Handle edge case where all values are the same
+                        image_array = np.zeros_like(image_array, dtype=np.uint8)
+                    
+                    # Convert grayscale to RGB by stacking
+                    if len(image_array.shape) == 2:
+                        image_array = np.stack([image_array] * 3, axis=-1)
+                    
+                    image = Image.fromarray(image_array, mode='RGB')
+                else:
+                    # Standard RGB/other mode processing
+                    image = pil_image.convert("RGB")
             else:
                 field_value = getattr(item, field, None)
                 if field_value is not None:
@@ -348,7 +368,7 @@ def visualize_image_item(
             if field_value is not None:
                 image = get_visualize_function(field)(field_value, **fields_config.get(field, {}))
             else:
-                logger.warning(f"Field '{field}' is None in item. Skipping visualization.")
+                logger.debug(f"Field '{field}' is None in item. Skipping visualization.")
         if image:
             field_images[field] = image.resize(field_size)
 

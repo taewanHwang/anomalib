@@ -718,8 +718,10 @@ def setup_warnings_filter():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
     
-    # 시각화 관련 특정 경고 필터링
-    warnings.filterwarnings("ignore", message=".*Field.*gt_mask.*is None.*Skipping visualization.*")
+    # 시각화 관련 특정 경고 필터링 (더 포괄적)
+    warnings.filterwarnings("ignore", message=".*Field.*gt_mask.*is None.*")
+    warnings.filterwarnings("ignore", message=".*Skipping visualization.*")
+    warnings.filterwarnings("ignore", message=".*gt_mask.*None.*")
 
 
 def setup_experiment_logging(log_file_path: str, experiment_name: str) -> logging.Logger:
@@ -1331,79 +1333,136 @@ def analyze_multi_experiment_results(all_results: list, source_domain: str):
 
 def create_single_domain_datamodule(
     domain: str,
+    dataset_root: str,
     batch_size: int = 16,
-    image_size: str = "224x224",
-    dataset_root: str = None,
+    target_size: tuple[int, int] | None = None,
+    resize_method: str = "resize",
     val_split_ratio: float = 0.2,
+    val_split_mode: str = "FROM_TEST",
     num_workers: int = 4,
     seed: int = 42,
-    num_training_samples: int = 1000,
-    image_preprocess: str = "8bit_resize"
+    verbose: bool = True,
 ):
     """Single Domain용 HDMAPDataModule 생성 및 설정.
     
     Args:
         domain: 단일 도메인 이름 (예: "domain_A")
+        dataset_root: 데이터셋 루트 경로 (필수)
         batch_size: 배치 크기
-        image_size: 이미지 크기 (예: "224x224")
-        dataset_root: 데이터셋 루트 경로 (None이면 자동 생성)
-        val_split_ratio: train에서 validation 분할 비율
+        target_size: 타겟 이미지 크기 (height, width). None이면 리사이즈 안 함
+        resize_method: 리사이즈 방법 ("resize", "black_padding", "noise_padding")
+        val_split_ratio: validation 분할 비율
+        val_split_mode: validation 분할 모드 ("FROM_TEST", "NONE", "FROM_TRAIN")
         num_workers: 워커 수
         seed: 랜덤 시드
-        num_training_samples: 훈련 샘플 수 (예: 1000)
-        image_preprocess: 이미지 전처리 방식 (예: "8bit_resize", "8bit_3ch_resize")
+        verbose: 상세 로그 출력 여부
         
     Returns:
         설정된 HDMAPDataModule
+        
+    Examples:
+        # 256x256 리사이즈
+        datamodule = create_single_domain_datamodule(
+            domain="domain_A",
+            dataset_root="/path/to/dataset",
+            target_size=(256, 256),
+            batch_size=8
+        )
+        
+        # 224x224 블랙 패딩
+        datamodule = create_single_domain_datamodule(
+            domain="domain_B",
+            dataset_root="/path/to/dataset",
+            target_size=(224, 224),
+            resize_method="black_padding"
+        )
+        
+        # 원본 크기 유지
+        datamodule = create_single_domain_datamodule(
+            domain="domain_C",
+            dataset_root="/path/to/dataset",
+            target_size=None
+        )
     """
     from anomalib.data.datamodules.image.hdmap import HDMAPDataModule
     from anomalib.data.utils import ValSplitMode
+    from pathlib import Path
     
-    print(f"\n📦 Single Domain HDMAPDataModule 생성 중...")
-    print(f"   🎯 도메인: {domain}")
-    print(f"   📏 이미지 크기: {image_size}")
-    print(f"   📊 배치 크기: {batch_size}")
-    print(f"   🔄 Val 분할 비율: {val_split_ratio}")
+    # ValSplitMode 문자열을 enum으로 변환
+    split_mode_map = {
+        "FROM_TEST": ValSplitMode.FROM_TEST,
+        "NONE": ValSplitMode.NONE,
+        "FROM_TRAIN": ValSplitMode.FROM_TRAIN
+    }
+    val_split_mode_enum = split_mode_map.get(val_split_mode, ValSplitMode.FROM_TEST)
     
-    # 기본 dataset_root 설정
-    if dataset_root is None:
-        import os
-        current_dir = os.getcwd()
-        # working directory가 examples/hdmap/single_domain일 때를 고려
-        if current_dir.endswith('single_domain'):
-            dataset_root = os.path.join(current_dir, "..", "..", "..", "datasets", "HDMAP", f"{num_training_samples}_{image_preprocess}_{image_size}")
+    if verbose:
+        print(f"\n📦 HDMAPDataModule 생성 중...")
+        print(f"   🎯 도메인: {domain}")
+        if target_size:
+            print(f"   📏 타겟 크기: {target_size[0]}x{target_size[1]}")
+            print(f"   🔧 리사이즈 방법: {resize_method}")
         else:
-            dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"{num_training_samples}_{image_preprocess}_{image_size}")
-        
-        # 절대 경로로 변환
-        dataset_root = os.path.abspath(dataset_root)
+            print(f"   📏 타겟 크기: 원본 크기 유지")
+        print(f"   📊 배치 크기: {batch_size}")
+        print(f"   🔄 Val 분할: {val_split_mode} (비율: {val_split_ratio})")
     
-    print(f"   📁 데이터셋 경로: {dataset_root}")
+    # Path 객체로 변환 및 검증
+    dataset_root = Path(dataset_root).resolve()
+    
+    if not dataset_root.exists():
+        raise FileNotFoundError(f"데이터셋 경로가 존재하지 않습니다: {dataset_root}")
+    
+    if verbose:
+        print(f"   📁 데이터셋 경로: {dataset_root}")
+        print(f"   📁 도메인 경로: {dataset_root / domain}")
     
     # HDMAPDataModule 생성
     datamodule = HDMAPDataModule(
-        root=dataset_root,
+        root=str(dataset_root),
         domain=domain,
         train_batch_size=batch_size,
         eval_batch_size=batch_size,
         num_workers=num_workers,
-        val_split_mode=ValSplitMode.FROM_TEST,  # test에서 validation 분할 (MVTec 방식)
+        val_split_mode=val_split_mode_enum,
         val_split_ratio=val_split_ratio,
-        seed=seed
+        seed=seed,
+        target_size=target_size,
+        resize_method=resize_method
     )
     
     # 데이터 준비 및 설정
-    print(f"   ⚙️  DataModule 설정 중...")
-    datamodule.prepare_data()
-    datamodule.setup()
+    if verbose:
+        print(f"   ⚙️  DataModule 설정 중...")
+    
+    try:
+        datamodule.prepare_data()
+        datamodule.setup()
+    except Exception as e:
+        print(f"❌ DataModule 설정 실패: {e}")
+        raise
     
     # 데이터 통계 출력
-    print(f"✅ {domain} 데이터 로드 완료")
-    print(f"   훈련 샘플: {len(datamodule.train_data)}개")
-    print(f"   검증 샘플: {len(datamodule.val_data) if datamodule.val_data else 0}개")
-    print(f"   테스트 샘플: {len(datamodule.test_data)}개")
+    if verbose:
+        print(f"✅ {domain} 데이터 로드 완료")
+        print(f"   훈련 샘플: {len(datamodule.train_data):,}개")
+        
+        val_count = len(datamodule.val_data) if hasattr(datamodule, 'val_data') and datamodule.val_data else 0
+        print(f"   검증 샘플: {val_count:,}개")
+        print(f"   테스트 샘플: {len(datamodule.test_data):,}개")
+        
+        # 첫 번째 배치로 데이터 형태 확인
+        try:
+            train_loader = datamodule.train_dataloader()
+            sample_batch = next(iter(train_loader))
+            print(f"   📊 이미지 형태: {sample_batch.image.shape}")
+            print(f"   📊 레이블 형태: {sample_batch.gt_label.shape}")
+            print(f"   📊 데이터 범위: [{sample_batch.image.min():.3f}, {sample_batch.image.max():.3f}]")
+        except Exception as e:
+            print(f"   ⚠️  배치 정보 확인 실패: {e}")
     
     return datamodule
+
 
 
 # =============================================================================
@@ -1448,10 +1507,23 @@ def save_detailed_test_results(
         else:
             row["mask_score"] = 0.0
             
+        # DRAEM-SevNet 모델의 경우 raw_severity_score와 normalized_severity_score 구분
+        if predictions.get("raw_severity_scores") and isinstance(predictions.get("raw_severity_scores"), list) and len(predictions.get("raw_severity_scores")) > i:
+            row["raw_severity_score"] = predictions["raw_severity_scores"][i]
+        else:
+            row["raw_severity_score"] = 0.0
+            
+        if predictions.get("normalized_severity_scores") and isinstance(predictions.get("normalized_severity_scores"), list) and len(predictions.get("normalized_severity_scores")) > i:
+            row["normalized_severity_score"] = predictions["normalized_severity_scores"][i]
+        else:
+            row["normalized_severity_score"] = 0.0
+            
+        # 기존 severity_score는 backward compatibility를 위해 유지 (normalized_severity_score와 동일)
         if predictions.get("severity_scores") and isinstance(predictions.get("severity_scores"), list) and len(predictions.get("severity_scores")) > i:
             row["severity_score"] = predictions["severity_scores"][i]
         else:
-            row["severity_score"] = 0.0
+            # normalized_severity_score와 동일한 값 사용
+            row["severity_score"] = row["normalized_severity_score"]
         
         # 예측 레이블 계산 (기본 threshold 0.5 사용)
         row["predicted_label"] = 1 if row["anomaly_score"] > 0.5 else 0
@@ -1728,3 +1800,616 @@ def save_experiment_summary(
         yaml.dump(summary, f, default_flow_style=False, allow_unicode=True, indent=2)
     
     print(f"📄 실험 요약 저장: {summary_path}")
+
+
+def analyze_test_data_distribution(datamodule, test_size: int) -> Tuple[int, int]:
+    """테스트 데이터의 라벨 분포를 분석합니다.
+    
+    Args:
+        datamodule: 테스트 데이터를 제공하는 데이터모듈
+        test_size: 전체 테스트 데이터 크기
+        
+    Returns:
+        Tuple[int, int]: (fault_count, good_count) 
+    """
+    import torch
+    import numpy as np
+    
+    print(f"   🔍 테스트 데이터 라벨 분포 전체 확인 중 (총 {test_size}개)...")
+    
+    test_loader = datamodule.test_dataloader()
+    fault_count = 0
+    good_count = 0
+    total_processed = 0
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(test_loader):
+            if hasattr(batch, 'gt_label'):
+                labels = batch.gt_label.numpy()
+                batch_fault_count = (labels == 1).sum()
+                batch_good_count = (labels == 0).sum()
+                
+                fault_count += batch_fault_count
+                good_count += batch_good_count
+                total_processed += len(labels)
+                
+                # 진행률 표시 (100 배치마다)
+                if batch_idx % 100 == 0 and batch_idx > 0:
+                    print(f"      📊 진행률: {batch_idx+1} 배치, {total_processed}개 처리됨")
+    
+    print(f"   ✅ 테스트 데이터 분포 분석 완료 - 총 {total_processed}개 샘플")
+    print(f"      🚨 최종 분포: Fault={fault_count}, Good={good_count}")
+    
+    # 분포 비율 계산 및 경고
+    if total_processed > 0:
+        fault_ratio = fault_count / total_processed * 100
+        good_ratio = good_count / total_processed * 100
+        print(f"      📈 비율: Fault={fault_ratio:.1f}%, Good={good_ratio:.1f}%")
+        
+        # 불균형 경고
+        if fault_count == 0:
+            print(f"      ⚠️  경고: Fault 이미지가 없습니다! AUROC 계산에 문제가 있을 수 있습니다.")
+        elif good_count == 0:
+            print(f"      ⚠️  경고: Good 이미지가 없습니다! AUROC 계산에 문제가 있을 수 있습니다.")
+        elif abs(fault_count - good_count) > total_processed * 0.3:
+            print(f"      ⚠️  경고: 라벨 분포가 불균형합니다 (30% 이상 차이)")
+        else:
+            print(f"      ✅ 테스트 데이터 라벨 분포 정상")
+    
+    return fault_count, good_count
+
+
+def analyze_dataset_statistics(datamodule, train_size: int, test_size: int, val_size: int = None) -> dict:
+    """훈련, 테스트, 검증 데이터의 픽셀값 통계량을 분석합니다.
+    
+    Args:
+        datamodule: 데이터를 제공하는 데이터모듈
+        train_size: 훈련 데이터 크기
+        test_size: 테스트 데이터 크기
+        val_size: 검증 데이터 크기 (선택사항)
+        
+    Returns:
+        dict: 각 데이터셋별 통계량 정보
+    """
+    import torch
+    import numpy as np
+    from typing import List
+    
+    print(f"   📊 데이터셋 픽셀값 통계 분석 시작...")
+    
+    statistics = {
+        "train": {"values": [], "labels": [], "count": 0},
+        "test": {"values": [], "labels": [], "count": 0}
+    }
+    
+    if val_size is not None and val_size > 0:
+        statistics["val"] = {"values": [], "labels": [], "count": 0}
+    
+    # 훈련 데이터 분석
+    print(f"      🔍 훈련 데이터 분석 중 (총 {train_size}개)...")
+    train_loader = datamodule.train_dataloader()
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(train_loader):
+            # 이미지 데이터 수집
+            images = batch.image.numpy()  # (B, C, H, W)
+            labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
+            
+            # 각 이미지별로 픽셀값과 라벨을 매핑
+            for img, label in zip(images, labels):
+                img_values = img.flatten()
+                statistics["train"]["values"].extend(img_values.tolist())
+                # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
+                statistics["train"]["labels"].extend([label] * len(img_values))
+            
+            statistics["train"]["count"] += len(labels)
+            
+            # 진행률 표시
+            if batch_idx % 50 == 0 and batch_idx > 0:
+                print(f"         📈 훈련 데이터: {batch_idx+1} 배치, {statistics['train']['count']}개 처리됨")
+    
+    # 테스트 데이터 분석
+    print(f"      🔍 테스트 데이터 분석 중 (총 {test_size}개)...")
+    test_loader = datamodule.test_dataloader()
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(test_loader):
+            # 이미지 데이터 수집
+            images = batch.image.numpy()  # (B, C, H, W)
+            labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
+            
+            # 각 이미지별로 픽셀값과 라벨을 매핑
+            for img, label in zip(images, labels):
+                img_values = img.flatten()
+                statistics["test"]["values"].extend(img_values.tolist())
+                # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
+                statistics["test"]["labels"].extend([label] * len(img_values))
+            
+            statistics["test"]["count"] += len(labels)
+            
+            # 진행률 표시
+            if batch_idx % 50 == 0 and batch_idx > 0:
+                print(f"         📈 테스트 데이터: {batch_idx+1} 배치, {statistics['test']['count']}개 처리됨")
+    
+    # 검증 데이터 분석 (있는 경우)
+    if "val" in statistics:
+        print(f"      🔍 검증 데이터 분석 중 (총 {val_size}개)...")
+        val_loader = datamodule.val_dataloader()
+        
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(val_loader):
+                # 이미지 데이터 수집
+                images = batch.image.numpy()  # (B, C, H, W)
+                labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
+                
+                # 각 이미지별로 픽셀값과 라벨을 매핑
+                for img, label in zip(images, labels):
+                    img_values = img.flatten()
+                    statistics["val"]["values"].extend(img_values.tolist())
+                    # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
+                    statistics["val"]["labels"].extend([label] * len(img_values))
+                
+                statistics["val"]["count"] += len(labels)
+                
+                # 진행률 표시
+                if batch_idx % 50 == 0 and batch_idx > 0:
+                    print(f"         📈 검증 데이터: {batch_idx+1} 배치, {statistics['val']['count']}개 처리됨")
+    
+    # 통계량 계산 및 출력
+    print(f"   📊 픽셀값 통계량 계산 중...")
+    
+    results = {}
+    for split_name, data in statistics.items():
+        if len(data["values"]) == 0:
+            continue
+            
+        values = np.array(data["values"])
+        labels = np.array(data["labels"])
+        
+        # 전체 통계
+        overall_stats = {
+            "count": len(values),
+            "min": float(np.min(values)),
+            "max": float(np.max(values)),
+            "mean": float(np.mean(values)),
+            "std": float(np.std(values)),
+            "median": float(np.median(values)),
+            "q25": float(np.percentile(values, 25)),
+            "q75": float(np.percentile(values, 75))
+        }
+        
+        # 라벨별 통계 (라벨이 있는 경우)
+        label_stats = {}
+        unique_labels = np.unique(labels)
+        
+        for label in unique_labels:
+            mask = labels == label
+            label_values = values[mask] if np.any(mask) else np.array([])
+            
+            if len(label_values) > 0:
+                label_name = "normal" if label == 0 else "fault"
+                label_stats[label_name] = {
+                    "count": len(label_values),
+                    "min": float(np.min(label_values)),
+                    "max": float(np.max(label_values)),
+                    "mean": float(np.mean(label_values)),
+                    "std": float(np.std(label_values)),
+                    "median": float(np.median(label_values))
+                }
+        
+        results[split_name] = {
+            "overall": overall_stats,
+            "by_label": label_stats
+        }
+    
+    # 결과 출력
+    print(f"   ✅ 데이터셋 통계 분석 완료!")
+    print(f"   📋 === 픽셀값 통계 요약 ===")
+    
+    for split_name, split_stats in results.items():
+        split_display = {"train": "훈련", "test": "테스트", "val": "검증"}
+        print(f"   📊 {split_display.get(split_name, split_name).upper()} 데이터:")
+        
+        overall = split_stats["overall"]
+        print(f"      🔢 전체 픽셀: {overall['count']:,}개")
+        print(f"      📏 범위: [{overall['min']:.4f}, {overall['max']:.4f}]")
+        print(f"      📊 평균±표준편차: {overall['mean']:.4f} ± {overall['std']:.4f}")
+        print(f"      📍 중위수: {overall['median']:.4f}")
+        print(f"      📈 Q1/Q3: {overall['q25']:.4f} / {overall['q75']:.4f}")
+        
+        # 라벨별 통계
+        if split_stats["by_label"]:
+            for label_name, label_stat in split_stats["by_label"].items():
+                label_emoji = "✅" if label_name == "normal" else "🚨"
+                print(f"      {label_emoji} {label_name.upper()} ({label_stat['count']:,}개 샘플):")
+                print(f"         📏 범위: [{label_stat['min']:.4f}, {label_stat['max']:.4f}]")
+                print(f"         📊 평균±표준편차: {label_stat['mean']:.4f} ± {label_stat['std']:.4f}")
+        print()
+    
+    # 데이터셋 간 비교
+    if len(results) > 1:
+        print(f"   🔍 === 데이터셋 간 비교 ===")
+        
+        # 평균값 비교
+        means = {name: stats["overall"]["mean"] for name, stats in results.items()}
+        stds = {name: stats["overall"]["std"] for name, stats in results.items()}
+        ranges = {name: (stats["overall"]["max"] - stats["overall"]["min"]) 
+                 for name, stats in results.items()}
+        
+        print(f"   📊 평균값 비교:")
+        for name, mean_val in means.items():
+            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
+            print(f"      {split_name}: {mean_val:.4f}")
+        
+        print(f"   📏 표준편차 비교:")
+        for name, std_val in stds.items():
+            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
+            print(f"      {split_name}: {std_val:.4f}")
+        
+        print(f"   📈 값 범위 비교:")
+        for name, range_val in ranges.items():
+            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
+            print(f"      {split_name}: {range_val:.4f}")
+        
+        # 분포 일관성 확인
+        train_mean = means.get("train", 0)
+        test_mean = means.get("test", 0)
+        
+        if "train" in means and "test" in means:
+            mean_diff = abs(train_mean - test_mean)
+            if mean_diff > 0.1:  # 임계값 설정
+                print(f"   ⚠️  경고: 훈련/테스트 데이터 평균값 차이가 큽니다 (차이: {mean_diff:.4f})")
+            else:
+                print(f"   ✅ 훈련/테스트 데이터 분포가 일관성 있습니다 (차이: {mean_diff:.4f})")
+    
+    return results
+
+
+def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name, model_type, logger):
+    """통합된 모델 평가 함수
+    
+    Args:
+        model: Lightning 모델
+        datamodule: 데이터 모듈
+        experiment_dir: 실험 디렉터리 경로
+        experiment_name: 실험 이름
+        model_type: 모델 타입 (소문자)
+        logger: 로거 객체
+                
+    Returns:
+        dict: AUROC, threshold, precision, recall, f1 score, confusion matrix 등 평가 메트릭
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix
+    
+    print(f"   🚀 통합 모델 평가 시작...")
+    
+    # 모델을 evaluation 모드로 설정
+    model.eval()
+    
+    # PyTorch 모델에 직접 접근
+    torch_model = model.model
+    torch_model.eval()
+    
+    # 모델을 GPU로 이동 (CUDA 사용 가능한 경우)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    torch_model = torch_model.to(device)
+    print(f"   🖥️ 모델을 {device}로 이동 완료")
+    
+    # 데이터 수집을 위한 리스트들
+    all_image_paths = []
+    all_ground_truth = []
+    all_scores = []
+    all_mask_scores = []
+    all_severity_scores = []
+    all_raw_severity_scores = []
+    all_normalized_severity_scores = []
+    
+    # 테스트 데이터로더 생성
+    test_dataloader = datamodule.test_dataloader()
+    print(f"   ✅ 테스트 데이터로더 생성 완료")
+    total_batches = len(test_dataloader)
+    
+    print(f"   🔄 {total_batches}개 배치 처리 시작...")
+    
+    # 배치별로 예측 수행
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(test_dataloader):
+            print(f"   📝 처리 중: {batch_idx+1}/{total_batches} 배치 (진행률: {100*(batch_idx+1)/total_batches:.1f}%)")
+            
+            # 이미지 경로 추출 (필수)
+            image_paths = batch.image_path
+            if not isinstance(image_paths, list):
+                image_paths = [image_paths]
+            
+            # 이미지 텐서 추출
+            image_tensor = batch.image
+            print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}")
+            
+            # 이미지 텐서를 모델과 같은 디바이스로 이동
+            image_tensor = image_tensor.to(device)
+            
+            # 모델로 직접 예측 수행
+            model_output = torch_model(image_tensor)
+            print(f"      ✅ 모델 출력 완료: {type(model_output)}")
+            
+            # DRAEM 모델의 경우 NaN 디버깅
+            if model_type.lower() == "draem" and hasattr(model_output, 'pred_score'):
+                pred_score_tensor = model_output.pred_score
+                print(f"      🔍 DRAEM 디버깅:")
+                print(f"         pred_score shape: {pred_score_tensor.shape}")
+                
+                # pred_score가 유효한지 확인
+                if torch.isnan(pred_score_tensor).any():
+                    print(f"         ❌ pred_score에 NaN 발견! 개수: {torch.isnan(pred_score_tensor).sum().item()}")
+                else:
+                    print(f"         ✅ pred_score 정상, 범위: [{pred_score_tensor.min():.6f}, {pred_score_tensor.max():.6f}]")
+                
+                if hasattr(model_output, 'anomaly_map'):
+                    anomaly_map_tensor = model_output.anomaly_map
+                    print(f"         anomaly_map shape: {anomaly_map_tensor.shape}")
+                    
+                    if torch.isnan(anomaly_map_tensor).any():
+                        print(f"         ❌ anomaly_map에 NaN 발견! 개수: {torch.isnan(anomaly_map_tensor).sum().item()}")
+                    else:
+                        print(f"         ✅ anomaly_map 정상, 범위: [{anomaly_map_tensor.min():.6f}, {anomaly_map_tensor.max():.6f}]")
+            
+            # 모델별 출력에서 점수들 추출
+            final_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores = extract_scores_from_model_output(
+                model_output, image_tensor.shape[0], batch_idx, model_type
+            )
+            
+            # Ground truth 추출 (이미지 경로에서)
+            gt_labels = []
+            for path in image_paths:
+                if '/fault/' in path:
+                    gt_labels.append(1)  # anomaly
+                elif '/good/' in path:
+                    gt_labels.append(0)  # normal
+                else:
+                    gt_labels.append(0)  # 기본값
+            
+            # 결과 수집
+            all_image_paths.extend(image_paths)
+            all_ground_truth.extend(gt_labels)
+            all_scores.extend(final_scores.flatten() if hasattr(final_scores, 'flatten') else final_scores)
+            all_mask_scores.extend(mask_scores.flatten() if hasattr(mask_scores, 'flatten') else mask_scores)
+            all_severity_scores.extend(severity_scores.flatten() if hasattr(severity_scores, 'flatten') else severity_scores)
+            all_raw_severity_scores.extend(raw_severity_scores.flatten() if hasattr(raw_severity_scores, 'flatten') else raw_severity_scores)
+            all_normalized_severity_scores.extend(normalized_severity_scores.flatten() if hasattr(normalized_severity_scores, 'flatten') else normalized_severity_scores)
+            
+            print(f"      ✅ 배치 {batch_idx+1} 완료: {len(gt_labels)}개 샘플 추가")
+    
+    print(f"   ✅ 총 {len(all_image_paths)}개 샘플 처리 완료")
+    
+    # 길이 맞추기
+    min_len = min(len(all_ground_truth), len(all_scores))
+    all_ground_truth = all_ground_truth[:min_len]
+    all_scores = all_scores[:min_len]
+    
+    print(f"   ✅ 통합 평가: {len(all_ground_truth)}개 샘플로 메트릭 계산")
+    
+    # NaN 값 확인 및 필터링
+    import numpy as np
+    scores_array = np.array(all_scores)
+    gt_array = np.array(all_ground_truth)
+    
+    nan_mask = np.isnan(scores_array)
+    if nan_mask.any():
+        nan_count = nan_mask.sum()
+        print(f"   ⚠️  NaN 점수 {nan_count}개 발견, 제거 후 계속")
+        
+        # NaN이 아닌 값들만 필터링
+        valid_mask = ~nan_mask
+        scores_array = scores_array[valid_mask]
+        gt_array = gt_array[valid_mask]
+        all_scores = scores_array.tolist()
+        all_ground_truth = gt_array.tolist()
+        
+        print(f"   ✅ 유효한 샘플: {len(all_scores)}개")
+    
+    # AUROC 계산 및 ROC curve 생성
+    try:
+        auroc = roc_auc_score(all_ground_truth, all_scores)
+    except ValueError as e:
+        print(f"   ❌ 평가 실패: {e}")
+        return None
+    
+    # 임계값 계산 (Youden's J statistic)
+    fpr, tpr, thresholds = roc_curve(all_ground_truth, all_scores)
+    optimal_idx = np.argmax(tpr - fpr)
+    optimal_threshold = thresholds[optimal_idx]
+    
+    print(f"   📈 AUROC: {auroc:.4f}, 최적 임계값: {optimal_threshold:.4f}")
+    
+    # 예측 라벨 생성
+    predictions = (np.array(all_scores) > optimal_threshold).astype(int)
+    
+    # Confusion Matrix 계산
+    cm = confusion_matrix(all_ground_truth, predictions)
+    
+    # 메트릭 계산
+    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, len(all_ground_truth), 0)
+    
+    accuracy = (tp + tn) / len(all_ground_truth) if len(all_ground_truth) > 0 else 0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    # 결과 출력
+    print(f"   🧮 통합 Confusion Matrix:")
+    print(f"       실제\\예측    Normal  Anomaly")
+    print(f"       Normal     {cm[0,0]:6d}  {cm[0,1]:6d}")
+    print(f"       Anomaly    {cm[1,0]:6d}  {cm[1,1]:6d}")
+    
+    print(f"   📈 통합 메트릭:")
+    print(f"      AUROC: {auroc:.4f}")
+    print(f"      Accuracy: {accuracy:.4f}")
+    print(f"      Precision: {precision:.4f}")
+    print(f"      Recall: {recall:.4f}")
+    print(f"      F1-Score: {f1:.4f}")
+    print(f"      Threshold: {optimal_threshold:.4f}")
+    
+    # 기본 메트릭 딕셔너리
+    unified_metrics = {
+        "auroc": float(auroc),
+        "accuracy": float(accuracy), 
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1_score": float(f1),
+        "confusion_matrix": cm.tolist(),
+        "optimal_threshold": float(optimal_threshold),
+        "total_samples": len(all_ground_truth),
+        "positive_samples": int(np.sum(all_ground_truth)),
+        "negative_samples": int(len(all_ground_truth) - np.sum(all_ground_truth))
+    }
+    
+    # analysis 폴더 생성 및 결과 저장
+    analysis_dir = Path(experiment_dir) / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+    print(f"   💾 분석 결과 저장 중: {analysis_dir}")
+    
+    # 상세 테스트 결과 CSV 저장
+    predictions_dict = {
+        "pred_scores": all_scores,
+        "mask_scores": all_mask_scores,
+        "severity_scores": all_severity_scores,
+        "raw_severity_scores": all_raw_severity_scores,
+        "normalized_severity_scores": all_normalized_severity_scores
+    }
+    ground_truth_dict = {
+        "labels": all_ground_truth
+    }
+    save_detailed_test_results(
+        predictions_dict, ground_truth_dict, all_image_paths, 
+        analysis_dir, model_type
+    )
+    
+    # ROC curve 생성
+    plot_roc_curve(all_ground_truth, all_scores, analysis_dir, experiment_name)
+    
+    # 메트릭 보고서 저장
+    save_metrics_report(all_ground_truth, predictions, all_scores, analysis_dir, auroc, optimal_threshold)
+    
+    # 점수 분포 히스토그램 생성
+    normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
+    anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
+    plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, experiment_name)
+    
+    # 극단적 신뢰도 샘플 저장
+    save_extreme_samples(all_image_paths, all_ground_truth, all_scores, predictions, analysis_dir)
+    
+    # 실험 요약 저장
+    save_experiment_summary({}, {"auroc": auroc}, analysis_dir)
+    
+    logger.info(f"통합 평가 완료: AUROC={auroc:.4f}, F1={f1:.4f}, 샘플수={len(all_image_paths)}")
+    
+    return unified_metrics
+
+
+def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_type):
+    """
+    모델별 출력에서 점수들을 추출합니다.
+    
+    Args:
+        model_output: 모델 출력 객체
+        batch_size: 배치 크기
+        batch_idx: 배치 인덱스
+        model_type: 모델 타입 (소문자)
+        
+    Returns:
+        tuple: (anomaly_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores)
+    """
+    import numpy as np
+    
+    model_type = model_type.lower()
+    
+    if model_type == "draem":
+        # DRAEM: pred_score만 있음
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            
+            # NaN 값 확인 및 처리
+            if np.isnan(final_scores).any():
+                print(f"      ⚠️  DRAEM pred_score에 NaN 발견, 0.0으로 대체")
+                final_scores = np.nan_to_num(final_scores, nan=0.0)
+            
+            mask_scores = [0.0] * batch_size  # DRAEM에는 mask_score 없음
+            severity_scores = [0.0] * batch_size  # DRAEM에는 severity_score 없음
+            raw_severity_scores = [0.0] * batch_size  # DRAEM에는 raw_severity_score 없음
+            normalized_severity_scores = [0.0] * batch_size  # DRAEM에는 normalized_severity_score 없음
+            print(f"      📊 DRAEM 점수 추출: pred_score={final_scores[0]:.4f}")
+        elif hasattr(model_output, 'anomaly_map'):
+            # anomaly_map에서 점수 계산
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
+            mask_scores = [0.0] * batch_size
+            severity_scores = [0.0] * batch_size
+            raw_severity_scores = [0.0] * batch_size
+            normalized_severity_scores = [0.0] * batch_size
+            print(f"      📊 DRAEM 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
+        else:
+            raise AttributeError("DRAEM 출력 속성 없음")
+            
+    elif model_type == "patchcore":
+        # PatchCore: pred_score만 있음
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            mask_scores = [0.0] * batch_size
+            severity_scores = [0.0] * batch_size
+            raw_severity_scores = [0.0] * batch_size
+            normalized_severity_scores = [0.0] * batch_size
+            print(f"      📊 PatchCore 점수 추출: pred_score={final_scores[0]:.4f}")
+        elif hasattr(model_output, 'anomaly_map'):
+            # anomaly_map에서 점수 계산
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
+            mask_scores = [0.0] * batch_size
+            severity_scores = [0.0] * batch_size
+            raw_severity_scores = [0.0] * batch_size
+            normalized_severity_scores = [0.0] * batch_size
+            print(f"      📊 PatchCore 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
+        else:
+            raise AttributeError("PatchCore 출력 속성 없음")
+            
+    elif model_type == "dinomaly":
+        # Dinomaly: pred_score 또는 anomaly_map
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            mask_scores = [0.0] * batch_size
+            severity_scores = [0.0] * batch_size
+            raw_severity_scores = [0.0] * batch_size
+            normalized_severity_scores = [0.0] * batch_size
+            print(f"      📊 Dinomaly 점수 추출: pred_score={final_scores[0]:.4f}")
+        elif hasattr(model_output, 'anomaly_map'):
+            # anomaly_map에서 점수 계산
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
+            mask_scores = [0.0] * batch_size
+            severity_scores = [0.0] * batch_size
+            raw_severity_scores = [0.0] * batch_size
+            normalized_severity_scores = [0.0] * batch_size
+            print(f"      📊 Dinomaly 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
+        else:
+            raise AttributeError("Dinomaly 출력 속성 없음")
+            
+    else:
+        # 알 수 없는 모델 타입: 일반적인 속성으로 시도
+        print(f"   ⚠️ 알 수 없는 모델 타입: {model_type}, 일반적인 속성으로 시도")
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+        elif hasattr(model_output, 'final_score'):
+            final_scores = model_output.final_score.cpu().numpy()
+        elif hasattr(model_output, 'anomaly_map'):
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = [float(np.max(am)) for am in anomaly_map]
+        else:
+            raise AttributeError(f"지원되지 않는 모델 출력 형식: {type(model_output)}")
+            
+        mask_scores = [0.0] * batch_size
+        severity_scores = [0.0] * batch_size
+        raw_severity_scores = [0.0] * batch_size
+        normalized_severity_scores = [0.0] * batch_size
+        print(f"      📊 일반 모델 점수 추출: anomaly_score={final_scores[0]:.4f}")
+        
+    return final_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores

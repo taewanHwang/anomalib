@@ -392,4 +392,6 @@ def generate_output_filename(
     if mkdir:
         final_output_path.mkdir(parents=True, exist_ok=True)
 
-    return final_output_path / input_path.name
+    # Change extension to .png for visualization outputs
+    output_filename = Path(input_path.stem + ".png")
+    return final_output_path / output_filename

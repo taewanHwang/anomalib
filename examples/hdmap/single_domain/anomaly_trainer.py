@@ -7,17 +7,19 @@ BaseAnomalyTrainer - 통합 Anomaly Detection 모델 훈련을 위한 베이스 
 지원 모델:
 - DRAEM: Reconstruction + Anomaly Detection
 - Dinomaly: Vision Transformer 기반 anomaly detection with DINOv2
-- PatchCore: Memory bank 기반 few-shot anomaly detection  
-- DRAEM-SevNet: Selective feature reconstruction
+- PatchCore: Memory bank 기반 few-shot anomaly detection
 """
 
 import torch
 import numpy as np
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Tuple
+from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 # 공통 유틸리티 함수들 import
+sys.path.append(str(Path(__file__).parent.parent))
 from experiment_utils import (
     cleanup_gpu_memory,
     setup_experiment_logging,
@@ -25,17 +27,12 @@ from experiment_utils import (
     save_experiment_results,
     create_experiment_visualization,
     create_single_domain_datamodule,
-    save_detailed_test_results,
-    plot_roc_curve,
-    save_metrics_report,
-    plot_score_distributions,
-    save_extreme_samples,
-    save_experiment_summary
+    analyze_test_data_distribution,
+    unified_model_evaluation
 )
 
 # 모델별 imports
 from anomalib.models.image.draem import Draem
-from anomalib.models.image.draem_sevnet import DraemSevNet
 from anomalib.models.image import Dinomaly, Patchcore
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -82,8 +79,6 @@ class BaseAnomalyTrainer:
             return self._create_dinomaly_model()
         elif self.model_type == "patchcore":
             return self._create_patchcore_model()
-        elif self.model_type == "draem_sevnet":
-            return self._create_draem_sevnet_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
@@ -94,7 +89,18 @@ class BaseAnomalyTrainer:
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
         
-        return Draem(evaluator=evaluator)
+        # DRAEM 모델 생성
+        model = Draem(evaluator=evaluator)
+        
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config.get("learning_rate", 0.0001),
+            'optimizer': self.config.get("optimizer", "adamw"),
+            'weight_decay': self.config.get("weight_decay", 0.0),
+            'scheduler': self.config.get("scheduler", "multistep")
+        }
+        
+        return model
     
     def _create_dinomaly_model(self):
         """Dinomaly 모델 생성"""
@@ -118,30 +124,6 @@ class BaseAnomalyTrainer:
             num_neighbors=self.config["num_neighbors"]
         )
     
-    def _create_draem_sevnet_model(self):
-        """DRAEM-SevNet 모델 생성"""
-        # 명시적으로 test_image_AUROC 메트릭 설정
-        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
-        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
-        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
-        return DraemSevNet(
-            severity_head_mode=self.config["severity_head_mode"],
-            severity_head_hidden_dim=self.config["severity_head_hidden_dim"],
-            score_combination=self.config["score_combination"],
-            severity_weight_for_combination=self.config["severity_weight_for_combination"],
-            severity_head_pooling_type=self.config["severity_head_pooling_type"],
-            severity_head_spatial_size=self.config["severity_head_spatial_size"],
-            severity_head_use_spatial_attention=self.config["severity_head_use_spatial_attention"],
-            patch_ratio_range=self.config["patch_ratio_range"],
-            patch_width_range=self.config["patch_width_range"],
-            patch_count=self.config["patch_count"],
-            anomaly_probability=self.config["anomaly_probability"],
-            severity_weight=self.config["severity_weight"],
-            severity_loss_type=self.config["severity_loss_type"],
-            severity_max=self.config["severity_max"],
-            evaluator=evaluator
-        )
     
     def create_datamodule(self):
         """모든 모델에 공통으로 사용할 데이터 모듈 생성"""
@@ -149,11 +131,25 @@ class BaseAnomalyTrainer:
         domain = self.config.get("source_domain") or self.config.get("domain")
         if not domain:
             raise ValueError("config에서 'source_domain' 또는 'domain' 필드를 찾을 수 없습니다")
+        
+        # dataset_root 필수 체크
+        dataset_root = self.config.get("dataset_root")
+        if not dataset_root:
+            raise ValueError("config에서 'dataset_root' 필드를 찾을 수 없습니다")
+        
+        # target_size 설정 (list -> tuple 변환)
+        target_size = self.config.get("target_size")
+        if target_size and isinstance(target_size, list) and len(target_size) == 2:
+            target_size = tuple(target_size)
+        elif target_size:
+            raise ValueError("target_size는 [height, width] 형태의 리스트여야 합니다")
             
         return create_single_domain_datamodule(
             domain=domain,
+            dataset_root=dataset_root,
             batch_size=self.config["batch_size"],
-            image_size=self.config["image_size"],
+            target_size=target_size,
+            resize_method=self.config.get("resize_method", "resize"),
             val_split_ratio=self.config["val_split_ratio"],
             num_workers=self.config["num_workers"],
             seed=self.config["seed"]
@@ -171,27 +167,46 @@ class BaseAnomalyTrainer:
             return []  # 빈 콜백 리스트 반환
             
         else:
-            # DRAEM, DRAEM-SevNet, Dinomaly: val_loss 기반 EarlyStopping
+            # 모델별로 다른 EarlyStopping monitor 설정
+            if self.model_type == "draem":
+                # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+            else:
+                # Dinomaly: val_loss 기반 EarlyStopping
+                monitor_metric = "val_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
+            
             early_stopping = EarlyStopping(
-                monitor="val_loss",
+                monitor=monitor_metric,
                 patience=self.config["early_stopping_patience"],
-                mode="min",
+                mode=monitor_mode,
                 verbose=True
             )
             callbacks.append(early_stopping)
             
             # Model Checkpoint
             domain = self.config.get("source_domain") or self.config.get("domain")
-            checkpoint = ModelCheckpoint(
-                filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
-                monitor="val_loss", 
-                mode="min",
-                save_top_k=1,
-                verbose=True
-            )
-            callbacks.append(checkpoint)
             
-            print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
+            if self.model_type == "draem":
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+                    monitor="val_image_AUROC",
+                    mode="max",
+                    save_top_k=1,
+                    verbose=True
+                )
+            else:
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
+                    monitor="val_loss", 
+                    mode="min",
+                    save_top_k=1,
+                    verbose=True
+                )
+            callbacks.append(checkpoint)
         
         return callbacks
     
@@ -201,7 +216,7 @@ class BaseAnomalyTrainer:
         if self.model_type == "patchcore":
             return
             
-        # DRAEM과 DRAEM-SevNet은 이미 자체 configure_optimizers를 가지고 있음
+        # DRAEM은 이미 자체 configure_optimizers를 가지고 있음
         # Dinomaly만 기본 설정을 사용
         # 따라서 여기서는 별도 처리 불필요
     
@@ -284,105 +299,55 @@ class BaseAnomalyTrainer:
         return model, engine, best_checkpoint
     
     def evaluate_model(self, model, engine, datamodule, logger) -> Dict[str, Any]:
-        """모델 성능 평가"""
+        """모델 성능 평가 - 통합된 단일 평가"""
         domain = self.config.get("source_domain") or self.config.get("domain")
         
         print(f"\n📊 {domain} 도메인 성능 평가 시작")
         logger.info(f"📊 {domain} 도메인 성능 평가 시작")
         
-        # 🔧 FIX: Lightning Test용 새로운 DataModule 생성 (훈련된 DataModule 재사용 방지)
-        print(f"   🆕 Lightning Test 전용 DataModule 생성 중...")
-        test_datamodule = self.create_datamodule()
-        test_datamodule.prepare_data()
-        test_datamodule.setup()
-        
-        # Lightning Test용 DataModule 데이터 확인
-        test_train_size = len(test_datamodule.train_data) if test_datamodule.train_data else 0
-        test_test_size = len(test_datamodule.test_data) if test_datamodule.test_data else 0
-        test_val_size = len(test_datamodule.val_data) if test_datamodule.val_data else 0
-        
-        print(f"   📊 Lightning Test DataModule: 훈련={test_train_size}, 테스트={test_test_size}, 검증={test_val_size}")
-        logger.info(f"Lightning Test DataModule - 훈련: {test_train_size}, 테스트: {test_test_size}, 검증: {test_val_size}")
-        
-        # 테스트 수행 (새로운 DataModule 사용)
-        test_results = engine.test(model=model, datamodule=test_datamodule)
-        
-        # Lightning Confusion Matrix 계산
-        print(f"   🧮 Lightning Confusion Matrix 계산 중...")
-        lightning_confusion_matrix = self._calculate_lightning_confusion_matrix(model, test_datamodule, logger)
-        
-        # 상세 분석 수행 (모든 모델 타입)
-        print(f"   🔬 상세 분석 시작 - 이미지별 예측 점수 추출 ({self.model_type})")
-        logger.info(f"🔬 상세 분석 시작 - 이미지별 예측 점수 추출 ({self.model_type})")
         try:
-            custom_metrics = self._generate_detailed_analysis(model, test_datamodule, logger)
-            print(f"   ✅ 상세 분석 완료")
-            logger.info("✅ 상세 분석 완료")
+            # 통합된 성능 평가 수행
+            evaluation_metrics = unified_model_evaluation(
+                model, datamodule, self.experiment_dir, self.experiment_name, self.model_type, logger
+            )
+            
+            if evaluation_metrics:
+                # 결과 정리
+                results = {
+                    "domain": domain,
+                    "image_AUROC": evaluation_metrics["auroc"],
+                    "image_F1Score": evaluation_metrics["f1_score"],
+                    "training_samples": len(datamodule.train_data),
+                    "test_samples": len(datamodule.test_data),
+                    "val_samples": len(datamodule.val_data) if datamodule.val_data else 0,
+                    "evaluation_metrics": evaluation_metrics
+                }
+                
+                # 최종 결과 출력
+                print(f"   🎯 최종 평가 결과:")
+                print(f"      📊 AUROC: {evaluation_metrics['auroc']:.4f}")
+                print(f"      🎯 Accuracy: {evaluation_metrics['accuracy']:.4f}")
+                print(f"      📈 F1-Score: {evaluation_metrics['f1_score']:.4f}")
+                print(f"      🔍 Precision: {evaluation_metrics['precision']:.4f}")
+                print(f"      📉 Recall: {evaluation_metrics['recall']:.4f}")
+                print(f"      🔢 총 샘플: {evaluation_metrics['total_samples']}개")
+                
+                logger.info(f"✅ {domain} 평가 완료: AUROC={evaluation_metrics['auroc']:.4f}")
+                return results
+            else:
+                results = {"domain": domain, "error": "Evaluation failed"}
+                logger.error(f"❌ {domain} 평가 실패")
+                return results
+                
         except Exception as e:
-            print(f"   ⚠️ 상세 분석 실패: {str(e)}")
-            logger.error(f"상세 분석 실패: {str(e)}")
+            print(f"   ❌ 평가 실패: {str(e)}")
+            logger.error(f"평가 실패: {str(e)}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            custom_metrics = None
-        
-        # 결과 정리 - Custom Analysis 메트릭 우선 사용
-        if custom_metrics and custom_metrics is not None:
-            # Custom Analysis 메트릭을 메인 결과로 사용
-            results = {
-                "domain": domain,
-                "image_AUROC": custom_metrics["custom_auroc"],
-                "image_F1Score": custom_metrics["custom_f1_score"],
-                "training_samples": len(test_datamodule.train_data),
-                "test_samples": len(test_datamodule.test_data),
-                "val_samples": len(test_datamodule.val_data) if test_datamodule.val_data else 0,
-                "lightning_confusion_matrix": lightning_confusion_matrix,
-                "custom_analysis_metrics": custom_metrics
-            }
-            
-            print(f"   🎯 Using Custom Analysis Results:")
-            print(f"      Custom AUROC: {custom_metrics['custom_auroc']:.4f}")
-            print(f"      Custom F1: {custom_metrics['custom_f1_score']:.4f}")
-            print(f"      Custom Accuracy: {custom_metrics['custom_accuracy']:.4f}")
-            
-        elif test_results and len(test_results) > 0:
-            # Fallback to Lightning Test results if Custom Analysis fails
-            test_metrics = test_results[0]
-            image_auroc = test_metrics.get("test_image_AUROC", test_metrics.get("image_AUROC", 0.0))
-            
-            results = {
-                "domain": domain,
-                "image_AUROC": float(image_auroc),
-                "image_F1Score": test_metrics.get("test_image_F1Score", test_metrics.get("image_F1Score", 0.0)),
-                "training_samples": len(test_datamodule.train_data),
-                "test_samples": len(test_datamodule.test_data),
-                "val_samples": len(test_datamodule.val_data) if test_datamodule.val_data else 0,
-                "lightning_confusion_matrix": lightning_confusion_matrix
-            }
-            
-            print(f"   ⚠️ Fallback to Lightning Test Results:")
-            print(f"      Lightning AUROC: {results['image_AUROC']:.4f}")
-            print(f"      Lightning F1: {results['image_F1Score']:.4f}")
-        else:
-            results = {"domain": domain, "error": "No test results available"}
-            logger.error(f"❌ {domain} 평가 실패")
-        
-        # Lightning vs Custom Analysis 비교 출력
-        if lightning_confusion_matrix and custom_metrics:
-            lightning_auroc = lightning_confusion_matrix.get('auroc', 0.0)
-            custom_auroc = custom_metrics.get('custom_auroc', 0.0)
-            print(f"      Lightning CM AUROC: {lightning_auroc:.4f}")
-            print(f"      Custom Analysis AUROC: {custom_auroc:.4f}")
-            print(f"      🔍 Lightning vs Custom 차이: {abs(lightning_auroc - custom_auroc):.4f}")
-            
-        logger.info(f"✅ {domain} 평가 완료: Custom AUROC={results.get('image_AUROC', 0.0):.4f}")
-        
-        return results
+            return {"domain": domain, "error": f"Evaluation failed: {str(e)}"}
     
-    def _calculate_lightning_confusion_matrix(self, model, test_datamodule, logger):
+    def _calculate_lightning_confusion_matrix(self, model, datamodule, logger):
         """Lightning 결과의 confusion matrix 계산"""
-        from sklearn.metrics import confusion_matrix, roc_auc_score
-        import numpy as np
-        
         print(f"   🔧 Lightning 예측 점수 수집 중...")
         
         # 모델을 evaluation 모드로 설정
@@ -398,7 +363,7 @@ class BaseAnomalyTrainer:
         all_ground_truth = []
         all_scores = []
         
-        test_dataloader = test_datamodule.test_dataloader()
+        test_dataloader = datamodule.test_dataloader()
         total_batches = len(test_dataloader)
         
         print(f"   📊 Lightning CM: {total_batches}개 배치 처리 중...")
@@ -421,16 +386,22 @@ class BaseAnomalyTrainer:
                     # Lightning 모델로 직접 예측
                     outputs = model(input_images)
                     
-                    # DraemSevNet의 경우 final_score 사용
-                    if hasattr(outputs, 'final_score'):
-                        scores = outputs.final_score.cpu().numpy()
-                    elif hasattr(outputs, 'pred_score'):
+                    # 모델별 출력에서 점수 추출 
+                    if hasattr(outputs, 'pred_score'):
+                        # pred_score 사용 (segmentation 기반 AUROC)
                         scores = outputs.pred_score.cpu().numpy()
+                        print(f"   📊 Lightning CM: pred_score={scores[0]:.4f}")
+                            
+                    elif hasattr(outputs, 'final_score'):
+                        scores = outputs.final_score.cpu().numpy()
+                        print(f"   📊 Lightning CM: final_score={scores[0]:.4f}")
                     elif hasattr(outputs, 'anomaly_score'):
                         scores = outputs.anomaly_score.cpu().numpy()
+                        print(f"   📊 Lightning CM: anomaly_score={scores[0]:.4f}")
                     else:
-                        # InferenceBatch의 경우
-                        scores = outputs.pred_score.cpu().numpy() if hasattr(outputs, 'pred_score') else np.zeros(len(gt_labels))
+                        # Fallback: 더미 점수 사용
+                        scores = np.full(len(gt_labels), 0.5)
+                        print(f"   📊 Lightning CM: dummy_score={scores[0]:.4f}")
                     
                     all_scores.extend(scores)
                     
@@ -446,6 +417,7 @@ class BaseAnomalyTrainer:
             return None
         
         # 길이 맞추기
+        print(f"length of all_ground_truth: {len(all_ground_truth)}, length of all_scores: {len(all_scores)}")
         min_len = min(len(all_ground_truth), len(all_scores))
         all_ground_truth = all_ground_truth[:min_len]
         all_scores = all_scores[:min_len]
@@ -479,7 +451,6 @@ class BaseAnomalyTrainer:
             print(f"   ⚠️ Lightning AUROC 계산 오류: {e}")
         
         # Optimal threshold 찾기 (Youden's J statistic)
-        from sklearn.metrics import roc_curve
         try:
             fpr, tpr, thresholds = roc_curve(all_ground_truth, all_scores)
             optimal_idx = np.argmax(tpr - fpr)
@@ -578,197 +549,12 @@ class BaseAnomalyTrainer:
         
         return experiment_results
     
-    def _generate_detailed_analysis(self, model, datamodule, logger):
-        """이미지별 상세 예측 분석 수행 및 Custom Analysis 메트릭 반환"""
-        print(f"   📊 새로운 테스트 데이터로더 생성 중...")
-        
-        # 모델을 evaluation 모드로 설정
-        model.eval()
-        
-        # PyTorch 모델에 직접 접근
-        if not hasattr(model, 'model'):
-            raise AttributeError("모델에 'model' 속성이 없습니다.")
-        
-        torch_model = model.model
-        torch_model.eval()
-        
-        # 모델을 GPU로 이동 (CUDA 사용 가능한 경우)
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        torch_model = torch_model.to(device)
-        print(f"   🖥️ 모델을 {device}로 이동 완료")
-        
-        # 데이터 수집을 위한 리스트들
-        all_image_paths = []
-        all_ground_truth = []
-        all_scores = []
-        all_mask_scores = []
-        all_severity_scores = []
-        
-        # 테스트 데이터로더 생성 (이미 evaluate_model에서 새로운 DataModule 생성됨)
-        test_dataloader = datamodule.test_dataloader()
-        print(f"   ✅ 테스트 데이터로더 생성 완료")
-        total_batches = len(test_dataloader)
-        
-        print(f"   🔄 {total_batches}개 배치 처리 시작...")
-        
-        # 배치별로 예측 수행
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(test_dataloader):
-                print(f"   📝 처리 중: {batch_idx+1}/{total_batches} 배치 (진행률: {100*(batch_idx+1)/total_batches:.1f}%)")
-                
-                try:
-                    # 이미지 경로 추출
-                    if hasattr(batch, 'image_path'):
-                        image_paths = batch.image_path
-                        if not isinstance(image_paths, list):
-                            image_paths = [image_paths]
-                    else:
-                        # 경로가 없는 경우 배치 크기만큼 더미 경로 생성
-                        batch_size = batch.image.shape[0]
-                        image_paths = [f"batch_{batch_idx}_sample_{i}.jpg" for i in range(batch_size)]
-                    
-                    # 이미지 텐서 추출
-                    image_tensor = batch.image
-                    print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}")
-                    
-                    # 이미지 텐서를 모델과 같은 디바이스로 이동
-                    image_tensor = image_tensor.to(device)
-                    
-                    # 모델로 직접 예측 수행
-                    model_output = torch_model(image_tensor)
-                    print(f"      ✅ 모델 출력 완료: {type(model_output)}")
-                    
-                    # 모델별 출력에서 점수들 추출
-                    final_scores, mask_scores, severity_scores = self._extract_scores_from_model_output(
-                        model_output, image_tensor.shape[0], batch_idx
-                    )
-                        
-                except Exception as e:
-                    print(f"   ❌ 배치 {batch_idx} 전체 처리 실패: {str(e)}")
-                    import traceback
-                    print(f"      🔍 상세 오류: {traceback.format_exc()}")
-                    
-                    # 기본값으로 건너뛰기
-                    batch_size = image_tensor.shape[0] if 'image_tensor' in locals() else 16
-                    final_scores = [0.5] * batch_size
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    image_paths = [f"batch_{batch_idx}_sample_{i}.jpg" for i in range(batch_size)]
-                
-                # Ground truth 추출 (이미지 경로에서)
-                gt_labels = []
-                for path in image_paths:
-                    if isinstance(path, str):
-                        if '/fault/' in path:
-                            gt_labels.append(1)  # anomaly
-                        elif '/good/' in path:
-                            gt_labels.append(0)  # normal
-                        else:
-                            gt_labels.append(0)  # 기본값
-                    else:
-                        gt_labels.append(0)
-                
-                # 결과 수집
-                all_image_paths.extend(image_paths)
-                all_ground_truth.extend(gt_labels)
-                all_scores.extend(final_scores.flatten() if hasattr(final_scores, 'flatten') else final_scores)
-                all_mask_scores.extend(mask_scores.flatten() if hasattr(mask_scores, 'flatten') else mask_scores)
-                all_severity_scores.extend(severity_scores.flatten() if hasattr(severity_scores, 'flatten') else severity_scores)
-                
-                print(f"      ✅ 배치 {batch_idx+1} 완료: {len(gt_labels)}개 샘플 추가")
-        
-        print(f"   ✅ 총 {len(all_image_paths)}개 샘플 처리 완료")
-        
-        # 예측 레이블 생성 (threshold 0.5)
-        all_predictions = [1 if score > 0.5 else 0 for score in all_scores]
-        
-        # analysis 폴더 생성
-        analysis_dir = self.experiment_dir / "analysis"
-        analysis_dir.mkdir(exist_ok=True)
-        
-        print(f"   💾 분석 결과 저장 중: {analysis_dir}")
-        
-        # 상세 테스트 결과 CSV 저장
-        predictions_dict = {
-            "pred_scores": all_scores,
-            "mask_scores": all_mask_scores,
-            "severity_scores": all_severity_scores
-        }
-        ground_truth_dict = {
-            "labels": all_ground_truth
-        }
-        save_detailed_test_results(
-            predictions_dict, ground_truth_dict, all_image_paths, 
-            analysis_dir, self.model_type
-        )
-        
-        # AUROC 계산 및 ROC curve 생성
-        from sklearn.metrics import roc_auc_score, roc_curve
-        try:
-            auroc = roc_auc_score(all_ground_truth, all_scores)
-            plot_roc_curve(all_ground_truth, all_scores, analysis_dir, self.experiment_name)
-            
-            # 임계값 계산
-            fpr, tpr, thresholds = roc_curve(all_ground_truth, all_scores)
-            optimal_idx = (tpr - fpr).argmax()
-            optimal_threshold = thresholds[optimal_idx]
-            
-            # 메트릭 보고서 저장
-            save_metrics_report(all_ground_truth, all_predictions, all_scores, analysis_dir, auroc, optimal_threshold)
-            
-            # 점수 분포 히스토그램 생성
-            normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
-            anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
-            plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, self.experiment_name)
-            
-            # 극단적 신뢰도 샘플 저장
-            save_extreme_samples(all_image_paths, all_ground_truth, all_scores, all_predictions, analysis_dir)
-            
-            # 실험 요약 저장
-            save_experiment_summary(self.config, {"auroc": auroc}, analysis_dir)
-            
-            print(f"   📈 AUROC: {auroc:.4f}, 최적 임계값: {optimal_threshold:.4f}")
-            logger.info(f"상세 분석 완료: AUROC={auroc:.4f}, 샘플수={len(all_image_paths)}")
-            
-            # Custom Analysis 메트릭 반환
-            from sklearn.metrics import confusion_matrix
-            predictions = (np.array(all_scores) > optimal_threshold).astype(int)
-            cm = confusion_matrix(all_ground_truth, predictions)
-            tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, len(all_ground_truth), 0)
-            
-            accuracy = (tp + tn) / len(all_ground_truth) if len(all_ground_truth) > 0 else 0
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-            
-            custom_metrics = {
-                "custom_auroc": float(auroc),
-                "custom_f1_score": float(f1),
-                "custom_accuracy": float(accuracy), 
-                "custom_precision": float(precision),
-                "custom_recall": float(recall),
-                "custom_confusion_matrix": cm.tolist(),
-                "custom_optimal_threshold": float(optimal_threshold),
-                "custom_total_samples": len(all_ground_truth),
-                "custom_positive_samples": int(np.sum(all_ground_truth)),
-                "custom_negative_samples": int(len(all_ground_truth) - np.sum(all_ground_truth))
-            }
-            
-            return custom_metrics
-            
-        except Exception as e:
-            print(f"   ⚠️ 메트릭 계산 실패: {str(e)}")
-            logger.error(f"메트릭 계산 실패: {str(e)}")
-            return None
     
     def run_experiment(self) -> dict:
         """전체 실험 실행"""
         domain = self.config.get("source_domain") or self.config.get("domain")
         
-        print(f"\n{'='*80}")
         print(f"🔬 {self.model_type.upper()} Single Domain 실험: {self.experiment_name}")
-        print(f"🎯 도메인: {domain}")
-        print(f"{'='*80}")
         
         try:
             # GPU 메모리 정리
@@ -786,8 +572,7 @@ class BaseAnomalyTrainer:
             datamodule = self.create_datamodule()
             
             # DataModule 데이터 개수 확인
-            print(f"\n📊 DataModule 데이터 개수 확인:")
-            print(f"   🔧 DataModule 준비 및 설정 중...")
+            print(f"\n📊 DataModule 준비 및 설정 중:")
             datamodule.prepare_data()
             datamodule.setup()
             
@@ -795,48 +580,10 @@ class BaseAnomalyTrainer:
             test_size = len(datamodule.test_data) if datamodule.test_data else 0
             val_size = len(datamodule.val_data) if datamodule.val_data else 0
             
-            print(f"   📈 훈련 데이터: {train_size:,}개")
-            print(f"   📊 테스트 데이터: {test_size:,}개")
-            print(f"   📋 검증 데이터: {val_size:,}개")
-            print(f"   🎯 총 데이터: {train_size + test_size + val_size:,}개")
+            print(f"   📈 훈련 데이터: {train_size:,}개 | 📊 테스트 데이터: {test_size:,}개 | 📋 검증 데이터: {val_size:,}개 | 🎯 총 데이터: {train_size + test_size + val_size:,}개")
             
-            # 테스트 데이터 라벨 분포 확인 (처음 몇 배치만 샘플링)
-            test_loader = datamodule.test_dataloader()
-            fault_count = 0
-            good_count = 0
-            sampled_images = 0
-            max_sample = min(5 * datamodule.eval_batch_size, test_size)  # 처음 5배치 또는 전체
-            
-            print(f"   🔍 테스트 데이터 라벨 분포 확인 중 (샘플: {max_sample}개)...")
-            with torch.no_grad():
-                for batch_idx, batch in enumerate(test_loader):
-                    if hasattr(batch, 'gt_label'):
-                        labels = batch.gt_label.numpy()
-                        fault_count += (labels == 1).sum()
-                        good_count += (labels == 0).sum()
-                        sampled_images += len(labels)
-                    
-                    if batch_idx >= 4 or sampled_images >= max_sample:  # 처음 5배치만 확인
-                        break
-            
-            print(f"   🚨 테스트 샘플 분포 ({sampled_images}개): Fault={fault_count}, Good={good_count}")
-            if sampled_images > 0:
-                fault_ratio = fault_count / sampled_images * 100
-                good_ratio = good_count / sampled_images * 100
-                print(f"   📊 테스트 샘플 비율: Fault={fault_ratio:.1f}%, Good={good_ratio:.1f}%")
-                
-                # 불균형 경고
-                if fault_count == 0:
-                    print(f"   ⚠️  경고: Fault 이미지가 없습니다! AUROC 계산에 문제가 있을 수 있습니다.")
-                elif good_count == 0:
-                    print(f"   ⚠️  경고: Good 이미지가 없습니다! AUROC 계산에 문제가 있을 수 있습니다.")
-                elif abs(fault_count - good_count) > sampled_images * 0.3:
-                    print(f"   ⚠️  경고: 라벨 분포가 불균형합니다 (30% 이상 차이)")
-                else:
-                    print(f"   ✅ 테스트 데이터 라벨 분포 정상")
-            
-            logger.info(f"DataModule - 훈련: {train_size}, 테스트: {test_size}, 검증: {val_size}")
-            logger.info(f"테스트 샘플 분포 - Fault: {fault_count}, Good: {good_count}")
+            # 테스트 데이터 라벨 분포 확인 (전체 데이터)
+            analyze_test_data_distribution(datamodule, test_size)
             
             # 모델 훈련
             trained_model, engine, best_checkpoint = self.train_model(model, datamodule, logger)
@@ -844,6 +591,9 @@ class BaseAnomalyTrainer:
             # 성능 평가
             results = self.evaluate_model(trained_model, engine, datamodule, logger)
             
+            # 시각화를 위한 테스트
+            engine.test(model=model, datamodule=datamodule)
+
             # 훈련 정보 추출
             training_info = extract_training_info(engine)
             
@@ -888,105 +638,3 @@ class BaseAnomalyTrainer:
                 "status": "failed"
             }
     
-    def _extract_scores_from_model_output(self, model_output, batch_size, batch_idx):
-        """
-        모델별 출력에서 점수들을 추출합니다.
-        
-        Args:
-            model_output: 모델 출력 객체
-            batch_size: 배치 크기
-            batch_idx: 배치 인덱스
-            
-        Returns:
-            tuple: (anomaly_scores, mask_scores, severity_scores)
-        """
-        model_type = self.model_type.lower()
-        
-        try:
-            if model_type == "draem_sevnet":
-                # DRAEM-SevNet: final_score, mask_score, severity_score 있음
-                if hasattr(model_output, 'final_score'):
-                    final_scores = model_output.final_score.cpu().numpy()
-                    mask_scores = model_output.mask_score.cpu().numpy()
-                    severity_scores = model_output.severity_score.cpu().numpy()
-                    print(f"      📊 DRAEM-SevNet 점수 추출: final={final_scores[0]:.4f}, mask={mask_scores[0]:.4f}, severity={severity_scores[0]:.4f}")
-                else:
-                    raise AttributeError("DraemSevNetOutput 속성 없음")
-                    
-            elif model_type == "draem":
-                # DRAEM: pred_score만 있음
-                if hasattr(model_output, 'pred_score'):
-                    final_scores = model_output.pred_score.cpu().numpy()
-                    mask_scores = [0.0] * batch_size  # DRAEM에는 mask_score 없음
-                    severity_scores = [0.0] * batch_size  # DRAEM에는 severity_score 없음
-                    print(f"      📊 DRAEM 점수 추출: pred_score={final_scores[0]:.4f}")
-                elif hasattr(model_output, 'anomaly_map'):
-                    # anomaly_map에서 점수 계산
-                    anomaly_map = model_output.anomaly_map.cpu().numpy()
-                    final_scores = [float(np.max(am)) for am in anomaly_map]
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    print(f"      📊 DRAEM 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
-                else:
-                    raise AttributeError("DRAEM 출력 속성 없음")
-                    
-            elif model_type == "patchcore":
-                # PatchCore: pred_score만 있음
-                if hasattr(model_output, 'pred_score'):
-                    final_scores = model_output.pred_score.cpu().numpy()
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    print(f"      📊 PatchCore 점수 추출: pred_score={final_scores[0]:.4f}")
-                elif hasattr(model_output, 'anomaly_map'):
-                    # anomaly_map에서 점수 계산
-                    anomaly_map = model_output.anomaly_map.cpu().numpy()
-                    final_scores = [float(np.max(am)) for am in anomaly_map]
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    print(f"      📊 PatchCore 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
-                else:
-                    raise AttributeError("PatchCore 출력 속성 없음")
-                    
-            elif model_type == "dinomaly":
-                # Dinomaly: pred_score 또는 anomaly_map
-                if hasattr(model_output, 'pred_score'):
-                    final_scores = model_output.pred_score.cpu().numpy()
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    print(f"      📊 Dinomaly 점수 추출: pred_score={final_scores[0]:.4f}")
-                elif hasattr(model_output, 'anomaly_map'):
-                    # anomaly_map에서 점수 계산
-                    anomaly_map = model_output.anomaly_map.cpu().numpy()
-                    final_scores = [float(np.max(am)) for am in anomaly_map]
-                    mask_scores = [0.0] * batch_size
-                    severity_scores = [0.0] * batch_size
-                    print(f"      📊 Dinomaly 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
-                else:
-                    raise AttributeError("Dinomaly 출력 속성 없음")
-                    
-            else:
-                # 알 수 없는 모델 타입: 기본 처리
-                print(f"   ⚠️ 알 수 없는 모델 타입: {model_type}, 일반적인 속성으로 시도")
-                if hasattr(model_output, 'pred_score'):
-                    final_scores = model_output.pred_score.cpu().numpy()
-                elif hasattr(model_output, 'final_score'):
-                    final_scores = model_output.final_score.cpu().numpy()
-                elif hasattr(model_output, 'anomaly_map'):
-                    anomaly_map = model_output.anomaly_map.cpu().numpy()
-                    final_scores = [float(np.max(am)) for am in anomaly_map]
-                else:
-                    raise AttributeError(f"지원되지 않는 모델 출력 형식: {type(model_output)}")
-                    
-                mask_scores = [0.0] * batch_size
-                severity_scores = [0.0] * batch_size
-                print(f"      📊 일반 모델 점수 추출: anomaly_score={final_scores[0]:.4f}")
-                
-            return final_scores, mask_scores, severity_scores
-            
-        except Exception as e:
-            # fallback: 더미 점수 사용
-            print(f"   ⚠️ 배치 {batch_idx}: {model_type} 점수 추출 실패 - {str(e)}, 더미값 사용")
-            final_scores = [0.5] * batch_size
-            mask_scores = [0.0] * batch_size 
-            severity_scores = [0.0] * batch_size
-            return final_scores, mask_scores, severity_scores

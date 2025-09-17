@@ -6,6 +6,12 @@
 
 실행 명령어:
 nohup python /mnt/ex-disk/taewan.hwang/study/anomalib/examples/hdmap/prepare_hdmap_dataset.py > hdmap_dataset.log 2>&1 &
+
+프로세스 종료:
+1. 실행 중인 프로세스 확인: ps aux | grep prepare_hdmap_dataset.py
+2. 프로세스 종료: kill -9 <PID>
+또는
+pkill -f prepare_hdmap_dataset.py
 """
 
 import os
@@ -14,28 +20,29 @@ from pathlib import Path
 
 import numpy as np
 import scipy.io
-from PIL import Image
+import tifffile
 
 # =============================================================================
 # 🚀 사용자 설정 (필요에 따라 수정)
 # =============================================================================
-# 전역 정규화 설정 (항상 사용)
+# 전역 정규화 설정 (z-score 방식용)
 CLIP_MIN = -4.0  # 클리핑 최솟값 (z-score 기준)
-CLIP_MAX = 10.0  # 클리핑 최댓값 (z-score 기준)
+CLIP_MAX = 20.0  # 클리핑 최댓값 (z-score 기준)
+
+# 사용자 정의 min-max 스케일링 설정
+USER_MIN = 0.0   # 사용자 제공 최솟값
+USER_MAX = 1.5   # 사용자 제공 최댓값
 
 # 데이터 설정
-N_TRAINING = 10000  # 훈련 샘플 수 (프로토타입과 동일)
-N_TESTING = 2000     # 테스트 샘플 수
-BIT_DEPTH = '16bit'  # 비트 심도 ('8bit' 또는 '16bit')
+N_TRAINING = 100000  # 훈련 샘플 수
+N_TESTING = 2000   # 테스트 샘플 수
+SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF만)
+BASE_FOLDER = "HDMAP"    # 최상위 폴더명
 
-# 기타 설정  
-TARGET_SIZE = (224, 224)  # 목표 이미지 크기 (리사이즈용)
-BASE_FOLDER = "HDMAP"     # 최상위 폴더명
-
-# 처리 방식 설정 (1채널 2가지 방식)
-PROCESSING_MODES = [
-    'original',                   # 원본
-    f'resize_{TARGET_SIZE[0]}x{TARGET_SIZE[1]}'  # 리사이즈 (동적 크기)
+# 정규화 방식 설정
+NORMALIZATION_MODES = [
+    'zscore',      # 기존 domain_stats 기반 z-score 정규화
+    'minmax',      # 사용자 제공 min-max 스케일링
 ]
 
 # =============================================================================
@@ -66,13 +73,21 @@ BASE_DATA_PATH = 'datasets/raw/KRISS_share_nipa2023'
 # =============================================================================
 # 핵심 함수들
 # =============================================================================
-def scale_norm(X, X_mean=None, X_std=None):
+def normalize_zscore(X, X_mean=None, X_std=None):
     """Z-score 정규화 (프로토타입과 동일)"""
     if X_mean is None or X_std is None:
         X_mean = np.mean(X)
         X_std = np.std(X)
     X_normalized = (X - X_mean) / X_std
     return X_normalized, X_mean, X_std
+
+def normalize_minmax(X, user_min, user_max):
+    """사용자 제공 min-max 값으로 [0, 1] 범위로 스케일링"""
+    # 사용자 제공 범위로 클리핑
+    X_clipped = np.clip(X, user_min, user_max)
+    # [user_min, user_max] → [0, 1] 매핑
+    X_scaled = (X_clipped - user_min) / (user_max - user_min)
+    return X_scaled
 
 def generate_paths():
     """도메인 구성 정보로부터 모든 경로 생성"""
@@ -94,72 +109,15 @@ def generate_paths():
     
     return paths
 
-def get_folder_name(processing_mode):
-    """설정에 따른 폴더명 생성"""
-    return f"{N_TRAINING}_{BIT_DEPTH}_{processing_mode}"
+def generate_folder_name(save_format, normalization_mode):
+    """설정에 따른 데이터셋 폴더명 생성"""
+    return f"{N_TRAINING}_{save_format}_original_{normalization_mode}"
 
-def save_image_with_global_normalization(img_array, save_path):
-    """전역 정규화를 사용하여 이미지 저장"""
-    # 1. 클리핑 적용
-    clipped = np.clip(img_array, CLIP_MIN, CLIP_MAX)
-    
-    # 2. [CLIP_MIN, CLIP_MAX] → [0, 1] 매핑
-    normalized = (clipped - CLIP_MIN) / (CLIP_MAX - CLIP_MIN)
-    
-    # 3. 비트 심도에 따른 양자화
-    if BIT_DEPTH == '8bit':
-        quantized = (normalized * 255).astype(np.uint8)
-    elif BIT_DEPTH == '16bit':
-        quantized = (normalized * 65535).astype(np.uint16)
-    else:
-        raise ValueError("BIT_DEPTH must be '8bit' or '16bit'")
-    
-    # 4. PNG로 저장
-    img_pil = Image.fromarray(quantized)
-    img_pil.save(save_path)
+def save_tiff_image(img_array, save_path):
+    """이미지를 32비트 부동소수점 TIFF 파일로 저장"""
+    tifffile.imwrite(save_path, img_array.astype(np.float32))
 
-def save_image_legacy(img_array, save_path):
-    """기존 방식 이미지 저장 (개별 정규화)"""
-    # 개별 정규화
-    img_normalized = ((img_array - img_array.min()) / 
-                     (img_array.max() - img_array.min()))
-    
-    if BIT_DEPTH == '8bit':
-        quantized = (img_normalized * 255).astype(np.uint8)
-    elif BIT_DEPTH == '16bit':
-        quantized = (img_normalized * 65535).astype(np.uint16)
-    else:
-        raise ValueError("BIT_DEPTH must be '8bit' or '16bit'")
-    
-    img_pil = Image.fromarray(quantized)
-    img_pil.save(save_path)
-
-def resize_image_with_aspect_ratio(img, target_size):
-    """비율을 유지하며 이미지 리사이즈"""
-    img_pil = Image.fromarray(img.astype(np.uint8))
-    img_resized = img_pil.resize(target_size, Image.LANCZOS)
-    return np.array(img_resized)
-
-def process_image_by_mode(img_array, processing_mode, target_size=TARGET_SIZE):
-    """처리 모드에 따른 이미지 처리 (전역 정규화된 데이터용)"""
-    if processing_mode == 'original':
-        return img_array
-    
-    elif processing_mode.startswith('resize_'):
-        # 전역 정규화된 데이터를 그대로 사용 (스케일 유지)
-        # 클리핑된 범위 [-4, 10]를 [0, 255] 범위로 매핑하여 리사이즈
-        clipped = np.clip(img_array, CLIP_MIN, CLIP_MAX)
-        normalized = (clipped - CLIP_MIN) / (CLIP_MAX - CLIP_MIN)
-        img_scaled = (normalized * 255).astype(np.uint8)
-        resized = resize_image_with_aspect_ratio(img_scaled, target_size)
-        # 다시 원래 범위로 복원
-        return (resized.astype(np.float32) / 255.0) * (CLIP_MAX - CLIP_MIN) + CLIP_MIN
-    
-    else:
-        raise ValueError(f"Unknown processing mode: {processing_mode}")
-
-
-def compute_domain_stats():
+def compute_domain_statistics():
     """각 도메인별 전역 통계량 계산"""
     print("="*80)
     print("🔢 도메인별 전역 통계량 계산 중...")
@@ -182,11 +140,11 @@ def compute_domain_stats():
             X_train = train_data.transpose(3,2,0,1)  # (samples, channels, height, width)
             
             # 전역 통계량 계산
-            _, X_mean, X_std = scale_norm(X_train)
+            _, X_mean, X_std = normalize_zscore(X_train)
             domain_stats[domain] = {'mean': X_mean, 'std': X_std}
             
             # 정규화 후 통계량 확인
-            X_normalized, _, _ = scale_norm(X_train, X_mean, X_std)
+            X_normalized, _, _ = normalize_zscore(X_train, X_mean, X_std)
             
             print(f"  도메인 {domain}:")
             print(f"    원본: mean={X_mean:.6f}, std={X_std:.6f}")
@@ -196,9 +154,9 @@ def compute_domain_stats():
     
     return domain_stats
 
-def process_domain_data(domain, domain_paths, domain_stats, folder_name, processing_mode):
+def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_format, normalization_mode):
     """도메인별 데이터 처리"""
-    print(f"\n🔄 도메인 {domain} 처리 중... (모드: {processing_mode})")
+    print(f"\n🔄 도메인 {domain} 처리 중... (형식: {save_format}, 정규화: {normalization_mode})")
     
     # 저장 경로 설정
     save_dirs = {}
@@ -219,6 +177,11 @@ def process_domain_data(domain, domain_paths, domain_stats, folder_name, process
     ]
     
     stats = domain_stats.get(domain, {})
+    
+    # z-score 방식에서 stats가 필요하지만 없는 경우 에러 처리
+    if normalization_mode == 'zscore' and ('mean' not in stats or 'std' not in stats):
+        print(f"  ⚠️ 경고: 도메인 {domain}의 통계량이 없습니다. 해당 도메인을 건너뜁니다.")
+        return
     
     for data_key, save_key, max_samples, description in data_mapping:
         mat_path = domain_paths[data_key]
@@ -241,18 +204,22 @@ def process_domain_data(domain, domain_paths, domain_stats, folder_name, process
         # 이미지 저장
         for i in range(num_samples):
             img = image_data[:, :, 0, i]
-            filename = f'{i:06d}.png'
+            filename = f'{i:06d}.tiff'
             save_path = os.path.join(save_dir, filename)
             
-            # 전역 정규화 방식
-            img_normalized, _, _ = scale_norm(img, stats['mean'], stats['std'])
-            # 처리 모드 적용 (전역 정규화된 데이터에 대해)
-            if processing_mode == 'original':
-                save_image_with_global_normalization(img_normalized, save_path)
+            # 정규화 방식에 따른 처리
+            if normalization_mode == 'zscore':
+                # Z-score 정규화 방식
+                img_normalized, _, _ = normalize_zscore(img, stats['mean'], stats['std'])
+                save_tiff_image(img_normalized, save_path)
+                    
+            elif normalization_mode == 'minmax':
+                # Min-Max 스케일링 방식
+                img_scaled = normalize_minmax(img, USER_MIN, USER_MAX)
+                save_tiff_image(img_scaled, save_path)
+            
             else:
-                # 전역 정규화된 데이터를 사용하여 처리
-                processed_img = process_image_by_mode(img_normalized, processing_mode)
-                save_image_with_global_normalization(processed_img, save_path)
+                raise ValueError(f"Unknown normalization mode: {normalization_mode}")
             
             # 진행상황 출력
             if (i + 1) % 10000 == 0:
@@ -260,37 +227,49 @@ def process_domain_data(domain, domain_paths, domain_stats, folder_name, process
         
         print(f"  ✅ {description}: {num_samples}개 저장 완료")
 
-def prepare_hdmap_dataset_multiple_modes():
-    """여러 처리 모드로 HDMAP 데이터셋 준비"""
+def create_hdmap_datasets():
+    """여러 처리 모드로 HDMAP 데이터셋 준비 (z-score + min-max 정규화 지원)"""
     print("="*80)
     print("🚀 HDMAP 데이터셋 변환 시작 (다중 모드)")
     print("="*80)
     print(f"훈련 샘플 수: {N_TRAINING:,}")
     print(f"테스트 샘플 수: {N_TESTING:,}")
-    print(f"비트 심도: {BIT_DEPTH}")
-    print(f"처리 모드: {len(PROCESSING_MODES)}개 (original, resize)")
+    print(f"저장 형식: {len(SAVE_FORMATS)}개 ({', '.join(SAVE_FORMATS)})")
+    print(f"정규화 방식: {len(NORMALIZATION_MODES)}개 ({', '.join(NORMALIZATION_MODES)})")
     
-    print(f"정규화: 전역 (클리핑: [{CLIP_MIN}, {CLIP_MAX}])")
+    print(f"\n정규화 설정:")
+    print(f"  - Z-score: 전역 통계량 기반 (클리핑: [{CLIP_MIN}, {CLIP_MAX}])")
+    print(f"  - Min-Max: 사용자 제공 범위 [{USER_MIN}, {USER_MAX}] → [0, 1]")
     
     print("="*80)
     
     # 1. 경로 준비
     paths = generate_paths()
     
-    # 2. 전역 통계량 계산
-    domain_stats = compute_domain_stats()
+    # 2. z-score 방식용 전역 통계량 계산 (min-max 방식에서는 사용하지 않음)
+    domain_stats = compute_domain_statistics()
     
-    # 3. 각 처리 모드별로 데이터 처리
-    for processing_mode in PROCESSING_MODES:
-        print(f"\n🔄 처리 모드: {processing_mode}")
-        folder_name = get_folder_name(processing_mode)
-        
-        for domain in DOMAIN_CONFIG.keys():
-            domain_paths = paths[domain]
-            process_domain_data(domain, domain_paths, domain_stats, folder_name, processing_mode)
+    # 3. 각 정규화 방식, 저장 형식별로 데이터 처리
+    for normalization_mode in NORMALIZATION_MODES:
+        for save_format in SAVE_FORMATS:
+            print(f"\n🔄 처리: {normalization_mode.upper()} - {save_format.upper()}")
+            folder_name = generate_folder_name(save_format, normalization_mode)
+            
+            for domain in DOMAIN_CONFIG.keys():
+                domain_paths = paths[domain]
+                process_single_domain(domain, domain_paths, domain_stats, folder_name, save_format, normalization_mode)
 
-    print(f"처리 완료")
+    print(f"\n✅ 모든 처리 완료!")
+    
+    # 생성된 폴더 요약
+    print(f"\n📁 생성된 데이터셋 폴더:")
+    for normalization_mode in NORMALIZATION_MODES:
+        for save_format in SAVE_FORMATS:
+            folder_name = generate_folder_name(save_format, normalization_mode)
+            print(f"  - datasets/{BASE_FOLDER}/{folder_name}/")
+    
+    print(f"\n각 폴더에는 domain_A, domain_B, domain_C, domain_D가 포함되어 있습니다.")
 
 if __name__ == "__main__":
-    # 전체 모드 (모든 처리 방식) - 2개 폴더 생성 (original, resize)
-    prepare_hdmap_dataset_multiple_modes()
+    # HDMAP 데이터셋 생성 (Z-score, Min-Max 정규화)
+    create_hdmap_datasets()
