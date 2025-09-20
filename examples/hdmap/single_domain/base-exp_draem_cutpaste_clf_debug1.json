@@ -1,0 +1,508 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-draem-cutpaste-clf-1",
+      "description": "Domain A - Baseline Configuration",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1.0
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-2",
+      "description": "Domain A - High Intensity Augmentation",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [
+          50,
+          200
+        ],
+        "cut_h_range": [
+          10,
+          20
+        ],
+        "a_fault_start": 2.0,
+        "a_fault_range_end": 15.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 2.0
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-3",
+      "description": "Domain A - No Normalization",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": false,
+        "clf_weight": 1.0
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-4",
+      "description": "Domain A - High Learning Rate",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0005,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.2,
+        "cut_w_range": [
+          20,
+          150
+        ],
+        "cut_h_range": [
+          5,
+          15
+        ],
+        "a_fault_start": 1.5,
+        "a_fault_range_end": 12.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1.5
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-5",
+      "description": "Domain A - Small Patches Focus",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.4,
+        "cut_w_range": [
+          10,
+          80
+        ],
+        "cut_h_range": [
+          2,
+          8
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 8.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 3.0
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-6",
+      "description": "Domain A - Large Patches Focus",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0002,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.005,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          80,
+          220
+        ],
+        "cut_h_range": [
+          15,
+          25
+        ],
+        "a_fault_start": 0.8,
+        "a_fault_range_end": 6.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 0.8
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-7",
+      "description": "Domain A - Focal Loss Tuning",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.00015,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.002,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.25,
+        "cut_w_range": [
+          30,
+          180
+        ],
+        "cut_h_range": [
+          6,
+          14
+        ],
+        "a_fault_start": 1.2,
+        "a_fault_range_end": 9.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1.2
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-8",
+      "description": "Domain A - Balanced Settings",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.00012,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.35,
+        "cut_w_range": [
+          40,
+          160
+        ],
+        "cut_h_range": [
+          7,
+          12
+        ],
+        "a_fault_start": 1.3,
+        "a_fault_range_end": 11.0,
+        "augment_probability": 0.5,
+        "norm": false,
+        "clf_weight": 1.8
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-9",
+      "description": "Domain A - Very Low Amplitude",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [
+          30,
+          120
+        ],
+        "cut_h_range": [
+          6,
+          12
+        ],
+        "a_fault_start": 0.5,
+        "a_fault_range_end": 3.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 2.5
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-10",
+      "description": "Domain A - Ultra Low Amplitude",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 8e-05,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.25,
+        "cut_w_range": [
+          40,
+          140
+        ],
+        "cut_h_range": [
+          8,
+          14
+        ],
+        "a_fault_start": 0.3,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "norm": false,
+        "clf_weight": 4.0
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-11",
+      "description": "Domain A - Medium Patch + Low Amplitude",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.00015,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.003,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.2,
+        "cut_w_range": [
+          50,
+          150
+        ],
+        "cut_h_range": [
+          10,
+          18
+        ],
+        "a_fault_start": 0.8,
+        "a_fault_range_end": 4.5,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 2.2
+      }
+    },
+    {
+      "name": "exp-draem-cutpaste-clf-12",
+      "description": "Domain A - Adaptive Settings",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.00018,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.008,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.5,
+        "cut_w_range": [
+          25,
+          100
+        ],
+        "cut_h_range": [
+          4,
+          10
+        ],
+        "a_fault_start": 0.4,
+        "a_fault_range_end": 2.5,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 3.5
+      }
+    }
+  ]
+}

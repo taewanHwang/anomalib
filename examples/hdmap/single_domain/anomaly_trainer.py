@@ -6,6 +6,7 @@ BaseAnomalyTrainer - 통합 Anomaly Detection 모델 훈련을 위한 베이스 
 
 지원 모델:
 - DRAEM: Reconstruction + Anomaly Detection
+- DRAEM CutPaste Clf: DRAEM with CutPaste augmentation + CNN classification
 - Dinomaly: Vision Transformer 기반 anomaly detection with DINOv2
 - PatchCore: Memory bank 기반 few-shot anomaly detection
 """
@@ -33,6 +34,7 @@ from experiment_utils import (
 
 # 모델별 imports
 from anomalib.models.image.draem import Draem
+from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
 from anomalib.models.image import Dinomaly, Patchcore
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -75,6 +77,8 @@ class BaseAnomalyTrainer:
         """Factory pattern으로 모델 생성"""
         if self.model_type == "draem":
             return self._create_draem_model()
+        elif self.model_type == "draem_cutpaste_clf":
+            return self._create_draem_cutpaste_clf_model()
         elif self.model_type == "dinomaly":
             return self._create_dinomaly_model()
         elif self.model_type == "patchcore":
@@ -94,14 +98,48 @@ class BaseAnomalyTrainer:
         
         # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
         model._training_config = {
-            'learning_rate': self.config.get("learning_rate", 0.0001),
-            'optimizer': self.config.get("optimizer", "adamw"),
-            'weight_decay': self.config.get("weight_decay", 0.0),
-            'scheduler': self.config.get("scheduler", "multistep")
+            'learning_rate': self.config["learning_rate"],
+            'optimizer': self.config["optimizer"],
+            'weight_decay': self.config["weight_decay"],
+            'scheduler': self.config["scheduler"]
         }
         
         return model
-    
+
+    def _create_draem_cutpaste_clf_model(self):
+        """DRAEM CutPaste Classification 모델 생성"""
+        # 명시적으로 test_image_AUROC 메트릭 설정
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        # 모델 파라미터 설정 - config에서만 값 할당
+        model_params = {
+            'evaluator': evaluator,
+            'sspcab': self.config["sspcab"],
+            'image_size': tuple(self.config["image_size"]),
+            'severity_dropout': self.config["severity_dropout"],
+            'cut_w_range': tuple(self.config["cut_w_range"]),
+            'cut_h_range': tuple(self.config["cut_h_range"]),
+            'a_fault_start': self.config["a_fault_start"],
+            'a_fault_range_end': self.config["a_fault_range_end"],
+            'augment_probability': self.config["augment_probability"],
+            'norm': self.config["norm"],
+            'clf_weight': self.config["clf_weight"],
+        }
+
+        # DraemCutPasteClf 모델 생성
+        model = DraemCutPasteClf(**model_params)
+
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'optimizer': self.config["optimizer"],
+            'weight_decay': self.config["weight_decay"],
+        }
+
+        return model
+
     def _create_dinomaly_model(self):
         """Dinomaly 모델 생성"""
         # Dinomaly는 기본 evaluator를 사용하여 trainable 파라미터 설정 문제 회피
@@ -168,11 +206,16 @@ class BaseAnomalyTrainer:
             
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
-            if self.model_type == "draem":
+            if self.model_type in ["draem"]:
                 # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
                 monitor_metric = "val_image_AUROC"
                 monitor_mode = "max"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+            elif self.model_type in ["draem_cutpaste_clf"]:
+                # DRAEM CutPaste Classification: validation AUROC 기반 모니터링
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")  
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -190,7 +233,7 @@ class BaseAnomalyTrainer:
             # Model Checkpoint
             domain = self.config.get("source_domain") or self.config.get("domain")
             
-            if self.model_type == "draem":
+            if self.model_type in ["draem", "draem_cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
                     monitor="val_image_AUROC",
@@ -201,7 +244,7 @@ class BaseAnomalyTrainer:
             else:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
-                    monitor="val_loss", 
+                    monitor="val_loss",
                     mode="min",
                     save_top_k=1,
                     verbose=True
@@ -345,164 +388,7 @@ class BaseAnomalyTrainer:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return {"domain": domain, "error": f"Evaluation failed: {str(e)}"}
-    
-    def _calculate_lightning_confusion_matrix(self, model, datamodule, logger):
-        """Lightning 결과의 confusion matrix 계산"""
-        print(f"   🔧 Lightning 예측 점수 수집 중...")
         
-        # 모델을 evaluation 모드로 설정
-        model.eval()
-        
-        # 모델을 적절한 디바이스로 이동 (한 번만 실행)
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        model = model.to(device)
-        print(f"   🖥️  Lightning CM: 모델을 {device} 디바이스로 이동")
-        
-        # 데이터 수집을 위한 리스트들
-        all_predictions = []
-        all_ground_truth = []
-        all_scores = []
-        
-        test_dataloader = datamodule.test_dataloader()
-        total_batches = len(test_dataloader)
-        
-        print(f"   📊 Lightning CM: {total_batches}개 배치 처리 중...")
-        
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(test_dataloader):
-                if batch_idx % 10 == 0:  # 매 10번째 배치마다 진행률 출력
-                    print(f"   📝 Lightning CM: {batch_idx+1}/{total_batches} 배치 처리 중...")
-                
-                # Ground truth 수집
-                if hasattr(batch, 'gt_label'):
-                    gt_labels = batch.gt_label.cpu().numpy()
-                    all_ground_truth.extend(gt_labels)
-                
-                # 모델 예측
-                try:
-                    # 입력 데이터를 모델과 같은 디바이스로 이동
-                    input_images = batch.image.to(device)
-                    
-                    # Lightning 모델로 직접 예측
-                    outputs = model(input_images)
-                    
-                    # 모델별 출력에서 점수 추출 
-                    if hasattr(outputs, 'pred_score'):
-                        # pred_score 사용 (segmentation 기반 AUROC)
-                        scores = outputs.pred_score.cpu().numpy()
-                        print(f"   📊 Lightning CM: pred_score={scores[0]:.4f}")
-                            
-                    elif hasattr(outputs, 'final_score'):
-                        scores = outputs.final_score.cpu().numpy()
-                        print(f"   📊 Lightning CM: final_score={scores[0]:.4f}")
-                    elif hasattr(outputs, 'anomaly_score'):
-                        scores = outputs.anomaly_score.cpu().numpy()
-                        print(f"   📊 Lightning CM: anomaly_score={scores[0]:.4f}")
-                    else:
-                        # Fallback: 더미 점수 사용
-                        scores = np.full(len(gt_labels), 0.5)
-                        print(f"   📊 Lightning CM: dummy_score={scores[0]:.4f}")
-                    
-                    all_scores.extend(scores)
-                    
-                except Exception as e:
-                    print(f"   ⚠️ 배치 {batch_idx} 처리 오류: {e}")
-                    logger.warning(f"Lightning CM 배치 {batch_idx} 처리 오류: {e}")
-                    # 오류 시 더미 점수 추가
-                    dummy_scores = np.zeros(len(gt_labels))
-                    all_scores.extend(dummy_scores)
-        
-        if len(all_ground_truth) == 0 or len(all_scores) == 0:
-            print(f"   ❌ Lightning CM: 데이터 수집 실패")
-            return None
-        
-        # 길이 맞추기
-        print(f"length of all_ground_truth: {len(all_ground_truth)}, length of all_scores: {len(all_scores)}")
-        min_len = min(len(all_ground_truth), len(all_scores))
-        all_ground_truth = all_ground_truth[:min_len]
-        all_scores = all_scores[:min_len]
-        
-        print(f"   ✅ Lightning CM: {len(all_ground_truth)}개 샘플 수집 완료")
-        
-        # 점수 분포 분석 추가
-        scores_array = np.array(all_scores)
-        print(f"   🔍 Lightning 점수 분포:")
-        print(f"      최소값: {scores_array.min():.4f}")
-        print(f"      최대값: {scores_array.max():.4f}")
-        print(f"      평균값: {scores_array.mean():.4f}")
-        print(f"      중간값: {np.median(scores_array):.4f}")
-        print(f"      표준편차: {scores_array.std():.4f}")
-        
-        # 라벨별 점수 분포
-        gt_array = np.array(all_ground_truth)
-        normal_scores = scores_array[gt_array == 0]
-        anomaly_scores = scores_array[gt_array == 1]
-        
-        print(f"   📊 라벨별 점수 분포:")
-        print(f"      Normal 평균: {normal_scores.mean():.4f} (min: {normal_scores.min():.4f}, max: {normal_scores.max():.4f})")
-        print(f"      Anomaly 평균: {anomaly_scores.mean():.4f} (min: {anomaly_scores.min():.4f}, max: {anomaly_scores.max():.4f})")
-        
-        # AUROC 계산
-        try:
-            lightning_auroc = roc_auc_score(all_ground_truth, all_scores)
-            print(f"   📊 Lightning 직접 계산 AUROC: {lightning_auroc:.4f}")
-        except Exception as e:
-            lightning_auroc = 0.0
-            print(f"   ⚠️ Lightning AUROC 계산 오류: {e}")
-        
-        # Optimal threshold 찾기 (Youden's J statistic)
-        try:
-            fpr, tpr, thresholds = roc_curve(all_ground_truth, all_scores)
-            optimal_idx = np.argmax(tpr - fpr)
-            optimal_threshold = thresholds[optimal_idx]
-            print(f"   🎯 Lightning 최적 임계값: {optimal_threshold:.4f}")
-        except:
-            optimal_threshold = np.median(all_scores)
-            print(f"   🎯 Lightning 기본 임계값 (median): {optimal_threshold:.4f}")
-        
-        # 예측 라벨 생성
-        predictions = (np.array(all_scores) > optimal_threshold).astype(int)
-        
-        # Confusion Matrix 계산
-        cm = confusion_matrix(all_ground_truth, predictions)
-        
-        # 결과 출력
-        print(f"   🧮 Lightning Confusion Matrix:")
-        print(f"       실제\\예측    Normal  Anomaly")
-        print(f"       Normal     {cm[0,0]:6d}  {cm[0,1]:6d}")
-        print(f"       Anomaly    {cm[1,0]:6d}  {cm[1,1]:6d}")
-        
-        # 메트릭 계산
-        tn, fp, fn, tp = cm.ravel()
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        print(f"   📈 Lightning 메트릭:")
-        print(f"      AUROC: {lightning_auroc:.4f}")
-        print(f"      Accuracy: {accuracy:.4f}")
-        print(f"      Precision: {precision:.4f}")
-        print(f"      Recall: {recall:.4f}")
-        print(f"      F1-Score: {f1:.4f}")
-        
-        lightning_cm_result = {
-            "confusion_matrix": cm.tolist(),
-            "auroc": float(lightning_auroc),
-            "optimal_threshold": float(optimal_threshold),
-            "accuracy": float(accuracy),
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1_score": float(f1),
-            "total_samples": len(all_ground_truth),
-            "positive_samples": int(np.sum(all_ground_truth)),
-            "negative_samples": int(len(all_ground_truth) - np.sum(all_ground_truth))
-        }
-        
-        logger.info(f"Lightning CM - AUROC: {lightning_auroc:.4f}, CM: {cm.tolist()}")
-        
-        return lightning_cm_result
-    
     def save_results(self, results, training_info, best_checkpoint, logger):
         """실험 결과 저장"""
         domain = self.config.get("source_domain") or self.config.get("domain")
@@ -599,22 +485,7 @@ class BaseAnomalyTrainer:
             
             # 결과 저장
             experiment_results = self.save_results(results, training_info, best_checkpoint, logger)
-            
-            # 시각화 생성
-            try:
-                create_experiment_visualization(
-                    experiment_name=self.experiment_name,
-                    model_type=f"{self.model_type.upper()}_single_domain_{domain}",
-                    results_base_dir=str(self.experiment_dir),
-                    source_domain=domain,
-                    source_results=experiment_results.get('results', {}),
-                    single_domain=True
-                )
-                print(f"📊 결과 시각화 생성 완료")
-            except Exception as viz_error:
-                print(f"⚠️ 시각화 생성 중 오류: {viz_error}")
-                logger.warning(f"시각화 생성 중 오류: {viz_error}")
-            
+                        
             # GPU 메모리 정리
             cleanup_gpu_memory()
             
