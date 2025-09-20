@@ -22,12 +22,10 @@ import torch
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Tuple
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping
 
 # Anomalib imports
 from anomalib.engine import Engine
-from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
-from anomalib.data.datamodules.image.all_domains_hdmap import AllDomainsHDMAPDataModule
 
 
 def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
@@ -79,298 +77,6 @@ def load_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
                 config[field] = tuple(config[field])
     
     return experiment_conditions
-    
-    return experiment_conditions
-
-
-def load_all_domains_experiment_conditions(json_filename: str) -> List[Dict[str, Any]]:
-    """
-    AllDomains 실험을 위한 JSON 파일에서 실험 조건을 로드합니다.
-    
-    Args:
-        json_filename: 로드할 JSON 파일명 (확장자 포함)
-        
-    Returns:
-        실험 조건 리스트
-        
-    Raises:
-        FileNotFoundError: JSON 파일을 찾을 수 없는 경우
-        json.JSONDecodeError: JSON 파싱 오류가 발생한 경우
-    """
-    # caller 스크립트가 있는 디렉토리 기준으로 JSON 파일 경로 생성
-    import inspect
-    caller_frame = inspect.stack()[1]
-    caller_dir = os.path.dirname(os.path.abspath(caller_frame.filename))
-    json_path = os.path.join(caller_dir, json_filename)
-    
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(f"실험 조건 파일을 찾을 수 없습니다: {json_path}")
-    
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(f"JSON 파싱 오류: {e}")
-    
-    # AllDomains JSON은 직접 리스트 형태
-    if isinstance(data, list):
-        return data
-    else:
-        raise ValueError("AllDomains JSON 파일은 리스트 형태여야 합니다.")
-
-
-def get_experiment_by_name(experiment_conditions: List[Dict[str, Any]], 
-                          experiment_name: str) -> Dict[str, Any]:
-    """
-    실험 이름으로 특정 실험 조건을 찾습니다.
-    
-    Args:
-        experiment_conditions: 전체 실험 조건 리스트
-        experiment_name: 찾을 실험 이름
-        
-    Returns:
-        해당 실험 조건 딕셔너리
-        
-    Raises:
-        ValueError: 해당 이름의 실험을 찾을 수 없는 경우
-    """
-    for condition in experiment_conditions:
-        if condition.get('name') == experiment_name:
-            return condition
-    
-    available_names = [c.get('name', 'Unknown') for c in experiment_conditions]
-    raise ValueError(f"실험 '{experiment_name}'을 찾을 수 없습니다. "
-                    f"사용 가능한 실험: {available_names}")
-
-
-def validate_experiment_config(config: Dict[str, Any]) -> bool:
-    """
-    실험 설정의 유효성을 검사합니다.
-    
-    Args:
-        config: 검사할 실험 설정 딕셔너리
-        
-    Returns:
-        설정이 유효하면 True, 그렇지 않으면 False
-    """
-    required_fields = [
-        'max_epochs', 'learning_rate', 'batch_size', 'image_size',
-        'source_domain', 'target_domains'
-    ]
-    
-    for field in required_fields:
-        if field not in config:
-            print(f"필수 설정 '{field}'가 누락되었습니다.")
-            return False
-    
-    # 값의 유효성 검사
-    if config['max_epochs'] <= 0:
-        print("max_epochs는 0보다 커야 합니다.")
-        return False
-        
-    if config['learning_rate'] <= 0:
-        print("learning_rate는 0보다 커야 합니다.")
-        return False
-        
-    if config['batch_size'] <= 0:
-        print("batch_size는 0보다 커야 합니다.")
-        return False
-    
-    return True
-
-
-def print_experiment_summary(experiment_conditions: List[Dict[str, Any]]) -> None:
-    """
-    실험 조건들의 요약 정보를 출력합니다.
-    
-    Args:
-        experiment_conditions: 실험 조건 리스트
-    """
-    print(f"\n=== 실험 조건 요약 (총 {len(experiment_conditions)}개) ===")
-    
-    for i, condition in enumerate(experiment_conditions, 1):
-        name = condition.get('name', 'Unknown')
-        description = condition.get('description', 'No description')
-        config = condition.get('config', {})
-        
-        epochs = config.get('max_epochs', 'Unknown')
-        lr = config.get('learning_rate', 'Unknown')
-        
-        print(f"{i:2d}. {name}")
-        print(f"    설명: {description}")
-        print(f"    에포크: {epochs}, 학습률: {lr}")
-        
-        if 'patch_width_range' in config and 'patch_ratio_range' in config:
-            width_range = config['patch_width_range']
-            ratio_range = config['patch_ratio_range']
-            print(f"    패치 크기: {width_range}, 비율: {ratio_range}")
-        
-        print()
-
-
-def extract_target_domains_from_config(config: Dict[str, Any]) -> List[str]:
-    """
-    실험 설정에서 target domains를 추출합니다.
-    
-    Args:
-        config: 실험 설정 딕셔너리
-        
-    Returns:
-        List[str]: target domain 리스트
-    """
-    target_domains = config['target_domains']
-    
-    if target_domains == 'auto':
-        # 기본 HDMAP 도메인 (source_domain 제외)
-        source_domain = config['source_domain']
-        all_domains = ['domain_A', 'domain_B', 'domain_C', 'domain_D']
-        target_domains = [d for d in all_domains if d != source_domain]
-    elif isinstance(target_domains, str):
-        target_domains = [target_domains]
-    elif not isinstance(target_domains, list):
-        target_domains = ['domain_B', 'domain_C', 'domain_D']
-    
-    return target_domains
-
-
-def analyze_experiment_results(
-    source_results: Dict[str, Any],
-    target_results: Dict[str, Dict[str, Any]],
-    training_info: Dict[str, Any],
-    condition: Dict[str, Any],
-    model_type: str = "Model"
-) -> Dict[str, Any]:
-    """
-    실험 결과를 분석합니다 (모든 모델에서 공통 사용 가능).
-    
-    Args:
-        source_results: 소스 도메인 평가 결과
-        target_results: 타겟 도메인 평가 결과
-        training_info: 훈련 정보
-        condition: 실험 조건
-        model_type: 모델 타입 (출력용)
-        
-    Returns:
-        Dict[str, Any]: 분석된 결과 딕셔너리
-    """
-    print(f"\n📊 {model_type} 실험 결과 분석")
-    
-    # 타겟 도메인 평균 AUROC 계산
-    target_aurocs = []
-    for domain, result in target_results.items():
-        if isinstance(result.get('image_AUROC'), (int, float)):
-            target_aurocs.append(result['image_AUROC'])
-    
-    avg_target_auroc = sum(target_aurocs) / len(target_aurocs) if target_aurocs else 0.0
-    
-    # 소스 도메인 AUROC
-    source_auroc = source_results.get('image_AUROC', 0.0) if source_results else 0.0
-    
-    # 도메인 전이 효과 계산
-    transfer_ratio = avg_target_auroc / source_auroc if source_auroc > 0 else 0.0
-    
-    # 성능 평가
-    if transfer_ratio > 0.9:
-        transfer_grade = "우수"
-    elif transfer_ratio > 0.8:
-        transfer_grade = "양호"
-    elif transfer_ratio > 0.7:
-        transfer_grade = "보통"
-    else:
-        transfer_grade = "개선필요"
-    
-    # 결과 요약
-    analysis = {
-        "experiment_name": condition["name"],
-        "source_auroc": source_auroc,
-        "avg_target_auroc": avg_target_auroc,
-        "transfer_ratio": transfer_ratio,
-        "transfer_grade": transfer_grade,
-        "target_domain_count": len(target_results),
-        "training_epochs": training_info.get("last_trained_epoch", 0),
-        "early_stopped": training_info.get("early_stopped", False),
-        "best_val_auroc": training_info.get("best_val_auroc", 0.0)
-    }
-    
-    # 도메인별 상세 성능
-    domain_performances = {}
-    for domain, result in target_results.items():
-        domain_performances[domain] = {
-            "auroc": result.get('image_AUROC', 0.0),
-            "f1_score": result.get('image_F1Score', 0.0)
-        }
-    
-    analysis["domain_performances"] = domain_performances
-    
-    # 로깅
-    print(f"   📈 Source AUROC: {source_auroc:.4f}")
-    print(f"   🎯 Target 평균 AUROC: {avg_target_auroc:.4f}")
-    print(f"   🔄 전이 비율: {transfer_ratio:.3f} ({transfer_grade})")
-    print(f"   📚 훈련 에포크: {analysis['training_epochs']}")
-    
-    for domain, perf in domain_performances.items():
-        print(f"   └─ {domain}: AUROC={perf['auroc']:.4f}")
-    
-    return analysis
-
-
-def create_common_experiment_result(
-    condition: Dict[str, Any],
-    status: str = "success",
-    experiment_path: str = None,
-    source_results: Dict[str, Any] = None,
-    target_results: Dict[str, Dict[str, Any]] = None,
-    training_info: Dict[str, Any] = None,
-    best_checkpoint: str = None,
-    error: str = None
-) -> Dict[str, Any]:
-    """
-    공통 실험 결과 딕셔너리를 생성합니다.
-    
-    Args:
-        condition: 실험 조건
-        status: 실험 상태 ("success" 또는 "failed")
-        experiment_path: 실험 경로
-        source_results: 소스 도메인 결과
-        target_results: 타겟 도메인 결과들
-        training_info: 훈련 정보
-        best_checkpoint: 최고 체크포인트 경로
-        error: 에러 메시지 (실패 시)
-        
-    Returns:
-        Dict[str, Any]: 실험 결과 딕셔너리
-    """
-    result = {
-        "condition": condition,
-        "status": status,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "experiment_path": experiment_path,
-        "source_results": source_results or {},
-        "target_results": target_results or {},
-        "training_info": training_info or {},
-        "best_checkpoint": best_checkpoint,
-    }
-    
-    if status == "failed":
-        result["error"] = error
-    else:
-        # Target domain 평균 AUROC 계산
-        if target_results:
-            target_aurocs = []
-            for domain, domain_result in target_results.items():
-                auroc = domain_result.get('image_AUROC')
-                if isinstance(auroc, (int, float)):
-                    target_aurocs.append(auroc)
-            
-            if target_aurocs:
-                result["avg_target_auroc"] = sum(target_aurocs) / len(target_aurocs)
-            else:
-                result["avg_target_auroc"] = 0.0
-        else:
-            result["avg_target_auroc"] = 0.0
-    
-    return result
-
 
 def create_experiment_visualization(
     experiment_name: str,
@@ -499,210 +205,6 @@ def create_experiment_visualization(
     print(f"✅ {model_type} 폴더 구조 생성 완료: {viz_path}")
     
     return str(viz_path)
-
-
-def create_multi_domain_datamodule(
-    datamodule_class,
-    source_domain: str = "domain_A",
-    target_domains: Union[str, List[str]] = "auto",
-    batch_size: int = 16,
-    image_size: str = "224x224",
-    dataset_root: str = None,
-    validation_strategy: str = "source_test",
-    num_workers: int = 16
-):
-    """일반화된 MultiDomain DataModule 생성.
-    
-    Args:
-        datamodule_class: DataModule 클래스 (예: MultiDomainHDMAPDataModule)
-        source_domain: 소스 도메인 이름
-        target_domains: 타겟 도메인 리스트 또는 "auto"
-        batch_size: 배치 크기
-        image_size: 이미지 크기
-        dataset_root: 데이터셋 루트 경로
-        validation_strategy: 검증 전략
-        num_workers: 워커 수
-        
-    Returns:
-        생성된 datamodule 인스턴스
-    """
-    print(f"\n📦 {datamodule_class.__name__} 생성 중...")
-    print(f"   Source Domain: {source_domain}")
-    print(f"   Target Domains: {target_domains}")
-    
-    # 기본 dataset_root 설정
-    if dataset_root is None:
-        dataset_root = f"./datasets/HDMAP/1000_8bit_resize_{image_size}"
-    
-    datamodule = datamodule_class(
-        root=dataset_root,
-        source_domain=source_domain,
-        target_domains=target_domains,
-        validation_strategy=validation_strategy,
-        train_batch_size=batch_size,
-        eval_batch_size=batch_size,
-        num_workers=num_workers,
-    )
-    
-    # 데이터 준비 및 설정
-    datamodule.prepare_data()
-    datamodule.setup()
-    
-    print(f"✅ {datamodule_class.__name__} 설정 완료")
-    print(f"   실제 Target Domains: {datamodule.target_domains}")
-    print(f"   훈련 데이터: {len(datamodule.train_data)} 샘플 (source: {datamodule.source_domain})")
-    print(f"   검증 데이터: {len(datamodule.val_data)} 샘플 (source test)")
-    
-    total_test_samples = sum(len(test_data) for test_data in datamodule.test_data)
-    print(f"   테스트 데이터: {total_test_samples} 샘플 (targets)")
-    
-    for i, target_domain in enumerate(datamodule.target_domains):
-        print(f"     └─ {target_domain}: {len(datamodule.test_data[i])} 샘플")
-    
-    return datamodule
-
-
-def create_all_domains_datamodule(
-    datamodule_class,
-    batch_size: int,
-    image_size: str,
-    domains: list[str] = None,
-    val_split_ratio: float = 0.2,
-    dataset_root: str = None,
-    num_workers: int = 8
-) -> AllDomainsHDMAPDataModule:
-    """AllDomainsHDMAPDataModule 생성 및 설정.
-    
-    Args:
-        datamodule_class: AllDomainsHDMAPDataModule 클래스 (일관성을 위해 추가, 실제로는 사용하지 않음)
-        batch_size: 배치 크기
-        image_size: 이미지 크기 (예: "392x392")
-        domains: 사용할 도메인 리스트. None이면 모든 도메인 사용
-        val_split_ratio: 검증 데이터 분할 비율
-        dataset_root: 데이터셋 루트 경로 (None이면 자동 생성)
-        num_workers: 워커 수
-        
-    Returns:
-        설정된 AllDomainsHDMAPDataModule
-    """
-    print(f"\n📦 AllDomainsHDMAPDataModule 생성 중...")
-    
-    # 이미지 크기 파싱
-    try:
-        width, height = map(int, image_size.split('x'))
-        image_size_tuple = (width, height)
-    except ValueError:
-        # 기본값 사용
-        image_size_tuple = (392, 392)
-        print(f"   ⚠️ 이미지 크기 파싱 실패, 기본값 사용: {image_size_tuple}")
-    
-    # 도메인 정보 출력
-    domains_info = f"전체 도메인 (A~D)" if not domains else f"{domains}"
-    print(f"   🌍 도메인: {domains_info}")
-    print(f"   📏 이미지 크기: {image_size_tuple}")
-    print(f"   📊 배치 크기: {batch_size}")
-    print(f"   🔄 Val 분할 비율: {val_split_ratio}")
-    
-    # 이미지 크기에 따른 데이터셋 루트 경로 설정
-    if dataset_root is None:
-        # 현재 작업 디렉토리를 기준으로 절대 경로 생성
-        import os
-        current_dir = os.getcwd()
-        dataset_root = os.path.join(current_dir, "datasets", "HDMAP", f"1000_8bit_resize_{image_size}")
-    
-    # AllDomainsHDMAPDataModule 생성
-    datamodule = AllDomainsHDMAPDataModule(
-        root=dataset_root,
-        domains=domains,  # None이면 모든 도메인 사용
-        train_batch_size=batch_size,
-        eval_batch_size=batch_size,
-        num_workers=num_workers,
-        val_split_ratio=val_split_ratio,  # train에서 validation 분할
-        seed=42
-    )
-    
-    # 데이터 설정
-    print(f"   ⚙️  DataModule 설정 중...")
-    datamodule.setup()
-    
-    # 데이터 통계 출력
-    print(f"   ✅ DataModule 설정 완료!")
-    print(f"      • Train 샘플: {len(datamodule.train_data):,}개 (모든 도메인 정상 데이터)")
-    print(f"      • Val 샘플: {len(datamodule.val_data):,}개 (train에서 분할)")
-    print(f"      • Test 샘플: {len(datamodule.test_data):,}개 (모든 도메인 정상+결함)")
-    
-    return datamodule
-
-
-def evaluate_source_domain(
-    model: Any, 
-    engine: Any, 
-    datamodule: Any,
-    checkpoint_path: str = None
-) -> Dict[str, Any]:
-    """일반화된 Source Domain 성능 평가.
-    
-    Args:
-        model: 평가할 모델
-        engine: Lightning Engine
-        datamodule: 데이터 모듈
-        checkpoint_path: 체크포인트 경로 (선택사항)
-        
-    Returns:
-        Dict[str, Any]: 평가 결과
-    """
-    print(f"\n📊 Source Domain 성능 평가 - {datamodule.source_domain}")
-    print("   💡 평가 데이터: Source domain test (validation으로 사용된 데이터)")
-    print("   🎯 재현성을 위해 훈련에 사용된 동일한 DataModule의 val_dataloader 사용")
-    print(f"   📋 검증 데이터셋 크기: {len(datamodule.val_data)} 샘플")
-    
-    # 훈련에 사용된 동일한 DataModule의 validation DataLoader 사용
-    # 이렇게 하면 완전히 동일한 데이터셋 인스턴스와 순서를 보장
-    val_dataloader = datamodule.val_dataloader()
-    
-    # Engine의 경로 설정 확인 (fit() 후에만 접근 가능)
-    try:
-        if hasattr(engine, 'trainer') and engine.trainer is not None and hasattr(engine.trainer, 'default_root_dir'):
-            print(f"   🔧 Source domain 평가 시 Engine default_root_dir: {engine.trainer.default_root_dir}")
-    except Exception as e:
-        print(f"   ⚠️ Warning: Engine 경로 확인 실패: {e}")
-    
-    if checkpoint_path:
-        results = engine.test(
-            model=model,
-            dataloaders=val_dataloader,
-            ckpt_path=checkpoint_path
-        )
-    else:
-        results = engine.test(
-            model=model,
-            dataloaders=val_dataloader
-        )
-    
-    if results and len(results) > 0:
-        source_metrics = results[0]
-        
-        # test_image_AUROC -> image_AUROC 키 변환 (표준화)
-        if 'test_image_AUROC' in source_metrics:
-            source_metrics['image_AUROC'] = source_metrics['test_image_AUROC']
-        if 'test_image_F1Score' in source_metrics:
-            source_metrics['image_F1Score'] = source_metrics['test_image_F1Score']
-        
-        print(f"   ✅ Source Domain 평가 완료:")
-        print(f"   📝 주요 메트릭 (Validation과 동일해야 함):")
-        
-        # 주요 메트릭 출력
-        for key, value in source_metrics.items():
-            if isinstance(value, (int, float)):
-                if 'AUROC' in key or 'F1Score' in key:
-                    print(f"     └─ {key}: {value:.4f}")
-                else:
-                    print(f"     └─ {key}: {value}")
-        
-        return source_metrics
-    else:
-        print(f"   ❌ Source Domain 평가 실패")
-        return {}
 
 
 def cleanup_gpu_memory():
@@ -839,324 +341,6 @@ def extract_training_info(engine: Engine) -> Dict[str, Any]:
     
     return training_info
 
-
-def find_anomalib_image_paths(base_search_path: Path) -> Optional[Path]:
-    """Anomalib이 생성한 이미지 경로를 자동으로 탐색 (모든 모델에서 공통 사용 가능).
-    
-    Args:
-        base_search_path: 탐색할 기본 경로
-        
-    Returns:
-        Optional[Path]: 발견된 이미지 경로의 부모 디렉토리 (images 폴더의 부모)
-    """
-    # 다양한 모델 구조에 대응하는 패턴들
-    search_patterns = [
-        "**/DraemSevNet/MultiDomainHDMAPDataModule/**/images",  # DRAEM 계열
-        "**/Padim/MultiDomainHDMAPDataModule/**/images",        # PaDiM 계열
-        "**/*/MultiDomainHDMAPDataModule/**/images",            # 일반적인 패턴
-        "**/images"                                              # 가장 일반적인 패턴
-    ]
-    
-    anomalib_image_paths = []
-    
-    for pattern in search_patterns:
-        found_paths = list(base_search_path.glob(pattern))
-        anomalib_image_paths.extend(found_paths)
-    
-    if anomalib_image_paths:
-        # 경로 생성 시간 기준으로 최신 선택
-        latest_image_path = max(anomalib_image_paths, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-        anomalib_results_path = latest_image_path.parent  # images 폴더의 부모
-        print(f"   ✅ 실제 Anomalib 결과 경로: {anomalib_results_path}")
-        return anomalib_results_path
-    
-    return None
-
-
-def organize_source_domain_results(
-    sevnet_viz_path: str,
-    results_base_dir: str,
-    source_domain: str,
-    specific_version_path: str = None
-) -> bool:
-    """Source Domain 평가 결과 이미지를 정리된 폴더로 복사 (모든 모델에서 공통 사용 가능).
-    
-    목적: engine.test()로 생성된 Source Domain 시각화 결과를 source_domain/ 폴더로 재배치하여
-          나중에 분석할 때 용이하게 접근할 수 있도록 함
-    
-    Source Domain은 보통 fault/, good/ 폴더 구조로 구성됨:
-    - fault/: 실제 anomaly가 있는 이미지들의 시각화 결과
-    - good/: 정상 이미지들의 시각화 결과
-    
-    각 이미지는 다음 정보를 포함:
-    - Original Image: 원본 이미지
-    - Reconstructed: 재구성된 이미지 (reconstruction quality 확인)
-    - Anomaly Map: Heat map 형태의 anomaly 점수 분포
-    - Image + Pred Mask: Threshold 기반 binary mask (빨간색 영역만 표시)
-    - Severity Score: SeverityHead의 심각도 예측값 (0.0~1.0)
-      * DRAEM-SevNet은 mask + severity 결합으로 더 정교한 anomaly detection 제공
-    
-    Args:
-        sevnet_viz_path: visualize 폴더 경로
-        results_base_dir: 기본 결과 디렉토리 경로
-        source_domain: 소스 도메인 이름
-        specific_version_path: 특정 버전 경로 (선택적)
-        
-    Returns:
-        bool: 성공 여부
-    """
-    try:
-        # Source 폴더에서 이미지 파일 찾기
-        if specific_version_path:
-            source_path = Path(specific_version_path)
-        else:
-            source_path = Path(results_base_dir)
-        
-        # images 폴더 찾기
-        images_folder = None
-        for images_path in source_path.rglob("images"):
-            if images_path.is_dir():
-                images_folder = images_path
-                break
-        
-        if not images_folder or not images_folder.exists():
-            print(f"   ⚠️ Warning: {source_domain} images 폴더를 찾을 수 없습니다: {source_path}")
-            return False
-        
-        # 타겟 경로 (visualize/source_domain/)
-        sevnet_viz_path_obj = Path(sevnet_viz_path)
-        target_source_path = sevnet_viz_path_obj / "source_domain"
-        target_source_path.mkdir(parents=True, exist_ok=True)
-        
-        print(f"   📂 Source Domain 이미지 복사: {images_folder} → {target_source_path}")
-        
-        # fault/, good/ 폴더 복사
-        copied_folders = []
-        for subfolder in ["fault", "good"]:
-            source_subfolder = images_folder / subfolder
-            target_subfolder = target_source_path / subfolder
-            
-            if source_subfolder.exists():
-                if target_subfolder.exists():
-                    shutil.rmtree(target_subfolder)
-                shutil.copytree(source_subfolder, target_subfolder)
-                
-                image_count = len(list(target_subfolder.glob("*.png")))
-                copied_folders.append(f"{subfolder}({image_count})")
-                print(f"     ✅ {subfolder}: {image_count} 이미지 복사 완료")
-        
-        if copied_folders:
-            print(f"   ✅ Source Domain 복사 완료: {', '.join(copied_folders)}")
-            return True
-        else:
-            print(f"   ⚠️ Warning: 복사할 이미지가 없습니다")
-            return False
-            
-    except Exception as e:
-        print(f"   ❌ Error: Source Domain 이미지 복사 실패: {e}")
-        return False
-
-
-def copy_target_domain_results(
-    domain: str,
-    results_base_dir: str = None,
-    specific_version_path: str = None,
-    visualization_base_path: str = None
-) -> bool:
-    """Target Domain 평가 결과 전체 복사 및 보존 (모든 모델에서 공통 사용 가능).
-    
-    각 Target Domain 평가가 완료되면 images/ 폴더의 모든 결과를 
-    visualize/target_domains/{domain}/ 폴더로 완전히 복사하여 보존합니다.
-    
-    목적: engine.test()로 생성된 시각화 결과를 도메인별로 재배치하여 
-          나중에 분석할 때 용이하게 접근할 수 있도록 함
-    
-    Args:
-        domain: 타겟 도메인 이름
-        results_base_dir: 기본 결과 디렉토리 경로 (선택적)
-        specific_version_path: 특정 버전 경로 (선택적)
-        visualization_base_path: 시각화 저장 기본 경로 (선택적)
-        
-    Returns:
-        bool: 성공 여부
-    """
-    try:
-        # 경로 결정 (specific_version_path 우선, 그 다음 results_base_dir)
-        if specific_version_path:
-            base_path = Path(specific_version_path)
-        elif results_base_dir:
-            base_path = Path(results_base_dir)
-        else:
-            print(f"         ❌ Error: 경로가 지정되지 않았습니다")
-            return False
-        
-        # 시각화 경로 결정
-        if visualization_base_path:
-            viz_base_path = Path(visualization_base_path)
-        else:
-            viz_base_path = base_path / "visualize"
-        
-        # 타겟 경로 (visualize/target_domains/{domain}/)
-        target_domain_path = viz_base_path / "target_domains" / domain
-        target_domain_path.mkdir(parents=True, exist_ok=True)
-        
-        # Source에서 images 폴더 찾기
-        all_images_paths = list(base_path.rglob("images"))
-        
-        # 만약 찾지 못했다면, 부모 경로에서도 탐색 (실제 Anomalib 결과 경로 포함)
-        if not all_images_paths and base_path.name == "tensorboard_logs":
-            parent_path = base_path.parent
-            all_images_paths = list(parent_path.rglob("images"))
-        
-        images_folder = None
-        for images_path in all_images_paths:
-            if images_path.is_dir():
-                images_folder = images_path
-                break
-        
-        if not images_folder or not images_folder.exists():
-            print(f"         ⚠️ Warning: {domain} images 폴더를 찾을 수 없습니다")
-            return False
-        
-        # images 폴더 전체 복사
-        copied_count = 0
-        for item in images_folder.iterdir():
-            if item.is_file() and item.suffix.lower() in ['.png', '.jpg', '.jpeg']:
-                target_file = target_domain_path / item.name
-                shutil.copy2(item, target_file)
-                copied_count += 1
-            elif item.is_dir():
-                target_subfolder = target_domain_path / item.name
-                if target_subfolder.exists():
-                    shutil.rmtree(target_subfolder)
-                shutil.copytree(item, target_subfolder)
-                subfolder_count = len(list(target_subfolder.rglob("*.png")))
-                copied_count += subfolder_count
-        
-        if copied_count > 0:
-            print(f"         ✅ {domain}: {copied_count} 이미지 복사 완료")
-            return True
-        else:
-            print(f"         ⚠️ Warning: {domain}에 복사할 이미지가 없습니다")
-            return False
-            
-    except Exception as e:
-        print(f"         ❌ Error: {domain} 이미지 복사 실패: {e}")
-        return False
-
-
-def evaluate_target_domains(
-    model: Any,
-    engine: Engine,
-    datamodule: Any,
-    checkpoint_path: str,
-    results_base_dir: str,
-    target_domains: List[str] = None,
-    datamodule_class = None,
-    save_samples: bool = True,
-    current_version_path: str = None
-) -> Dict[str, Dict[str, Any]]:
-    """Target domains에 대한 성능 평가 수행 (모든 모델에서 공통 사용 가능).
-    
-    Args:
-        model: 훈련된 모델
-        engine: Anomalib Engine
-        datamodule: Multi-domain 데이터모듈 (source용)
-        checkpoint_path: 모델 체크포인트 경로
-        results_base_dir: 결과 저장 기본 경로
-        target_domains: 평가할 target domain 리스트 (None이면 datamodule에서 추출)
-        datamodule_class: DataModule 클래스 (None이면 자동 감지)
-        save_samples: 샘플 이미지 저장 여부
-        current_version_path: 현재 버전 경로 (시각화 저장용)
-        
-    Returns:
-        Dict[str, Dict[str, Any]]: 각 target domain별 평가 결과
-    """
-    # DataModule 클래스 자동 감지
-    if datamodule_class is None:
-        datamodule_class = type(datamodule)
-    
-    # Target domains 자동 추출
-    if target_domains is None:
-        if hasattr(datamodule, 'target_domains'):
-            target_domains = datamodule.target_domains
-        else:
-            # 기본값으로 HDMAP 도메인 사용
-            target_domains = ["domain_B", "domain_C", "domain_D"]
-            print(f"   ⚠️ Warning: target_domains를 자동 감지할 수 없어 기본값 사용: {target_domains}")
-    
-    print(f"   🎯 평가할 Target Domains: {target_domains}")
-    
-    target_results = {}
-    
-    for domain in target_domains:
-        print(f"      🎯 Target Domain 평가: {domain}")
-        
-        try:
-            # 개별 Target Domain용 DataModule 생성 (동적 클래스 사용)
-            target_datamodule = datamodule_class(
-                root=datamodule.root,
-                source_domain=getattr(datamodule, 'source_domain', "domain_A"),  # 원래 source domain 유지
-                target_domains=[domain],   # 평가할 domain을 target으로 설정
-                validation_strategy=getattr(datamodule, 'validation_strategy', "source_test"),
-                train_batch_size=getattr(datamodule, 'train_batch_size', 16),
-                eval_batch_size=getattr(datamodule, 'eval_batch_size', 16),
-                num_workers=getattr(datamodule, 'num_workers', 16)
-            )
-            
-            # Test 단계 설정
-            target_datamodule.setup(stage="test")
-            
-            # 모델 평가
-            print(f"         📊 {domain} DataModule 설정 완료, test 시작...")
-            
-            # Note: Engine의 default_root_dir은 훈련 후 변경 불가능하므로 재설정하지 않음
-            # 결과는 각 실험의 tensorboard_logs 폴더에 정상적으로 저장됨
-            
-            result = engine.test(
-                model=model, 
-                datamodule=target_datamodule,
-                ckpt_path=checkpoint_path
-            )
-            
-            print(f"         🔍 {domain} 평가 결과 타입: {type(result)}")
-            print(f"         🔍 {domain} 평가 결과 내용: {result}")
-            
-            # 결과 저장
-            if result:
-                domain_result = result[0] if isinstance(result, list) else result
-                
-                # test_image_AUROC -> image_AUROC 키 변환 (표준화)
-                if 'test_image_AUROC' in domain_result:
-                    domain_result['image_AUROC'] = domain_result['test_image_AUROC']
-                if 'test_image_F1Score' in domain_result:
-                    domain_result['image_F1Score'] = domain_result['test_image_F1Score']
-                
-                target_results[domain] = domain_result
-                print(f"         ✅ {domain} 평가 완료 - AUROC: {target_results[domain].get('image_AUROC', 'N/A')}")
-                if isinstance(target_results[domain].get('image_AUROC'), (int, float)):
-                    print(f"         📊 {domain} 상세 성능: AUROC={target_results[domain].get('image_AUROC'):.4f}, F1={target_results[domain].get('image_F1Score', 'N/A')}")
-            else:
-                print(f"         ⚠️ Warning: {domain} 평가 결과가 None입니다")
-                target_results[domain] = {"image_AUROC": 0.0, "image_F1Score": 0.0}
-            
-            # 이미지 복사 (선택적)
-            if save_samples and current_version_path:
-                copy_success = copy_target_domain_results(
-                    domain=domain,
-                    results_base_dir=results_base_dir,
-                    specific_version_path=current_version_path
-                )
-                if not copy_success:
-                    print(f"         ⚠️ Warning: {domain} 이미지 복사 실패")
-                
-        except Exception as e:
-            print(f"         ❌ Error: {domain} 평가 실패: {e}")
-            target_results[domain] = {"image_AUROC": 0.0, "image_F1Score": 0.0, "error": str(e)}
-    
-    return target_results
-
-
 def save_experiment_results(
     result: Dict[str, Any], 
     result_filename: str, 
@@ -1261,74 +445,6 @@ def save_experiment_results(
         logger.info(f"📂 실험 폴더: {result['experiment_path']}")
     
     return result_path
-
-
-def analyze_multi_experiment_results(all_results: list, source_domain: str):
-    """다중 실험 결과 분석 및 비교 (모든 모델에서 공통 사용 가능).
-    
-    Args:
-        all_results: 모든 실험 결과 리스트
-        source_domain: 소스 도메인 이름
-    """
-    print(f"\n{'='*80}")
-    print(f"📈 다중 실험 결과 분석 및 비교")
-    print(f"Source Domain: {source_domain}")
-    print(f"{'='*80}")
-    
-    successful_results = [r for r in all_results if r["status"] == "success"]
-    failed_results = [r for r in all_results if r["status"] == "failed"]
-    
-    print(f"\n📊 실험 요약:")
-    print(f"   성공: {len(successful_results)}/{len(all_results)} 개")
-    print(f"   실패: {len(failed_results)}/{len(all_results)} 개")
-    
-    if failed_results:
-        print(f"\n❌ 실패한 실험들:")
-        for result in failed_results:
-            print(f"   - {result['condition']['name']}: {result['error']}")
-    
-    if successful_results:
-        print(f"\n🏆 실험 결과 순위 (Target Domain 평균 AUROC 기준):")
-        # Target Domain 평균 AUROC 기준으로 정렬
-        sorted_results = sorted(successful_results, 
-                              key=lambda x: x.get("avg_target_auroc", 0), 
-                              reverse=True)
-        
-        print(f"{'순위':<4} {'실험 조건':<30} {'Source AUROC':<12} {'Target Avg':<12} {'도메인 전이':<10}")
-        print("-" * 80)
-        
-        for idx, result in enumerate(sorted_results, 1):
-            condition_name = result["condition"]["name"]
-            source_auroc = result["source_results"].get("image_AUROC", 0)
-            avg_target_auroc = result.get("avg_target_auroc", 0)
-            
-            # 도메인 전이 효과 계산
-            if source_auroc > 0:
-                transfer_effect = avg_target_auroc / source_auroc
-                transfer_desc = "우수" if transfer_effect > 0.9 else "양호" if transfer_effect > 0.8 else "개선필요"
-            else:
-                transfer_desc = "N/A"
-            
-            print(f"{idx:<4} {condition_name:<30} {source_auroc:<12.3f} {avg_target_auroc:<12.3f} {transfer_desc:<10}")
-        
-        # 최고 성능 실험 세부 분석
-        best_result = sorted_results[0]
-        print(f"\n🥇 최고 성능 실험: {best_result['condition']['name']}")
-        print(f"   📊 Target Domain별 세부 성능:")
-        
-        target_performances = []
-        for domain, result in best_result["target_results"].items():
-            domain_auroc = result.get("image_AUROC", 0)
-            if isinstance(domain_auroc, (int, float)):
-                print(f"   {domain:<12} {domain_auroc:<12.3f}")
-                target_performances.append((domain, domain_auroc))
-        
-        # 도메인별 성능 분석
-        if target_performances:
-            best_domain = max(target_performances, key=lambda x: x[1])
-            worst_domain = min(target_performances, key=lambda x: x[1])
-            print(f"\n   🎯 최고 성능 도메인: {best_domain[0]} (AUROC: {best_domain[1]:.3f})")
-            print(f"   ⚠️  최저 성능 도메인: {worst_domain[0]} (AUROC: {worst_domain[1]:.3f})")
 
 
 def create_single_domain_datamodule(
@@ -1501,29 +617,6 @@ def save_detailed_test_results(
             "anomaly_score": predictions.get("pred_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("pred_scores"), list) else 0,
         }
         
-        # 모델별 추가 점수들 (있는 경우에만)
-        if predictions.get("mask_scores") and isinstance(predictions.get("mask_scores"), list) and len(predictions.get("mask_scores")) > i:
-            row["mask_score"] = predictions["mask_scores"][i]
-        else:
-            row["mask_score"] = 0.0
-            
-        # DRAEM-SevNet 모델의 경우 raw_severity_score와 normalized_severity_score 구분
-        if predictions.get("raw_severity_scores") and isinstance(predictions.get("raw_severity_scores"), list) and len(predictions.get("raw_severity_scores")) > i:
-            row["raw_severity_score"] = predictions["raw_severity_scores"][i]
-        else:
-            row["raw_severity_score"] = 0.0
-            
-        if predictions.get("normalized_severity_scores") and isinstance(predictions.get("normalized_severity_scores"), list) and len(predictions.get("normalized_severity_scores")) > i:
-            row["normalized_severity_score"] = predictions["normalized_severity_scores"][i]
-        else:
-            row["normalized_severity_score"] = 0.0
-            
-        # 기존 severity_score는 backward compatibility를 위해 유지 (normalized_severity_score와 동일)
-        if predictions.get("severity_scores") and isinstance(predictions.get("severity_scores"), list) and len(predictions.get("severity_scores")) > i:
-            row["severity_score"] = predictions["severity_scores"][i]
-        else:
-            # normalized_severity_score와 동일한 값 사용
-            row["severity_score"] = row["normalized_severity_score"]
         
         # 예측 레이블 계산 (기본 threshold 0.5 사용)
         row["predicted_label"] = 1 if row["anomaly_score"] > 0.5 else 0
@@ -1700,61 +793,6 @@ def plot_score_distributions(
     
     print(f"📊 점수 분포 저장: {dist_path}")
 
-
-def save_extreme_samples(
-    image_paths: List[str],
-    ground_truth: List[int],
-    scores: List[float],
-    predictions: List[int],
-    result_dir: Path,
-    n_samples: int = 10
-) -> None:
-    """
-    극값 샘플들(고신뢰도 맞춤/틀림, 저신뢰도)의 경로를 저장합니다.
-    
-    Args:
-        image_paths: 이미지 경로 리스트
-        ground_truth: 실제 정답 리스트
-        scores: 예측 점수 리스트
-        predictions: 예측 결과 리스트
-        result_dir: 결과 저장 디렉토리  
-        n_samples: 각 카테고리별 저장할 샘플 수
-    """
-    import numpy as np
-    import pandas as pd
-    
-    # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)  
-    analysis_dir = Path(result_dir)
-    extreme_dir = analysis_dir / "extreme_samples"
-    extreme_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 데이터 정리
-    data = pd.DataFrame({
-        'image_path': image_paths,
-        'ground_truth': ground_truth,
-        'score': scores,
-        'prediction': predictions
-    })
-    
-    # 정확도 계산
-    data['correct'] = (data['ground_truth'] == data['prediction'])
-    data['confidence'] = np.abs(data['score'] - 0.5)  # 0.5에서 얼마나 먼지로 신뢰도 측정
-    
-    # 카테고리별 샘플 추출
-    categories = {
-        'high_confidence_correct': data[(data['correct'] == True)].nlargest(n_samples, 'confidence'),
-        'high_confidence_wrong': data[(data['correct'] == False)].nlargest(n_samples, 'confidence'), 
-        'low_confidence_samples': data.nsmallest(n_samples, 'confidence')
-    }
-    
-    # 각 카테고리별로 CSV 저장
-    for category, samples in categories.items():
-        if len(samples) > 0:
-            csv_path = extreme_dir / f"{category}.csv"
-            samples.to_csv(csv_path, index=False)
-            print(f"📸 {category} 샘플 저장: {csv_path}")
-
-
 def save_experiment_summary(
     experiment_config: Dict[str, Any],
     results: Dict[str, float],
@@ -1858,213 +896,6 @@ def analyze_test_data_distribution(datamodule, test_size: int) -> Tuple[int, int
     
     return fault_count, good_count
 
-
-def analyze_dataset_statistics(datamodule, train_size: int, test_size: int, val_size: int = None) -> dict:
-    """훈련, 테스트, 검증 데이터의 픽셀값 통계량을 분석합니다.
-    
-    Args:
-        datamodule: 데이터를 제공하는 데이터모듈
-        train_size: 훈련 데이터 크기
-        test_size: 테스트 데이터 크기
-        val_size: 검증 데이터 크기 (선택사항)
-        
-    Returns:
-        dict: 각 데이터셋별 통계량 정보
-    """
-    import torch
-    import numpy as np
-    from typing import List
-    
-    print(f"   📊 데이터셋 픽셀값 통계 분석 시작...")
-    
-    statistics = {
-        "train": {"values": [], "labels": [], "count": 0},
-        "test": {"values": [], "labels": [], "count": 0}
-    }
-    
-    if val_size is not None and val_size > 0:
-        statistics["val"] = {"values": [], "labels": [], "count": 0}
-    
-    # 훈련 데이터 분석
-    print(f"      🔍 훈련 데이터 분석 중 (총 {train_size}개)...")
-    train_loader = datamodule.train_dataloader()
-    
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(train_loader):
-            # 이미지 데이터 수집
-            images = batch.image.numpy()  # (B, C, H, W)
-            labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
-            
-            # 각 이미지별로 픽셀값과 라벨을 매핑
-            for img, label in zip(images, labels):
-                img_values = img.flatten()
-                statistics["train"]["values"].extend(img_values.tolist())
-                # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
-                statistics["train"]["labels"].extend([label] * len(img_values))
-            
-            statistics["train"]["count"] += len(labels)
-            
-            # 진행률 표시
-            if batch_idx % 50 == 0 and batch_idx > 0:
-                print(f"         📈 훈련 데이터: {batch_idx+1} 배치, {statistics['train']['count']}개 처리됨")
-    
-    # 테스트 데이터 분석
-    print(f"      🔍 테스트 데이터 분석 중 (총 {test_size}개)...")
-    test_loader = datamodule.test_dataloader()
-    
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(test_loader):
-            # 이미지 데이터 수집
-            images = batch.image.numpy()  # (B, C, H, W)
-            labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
-            
-            # 각 이미지별로 픽셀값과 라벨을 매핑
-            for img, label in zip(images, labels):
-                img_values = img.flatten()
-                statistics["test"]["values"].extend(img_values.tolist())
-                # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
-                statistics["test"]["labels"].extend([label] * len(img_values))
-            
-            statistics["test"]["count"] += len(labels)
-            
-            # 진행률 표시
-            if batch_idx % 50 == 0 and batch_idx > 0:
-                print(f"         📈 테스트 데이터: {batch_idx+1} 배치, {statistics['test']['count']}개 처리됨")
-    
-    # 검증 데이터 분석 (있는 경우)
-    if "val" in statistics:
-        print(f"      🔍 검증 데이터 분석 중 (총 {val_size}개)...")
-        val_loader = datamodule.val_dataloader()
-        
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(val_loader):
-                # 이미지 데이터 수집
-                images = batch.image.numpy()  # (B, C, H, W)
-                labels = batch.gt_label.numpy() if hasattr(batch, 'gt_label') else np.zeros(images.shape[0])
-                
-                # 각 이미지별로 픽셀값과 라벨을 매핑
-                for img, label in zip(images, labels):
-                    img_values = img.flatten()
-                    statistics["val"]["values"].extend(img_values.tolist())
-                    # 이미지의 모든 픽셀에 대해 동일한 라벨 적용
-                    statistics["val"]["labels"].extend([label] * len(img_values))
-                
-                statistics["val"]["count"] += len(labels)
-                
-                # 진행률 표시
-                if batch_idx % 50 == 0 and batch_idx > 0:
-                    print(f"         📈 검증 데이터: {batch_idx+1} 배치, {statistics['val']['count']}개 처리됨")
-    
-    # 통계량 계산 및 출력
-    print(f"   📊 픽셀값 통계량 계산 중...")
-    
-    results = {}
-    for split_name, data in statistics.items():
-        if len(data["values"]) == 0:
-            continue
-            
-        values = np.array(data["values"])
-        labels = np.array(data["labels"])
-        
-        # 전체 통계
-        overall_stats = {
-            "count": len(values),
-            "min": float(np.min(values)),
-            "max": float(np.max(values)),
-            "mean": float(np.mean(values)),
-            "std": float(np.std(values)),
-            "median": float(np.median(values)),
-            "q25": float(np.percentile(values, 25)),
-            "q75": float(np.percentile(values, 75))
-        }
-        
-        # 라벨별 통계 (라벨이 있는 경우)
-        label_stats = {}
-        unique_labels = np.unique(labels)
-        
-        for label in unique_labels:
-            mask = labels == label
-            label_values = values[mask] if np.any(mask) else np.array([])
-            
-            if len(label_values) > 0:
-                label_name = "normal" if label == 0 else "fault"
-                label_stats[label_name] = {
-                    "count": len(label_values),
-                    "min": float(np.min(label_values)),
-                    "max": float(np.max(label_values)),
-                    "mean": float(np.mean(label_values)),
-                    "std": float(np.std(label_values)),
-                    "median": float(np.median(label_values))
-                }
-        
-        results[split_name] = {
-            "overall": overall_stats,
-            "by_label": label_stats
-        }
-    
-    # 결과 출력
-    print(f"   ✅ 데이터셋 통계 분석 완료!")
-    print(f"   📋 === 픽셀값 통계 요약 ===")
-    
-    for split_name, split_stats in results.items():
-        split_display = {"train": "훈련", "test": "테스트", "val": "검증"}
-        print(f"   📊 {split_display.get(split_name, split_name).upper()} 데이터:")
-        
-        overall = split_stats["overall"]
-        print(f"      🔢 전체 픽셀: {overall['count']:,}개")
-        print(f"      📏 범위: [{overall['min']:.4f}, {overall['max']:.4f}]")
-        print(f"      📊 평균±표준편차: {overall['mean']:.4f} ± {overall['std']:.4f}")
-        print(f"      📍 중위수: {overall['median']:.4f}")
-        print(f"      📈 Q1/Q3: {overall['q25']:.4f} / {overall['q75']:.4f}")
-        
-        # 라벨별 통계
-        if split_stats["by_label"]:
-            for label_name, label_stat in split_stats["by_label"].items():
-                label_emoji = "✅" if label_name == "normal" else "🚨"
-                print(f"      {label_emoji} {label_name.upper()} ({label_stat['count']:,}개 샘플):")
-                print(f"         📏 범위: [{label_stat['min']:.4f}, {label_stat['max']:.4f}]")
-                print(f"         📊 평균±표준편차: {label_stat['mean']:.4f} ± {label_stat['std']:.4f}")
-        print()
-    
-    # 데이터셋 간 비교
-    if len(results) > 1:
-        print(f"   🔍 === 데이터셋 간 비교 ===")
-        
-        # 평균값 비교
-        means = {name: stats["overall"]["mean"] for name, stats in results.items()}
-        stds = {name: stats["overall"]["std"] for name, stats in results.items()}
-        ranges = {name: (stats["overall"]["max"] - stats["overall"]["min"]) 
-                 for name, stats in results.items()}
-        
-        print(f"   📊 평균값 비교:")
-        for name, mean_val in means.items():
-            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
-            print(f"      {split_name}: {mean_val:.4f}")
-        
-        print(f"   📏 표준편차 비교:")
-        for name, std_val in stds.items():
-            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
-            print(f"      {split_name}: {std_val:.4f}")
-        
-        print(f"   📈 값 범위 비교:")
-        for name, range_val in ranges.items():
-            split_name = {"train": "훈련", "test": "테스트", "val": "검증"}.get(name, name)
-            print(f"      {split_name}: {range_val:.4f}")
-        
-        # 분포 일관성 확인
-        train_mean = means.get("train", 0)
-        test_mean = means.get("test", 0)
-        
-        if "train" in means and "test" in means:
-            mean_diff = abs(train_mean - test_mean)
-            if mean_diff > 0.1:  # 임계값 설정
-                print(f"   ⚠️  경고: 훈련/테스트 데이터 평균값 차이가 큽니다 (차이: {mean_diff:.4f})")
-            else:
-                print(f"   ✅ 훈련/테스트 데이터 분포가 일관성 있습니다 (차이: {mean_diff:.4f})")
-    
-    return results
-
-
 def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name, model_type, logger):
     """통합된 모델 평가 함수
     
@@ -2100,10 +931,6 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     all_image_paths = []
     all_ground_truth = []
     all_scores = []
-    all_mask_scores = []
-    all_severity_scores = []
-    all_raw_severity_scores = []
-    all_normalized_severity_scores = []
     
     # 테스트 데이터로더 생성
     test_dataloader = datamodule.test_dataloader()
@@ -2122,40 +949,16 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             if not isinstance(image_paths, list):
                 image_paths = [image_paths]
             
-            # 이미지 텐서 추출
-            image_tensor = batch.image
-            print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}")
-            
-            # 이미지 텐서를 모델과 같은 디바이스로 이동
-            image_tensor = image_tensor.to(device)
+            # 이미지 텐서 추출 및 디바이스 이동을 한 번에 처리
+            image_tensor = batch.image.to(device)
+            print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}, min: {image_tensor.min().item():.4f}, q1: {image_tensor.quantile(0.25).item():.4f}, q2: {image_tensor.quantile(0.5).item():.4f}, q3: {image_tensor.quantile(0.75).item():.4f}, max: {image_tensor.max().item():.4f}")
             
             # 모델로 직접 예측 수행
             model_output = torch_model(image_tensor)
             print(f"      ✅ 모델 출력 완료: {type(model_output)}")
-            
-            # DRAEM 모델의 경우 NaN 디버깅
-            if model_type.lower() == "draem" and hasattr(model_output, 'pred_score'):
-                pred_score_tensor = model_output.pred_score
-                print(f"      🔍 DRAEM 디버깅:")
-                print(f"         pred_score shape: {pred_score_tensor.shape}")
-                
-                # pred_score가 유효한지 확인
-                if torch.isnan(pred_score_tensor).any():
-                    print(f"         ❌ pred_score에 NaN 발견! 개수: {torch.isnan(pred_score_tensor).sum().item()}")
-                else:
-                    print(f"         ✅ pred_score 정상, 범위: [{pred_score_tensor.min():.6f}, {pred_score_tensor.max():.6f}]")
-                
-                if hasattr(model_output, 'anomaly_map'):
-                    anomaly_map_tensor = model_output.anomaly_map
-                    print(f"         anomaly_map shape: {anomaly_map_tensor.shape}")
-                    
-                    if torch.isnan(anomaly_map_tensor).any():
-                        print(f"         ❌ anomaly_map에 NaN 발견! 개수: {torch.isnan(anomaly_map_tensor).sum().item()}")
-                    else:
-                        print(f"         ✅ anomaly_map 정상, 범위: [{anomaly_map_tensor.min():.6f}, {anomaly_map_tensor.max():.6f}]")
-            
+                        
             # 모델별 출력에서 점수들 추출
-            final_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores = extract_scores_from_model_output(
+            final_scores = extract_scores_from_model_output(
                 model_output, image_tensor.shape[0], batch_idx, model_type
             )
             
@@ -2173,10 +976,6 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             all_image_paths.extend(image_paths)
             all_ground_truth.extend(gt_labels)
             all_scores.extend(final_scores.flatten() if hasattr(final_scores, 'flatten') else final_scores)
-            all_mask_scores.extend(mask_scores.flatten() if hasattr(mask_scores, 'flatten') else mask_scores)
-            all_severity_scores.extend(severity_scores.flatten() if hasattr(severity_scores, 'flatten') else severity_scores)
-            all_raw_severity_scores.extend(raw_severity_scores.flatten() if hasattr(raw_severity_scores, 'flatten') else raw_severity_scores)
-            all_normalized_severity_scores.extend(normalized_severity_scores.flatten() if hasattr(normalized_severity_scores, 'flatten') else normalized_severity_scores)
             
             print(f"      ✅ 배치 {batch_idx+1} 완료: {len(gt_labels)}개 샘플 추가")
     
@@ -2272,10 +1071,6 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     # 상세 테스트 결과 CSV 저장
     predictions_dict = {
         "pred_scores": all_scores,
-        "mask_scores": all_mask_scores,
-        "severity_scores": all_severity_scores,
-        "raw_severity_scores": all_raw_severity_scores,
-        "normalized_severity_scores": all_normalized_severity_scores
     }
     ground_truth_dict = {
         "labels": all_ground_truth
@@ -2295,10 +1090,7 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
     anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
     plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, experiment_name)
-    
-    # 극단적 신뢰도 샘플 저장
-    save_extreme_samples(all_image_paths, all_ground_truth, all_scores, predictions, analysis_dir)
-    
+        
     # 실험 요약 저장
     save_experiment_summary({}, {"auroc": auroc}, analysis_dir)
     
@@ -2318,7 +1110,7 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         model_type: 모델 타입 (소문자)
         
     Returns:
-        tuple: (anomaly_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores)
+        tuple: (anomaly_scores,)
     """
     import numpy as np
     
@@ -2334,40 +1126,38 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
                 print(f"      ⚠️  DRAEM pred_score에 NaN 발견, 0.0으로 대체")
                 final_scores = np.nan_to_num(final_scores, nan=0.0)
             
-            mask_scores = [0.0] * batch_size  # DRAEM에는 mask_score 없음
-            severity_scores = [0.0] * batch_size  # DRAEM에는 severity_score 없음
-            raw_severity_scores = [0.0] * batch_size  # DRAEM에는 raw_severity_score 없음
-            normalized_severity_scores = [0.0] * batch_size  # DRAEM에는 normalized_severity_score 없음
+            # 없는 값은 0 으로 처리 (DRAEM에는 mask_score, severity_score, raw_severity_score, normalized_severity_score 없음)
             print(f"      📊 DRAEM 점수 추출: pred_score={final_scores[0]:.4f}")
         elif hasattr(model_output, 'anomaly_map'):
             # anomaly_map에서 점수 계산
             anomaly_map = model_output.anomaly_map.cpu().numpy()
             final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
-            mask_scores = [0.0] * batch_size
-            severity_scores = [0.0] * batch_size
-            raw_severity_scores = [0.0] * batch_size
-            normalized_severity_scores = [0.0] * batch_size
             print(f"      📊 DRAEM 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
         else:
             raise AttributeError("DRAEM 출력 속성 없음")
-            
+
+    elif model_type == "draem_cutpaste_clf":
+        # draem_cutpaste_clf의 경우 pred_score와 anomaly_map이 모두 존재
+        try:
+            final_scores = model_output.pred_score.cpu().numpy()
+
+            # NaN 값 확인 및 처리
+            if np.isnan(final_scores).any():
+                raise ValueError(f"      ❌ DRAEM CutPaste Clf pred_score에 NaN이 포함되어 있습니다. (배치 {batch_idx})")
+
+            print(f"      📊 DRAEM CutPaste Clf 점수 추출: first pred_score={final_scores[0]:.4f}")
+        except AttributeError:
+            raise AttributeError("DRAEM CutPaste Clf 출력 속성 없음")
+
     elif model_type == "patchcore":
         # PatchCore: pred_score만 있음
         if hasattr(model_output, 'pred_score'):
             final_scores = model_output.pred_score.cpu().numpy()
-            mask_scores = [0.0] * batch_size
-            severity_scores = [0.0] * batch_size
-            raw_severity_scores = [0.0] * batch_size
-            normalized_severity_scores = [0.0] * batch_size
             print(f"      📊 PatchCore 점수 추출: pred_score={final_scores[0]:.4f}")
         elif hasattr(model_output, 'anomaly_map'):
             # anomaly_map에서 점수 계산
             anomaly_map = model_output.anomaly_map.cpu().numpy()
             final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
-            mask_scores = [0.0] * batch_size
-            severity_scores = [0.0] * batch_size
-            raw_severity_scores = [0.0] * batch_size
-            normalized_severity_scores = [0.0] * batch_size
             print(f"      📊 PatchCore 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
         else:
             raise AttributeError("PatchCore 출력 속성 없음")
@@ -2376,19 +1166,11 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         # Dinomaly: pred_score 또는 anomaly_map
         if hasattr(model_output, 'pred_score'):
             final_scores = model_output.pred_score.cpu().numpy()
-            mask_scores = [0.0] * batch_size
-            severity_scores = [0.0] * batch_size
-            raw_severity_scores = [0.0] * batch_size
-            normalized_severity_scores = [0.0] * batch_size
             print(f"      📊 Dinomaly 점수 추출: pred_score={final_scores[0]:.4f}")
         elif hasattr(model_output, 'anomaly_map'):
             # anomaly_map에서 점수 계산
             anomaly_map = model_output.anomaly_map.cpu().numpy()
             final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
-            mask_scores = [0.0] * batch_size
-            severity_scores = [0.0] * batch_size
-            raw_severity_scores = [0.0] * batch_size
-            normalized_severity_scores = [0.0] * batch_size
             print(f"      📊 Dinomaly 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
         else:
             raise AttributeError("Dinomaly 출력 속성 없음")
@@ -2406,10 +1188,6 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         else:
             raise AttributeError(f"지원되지 않는 모델 출력 형식: {type(model_output)}")
             
-        mask_scores = [0.0] * batch_size
-        severity_scores = [0.0] * batch_size
-        raw_severity_scores = [0.0] * batch_size
-        normalized_severity_scores = [0.0] * batch_size
         print(f"      📊 일반 모델 점수 추출: anomaly_score={final_scores[0]:.4f}")
         
-    return final_scores, mask_scores, severity_scores, raw_severity_scores, normalized_severity_scores
+    return final_scores
