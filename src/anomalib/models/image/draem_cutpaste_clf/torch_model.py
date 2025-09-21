@@ -182,8 +182,8 @@ class DraemCutPasteModel(nn.Module):
         # Extract anomaly scores (use softmax probabilities for anomaly class)
         anomaly_scores = classification_probs[:, 1]  # Probability of anomaly class
 
-        # Create anomaly maps (use predicted mask as anomaly map)
-        anomaly_maps = predicted_mask.squeeze(1)  # Remove channel dimension
+        # Create anomaly maps (apply softmax like DRAEM)
+        anomaly_maps = torch.softmax(prediction, dim=1)[:, 1, ...]  # Softmax + anomaly channel
 
         # Create predictions (binary threshold at 0.5)
         predictions = (anomaly_scores > 0.5).float()

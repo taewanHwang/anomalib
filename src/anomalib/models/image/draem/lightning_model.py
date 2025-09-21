@@ -177,13 +177,30 @@ class Draem(AnomalibModule):
         # Compute loss
         loss = self.loss(input_image, reconstruction, anomaly_mask, prediction)
 
+        # Compute individual loss components for detailed logging
+        loss_l2 = self.loss.l2_loss(reconstruction, input_image)
+        loss_ssim = self.loss.ssim_loss(reconstruction, input_image) * 2  # DRAEM multiplies by 2
+        loss_focal = self.loss.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+        
+        # Clamp focal loss to prevent negative values (numerical instability)
+        loss_focal = torch.clamp(loss_focal, min=0.0)
+
         if self.sspcab:
-            loss += self.sspcab_lambda * self.sspcab_loss(
+            sspcab_loss_val = self.sspcab_lambda * self.sspcab_loss(
                 self.sspcab_activations["input"],
                 self.sspcab_activations["output"],
             )
+            loss += sspcab_loss_val
+            self.log("train_sspcab_loss", sspcab_loss_val, on_step=False, on_epoch=True)
 
+        # Log total loss
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        
+        # Log individual loss components
+        self.log("train_loss_l2", loss_l2, on_step=False, on_epoch=True)
+        self.log("train_loss_ssim", loss_ssim, on_step=False, on_epoch=True)
+        self.log("train_loss_focal", loss_focal, on_step=False, on_epoch=True)
+        
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:

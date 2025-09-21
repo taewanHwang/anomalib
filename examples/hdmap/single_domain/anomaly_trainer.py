@@ -101,7 +101,6 @@ class BaseAnomalyTrainer:
             'learning_rate': self.config["learning_rate"],
             'optimizer': self.config["optimizer"],
             'weight_decay': self.config["weight_decay"],
-            'scheduler': self.config["scheduler"]
         }
         
         return model
@@ -206,16 +205,11 @@ class BaseAnomalyTrainer:
             
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
-            if self.model_type in ["draem"]:
+            if self.model_type in ["draem", "draem_cutpaste_clf"]:
                 # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
                 monitor_metric = "val_image_AUROC"
                 monitor_mode = "max"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
-            elif self.model_type in ["draem_cutpaste_clf"]:
-                # DRAEM CutPaste Classification: validation AUROC 기반 모니터링
-                monitor_metric = "val_image_AUROC"
-                monitor_mode = "max"
-                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")  
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -258,11 +252,7 @@ class BaseAnomalyTrainer:
         # PatchCore는 옵티마이저가 필요하지 않음
         if self.model_type == "patchcore":
             return
-            
-        # DRAEM은 이미 자체 configure_optimizers를 가지고 있음
-        # Dinomaly만 기본 설정을 사용
-        # 따라서 여기서는 별도 처리 불필요
-    
+                
     def train_model(self, model, datamodule, logger) -> Tuple[Any, Engine, str]:
         """모델 훈련 수행"""
         print(f"\n🚀 {self.model_type.upper()} 모델 훈련 시작")
@@ -341,7 +331,7 @@ class BaseAnomalyTrainer:
         
         return model, engine, best_checkpoint
     
-    def evaluate_model(self, model, engine, datamodule, logger) -> Dict[str, Any]:
+    def evaluate_model(self, model, datamodule, logger) -> Dict[str, Any]:
         """모델 성능 평가 - 통합된 단일 평가"""
         domain = self.config.get("source_domain") or self.config.get("domain")
         
@@ -374,6 +364,15 @@ class BaseAnomalyTrainer:
                 print(f"      🔍 Precision: {evaluation_metrics['precision']:.4f}")
                 print(f"      📉 Recall: {evaluation_metrics['recall']:.4f}")
                 print(f"      🔢 총 샘플: {evaluation_metrics['total_samples']}개")
+
+                # TensorBoard에 test_image_AUROC 로깅
+                if hasattr(logger, 'experiment') and hasattr(logger.experiment, 'add_scalar'):
+                    logger.experiment.add_scalar(
+                        'test_image_AUROC',
+                        evaluation_metrics['auroc'],
+                        global_step=0
+                    )
+                    print(f"      📝 TensorBoard에 test_image_AUROC={evaluation_metrics['auroc']:.4f} 로깅 완료")
                 
                 logger.info(f"✅ {domain} 평가 완료: AUROC={evaluation_metrics['auroc']:.4f}")
                 return results
@@ -443,7 +442,7 @@ class BaseAnomalyTrainer:
         print(f"🔬 {self.model_type.upper()} Single Domain 실험: {self.experiment_name}")
         
         try:
-            # GPU 메모리 정리
+            # GPU 메모리 정리 
             cleanup_gpu_memory()
             
             # 로깅 설정
@@ -475,11 +474,8 @@ class BaseAnomalyTrainer:
             trained_model, engine, best_checkpoint = self.train_model(model, datamodule, logger)
             
             # 성능 평가
-            results = self.evaluate_model(trained_model, engine, datamodule, logger)
+            results = self.evaluate_model(trained_model, datamodule, logger)
             
-            # 시각화를 위한 테스트
-            engine.test(model=model, datamodule=datamodule)
-
             # 훈련 정보 추출
             training_info = extract_training_info(engine)
             

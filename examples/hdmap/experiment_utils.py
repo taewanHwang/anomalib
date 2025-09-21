@@ -912,6 +912,8 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     """
     import numpy as np
     from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix
+    from PIL import Image
+    from pathlib import Path
     
     print(f"   🚀 통합 모델 평가 시작...")
     
@@ -926,6 +928,11 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch_model = torch_model.to(device)
     print(f"   🖥️ 모델을 {device}로 이동 완료")
+    
+    # 시각화 디렉터리 생성
+    visualization_dir = Path(experiment_dir) / "visualizations"
+    visualization_dir.mkdir(exist_ok=True)
+    print(f"   🖼️ 시각화 저장 경로: {visualization_dir}")
     
     # 데이터 수집을 위한 리스트들
     all_image_paths = []
@@ -961,6 +968,9 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             final_scores = extract_scores_from_model_output(
                 model_output, image_tensor.shape[0], batch_idx, model_type
             )
+            
+            # 시각화 생성 (전체 배치)
+            create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx)
             
             # Ground truth 추출 (이미지 경로에서)
             gt_labels = []
@@ -1191,3 +1201,198 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         print(f"      📊 일반 모델 점수 추출: anomaly_score={final_scores[0]:.4f}")
         
     return final_scores
+
+
+def create_anomaly_heatmap_with_colorbar(anomaly_map_array, target_size, cmap='viridis', show_colorbar=False):
+    """Anomaly heatmap 생성 (colorbar 옵션)
+    
+    Args:
+        anomaly_map_array: numpy array [H, W]
+        target_size: (width, height) 목표 크기
+        cmap: matplotlib colormap 이름 (기본값: 'viridis')
+              - 'viridis': 파란색->초록색->노란색 (권장)
+              - 'jet': 파란색->청록->노랑->빨강 (기존)
+              - 'hot': 검정->빨강->노랑->흰색
+              - 'plasma': 보라->분홍->노랑
+              - 'inferno': 검정->보라->빨강->노랑
+              - 'turbo': 파란색->청록->초록->노랑->빨강
+              - 'coolwarm': 파란색->흰색->빨강
+        show_colorbar: colorbar 표시 여부 (기본값: False)
+        
+    Returns:
+        PIL.Image: heatmap 이미지 (colorbar 포함/제외)
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    from matplotlib.colors import Normalize
+    import io
+    from PIL import Image
+    
+    # 값 범위 계산
+    vmin = anomaly_map_array.min()
+    vmax = anomaly_map_array.max()
+    
+    # Figure 크기 및 레이아웃 설정
+    if show_colorbar:
+        # Colorbar 포함 레이아웃
+        fig_width = 6
+        fig_height = 4
+        fig, (ax_img, ax_cbar) = plt.subplots(1, 2, figsize=(fig_width, fig_height), 
+                                              gridspec_kw={'width_ratios': [4, 0.3]})
+    else:
+        # Colorbar 없는 레이아웃
+        fig_width = 4
+        fig_height = 4
+        fig, ax_img = plt.subplots(1, 1, figsize=(fig_width, fig_height))
+    
+    # Heatmap 생성
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    im = ax_img.imshow(anomaly_map_array, cmap=cmap, norm=norm, aspect='auto')
+    ax_img.axis('off')
+    
+    # Colorbar 생성 (옵션에 따라)
+    if show_colorbar:
+        cbar = plt.colorbar(im, cax=ax_cbar)
+        cbar.set_label('Anomaly Score', rotation=270, labelpad=15, fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
+    
+    plt.tight_layout()
+    
+    # PIL 이미지로 변환
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', pad_inches=0.05)
+    buf.seek(0)
+    heatmap_pil = Image.open(buf).convert('RGB')
+    plt.close()
+    
+    return heatmap_pil
+
+
+def create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx):
+    """배치에 대한 시각화 생성 (원본 이미지 + anomaly map)
+    
+    Args:
+        image_tensor: 입력 이미지 텐서 [B, C, H, W]
+        model_output: 모델 출력 객체
+        image_paths: 이미지 경로 리스트
+        visualization_dir: 시각화 저장 디렉터리
+        batch_idx: 배치 인덱스
+    """
+    import numpy as np
+    from PIL import Image
+    from pathlib import Path
+    
+    # anomalib 시각화 함수들 import
+    from anomalib.visualization.image.functional import (
+        overlay_images,
+        create_image_grid,
+        add_text_to_image
+    )
+    
+    # 배치에서 anomaly map 추출
+    anomaly_maps = None
+    if hasattr(model_output, 'anomaly_map'):
+        anomaly_maps = model_output.anomaly_map
+    else:
+        return
+    
+    # 배치 크기
+    batch_size = image_tensor.shape[0]
+    
+    # 각 이미지에 대해 시각화 생성
+    for i in range(batch_size):  # 전체 배치 시각화
+        try:
+            # 원본 이미지 추출 및 변환
+            original_img_tensor = image_tensor[i]  # [C, H, W]
+            
+            # 텐서를 PIL 이미지로 변환 (정규화 해제)
+            # 이미지가 [0, 1] 범위라고 가정
+            if original_img_tensor.max() <= 1.0:
+                original_img_array = (original_img_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+            else:
+                original_img_array = original_img_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            
+            # 그레이스케일인 경우 RGB로 변환
+            if original_img_array.shape[2] == 1:
+                original_img_array = np.repeat(original_img_array, 3, axis=2)
+            elif original_img_array.shape[2] > 3:
+                original_img_array = original_img_array[:, :, :3]
+                
+            original_img_pil = Image.fromarray(original_img_array, mode='RGB')
+            
+            # Anomaly map 추출 및 변환
+            anomaly_map_tensor = anomaly_maps[i]  # [H, W] 또는 [1, H, W]
+            if len(anomaly_map_tensor.shape) == 3:
+                anomaly_map_tensor = anomaly_map_tensor.squeeze(0)  # [H, W]
+            
+            # 원본 이미지와 anomaly map 크기 맞추기
+            target_size = original_img_pil.size
+            
+            # anomaly map을 matplotlib으로 시각화
+            # 다른 colormap 옵션: 'jet', 'hot', 'plasma', 'inferno', 'turbo', 'coolwarm'
+            anomaly_map_vis = create_anomaly_heatmap_with_colorbar(
+                anomaly_map_tensor.cpu().numpy(),
+                target_size,
+                cmap='hot',        # 원하는 colormap으로 변경 가능
+                show_colorbar=True    # colorbar 표시: True/False
+            )
+            
+            # 오버레이 생성 (원본 + anomaly map)
+            overlay_img = overlay_images(
+                base=original_img_pil,
+                overlays=anomaly_map_vis,
+                alpha=0.5
+            )
+            
+            # 텍스트 추가
+            original_with_text = add_text_to_image(
+                original_img_pil.copy(), 
+                "Original Image",
+                font=None, size=10, color="white", background=(0, 0, 0, 128)
+            )
+            
+            overlay_with_text = add_text_to_image(
+                overlay_img.copy(), 
+                "Original + Anomaly Map",
+                font=None, size=10, color="white", background=(0, 0, 0, 128)
+            )
+            
+            # 2개 이미지를 가로로 배치
+            visualization_grid = create_image_grid(
+                [original_with_text, overlay_with_text], 
+                nrow=2
+            )
+            
+            # 파일명 및 디렉터리 생성 (레이블별로 분류)
+            if i < len(image_paths):
+                image_path = Path(image_paths[i])
+                image_filename = image_path.stem
+                
+                # 경로에서 레이블 추출 (fault 또는 good)
+                label = None
+                if '/fault/' in str(image_path):
+                    label = 'fault'
+                elif '/good/' in str(image_path):
+                    label = 'good'
+                else:
+                    label = 'unknown'
+                
+                # 레이블별 디렉터리 생성
+                label_dir = visualization_dir / label
+                label_dir.mkdir(exist_ok=True)
+                
+                # 파일명은 원본 이미지 이름 사용
+                save_filename = f"{image_filename}.png"
+                save_path = label_dir / save_filename
+            else:
+                # 이미지 경로가 없는 경우 기본 형식 사용
+                save_filename = f"batch_{batch_idx:03d}_sample_{i:02d}.png"
+                save_path = visualization_dir / save_filename
+            
+            # 이미지 저장
+            visualization_grid.save(save_path)
+            
+        except Exception as e:
+            print(f"❌ 샘플 {i} 시각화 실패: {e}")
+            import traceback
+            traceback.print_exc()
