@@ -1,0 +1,46 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-draem-cutpaste-clf-1",
+      "description": "Domain A - Baseline Configuration",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 2,
+        "early_stopping_patience": 2,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/1000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1.0
+      }
+    }
+  ]
+}

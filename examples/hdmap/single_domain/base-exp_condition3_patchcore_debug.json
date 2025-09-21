@@ -1,0 +1,130 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-13.1",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [95, 95],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "exp-13.2",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [95, 95],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet18",
+        "layers": ["layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "exp-13.3",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [95, 95],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet18",
+        "layers": ["layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "exp-14.1",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "exp-14.2",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet18",
+        "layers": ["layer2"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    },
+    {
+      "name": "exp-14.3",
+      "description": "Domain A - PatchCore 기본 설정",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 4,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/5000_tiff_original_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet18",
+        "layers": ["layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.01,
+        "num_neighbors": 3
+      }
+    }
+  ]
+}

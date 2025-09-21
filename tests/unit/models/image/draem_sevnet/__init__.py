@@ -1,1 +1,0 @@
-"""Custom DRAEM model tests."""

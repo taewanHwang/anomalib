@@ -16,7 +16,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -36,7 +36,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -56,7 +56,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -76,7 +76,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -96,7 +96,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -116,7 +116,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -136,7 +136,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -156,7 +156,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -176,7 +176,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -196,7 +196,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -216,7 +216,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -236,7 +236,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -256,7 +256,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -276,7 +276,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -296,7 +296,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     },
@@ -316,7 +316,7 @@
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "num_training_samples": 1000,
+        "num_training_samples": 10000,
         "image_preprocess": "8bit_resize"
       }
     }

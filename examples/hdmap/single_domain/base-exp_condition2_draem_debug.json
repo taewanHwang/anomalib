@@ -1,0 +1,44 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-9",
+      "description": "Domain A - DRAEM 기본 설정",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42
+      }
+    },
+    {
+      "name": "exp-10",
+      "description": "Domain A - DRAEM 기본 설정",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [256, 256],
+        "resize_method": "black_padding",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42
+      }
+    }
+  ]
+}
