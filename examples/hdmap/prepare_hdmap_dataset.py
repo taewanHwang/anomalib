@@ -29,19 +29,15 @@ import tifffile
 CLIP_MIN = -4.0  # 클리핑 최솟값 (z-score 기준)
 CLIP_MAX = 20.0  # 클리핑 최댓값 (z-score 기준)
 
-# 사용자 정의 min-max 스케일링 설정
-USER_MIN = 0.0   # 사용자 제공 최솟값
-USER_MAX = 1.5   # 사용자 제공 최댓값
-
 # 데이터 설정
-N_TRAINING = 100000  # 훈련 샘플 수
+N_TRAINING = 10000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
 SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF만)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명
 
 # 정규화 방식 설정
 NORMALIZATION_MODES = [
-    'zscore',      # 기존 domain_stats 기반 z-score 정규화
+    # 'zscore',      # 기존 domain_stats 기반 z-score 정규화
     'minmax',      # 사용자 제공 min-max 스케일링
 ]
 
@@ -51,19 +47,27 @@ NORMALIZATION_MODES = [
 DOMAIN_CONFIG = {
     'A': {
         'sensor': 'Class1/1',
-        'data_type': '3_TSA_DIF'
+        'data_type': '3_TSA_DIF',
+        'user_min': 0.0,
+        'user_max': 0.5
     },
     'B': {
         'sensor': 'Class3/1', 
-        'data_type': '1_TSA_DIF'
+        'data_type': '1_TSA_DIF',
+        'user_min': 0.0,
+        'user_max': 0.8
     },
     'C': {
-        'sensor': 'Class1/1',
-        'data_type': '1_TSA_DIF'
+        'sensor': 'Class3/1',
+        'data_type': '3_TSA_DIF',
+        'user_min': 0.0,
+        'user_max': 0.15
     },
     'D': {
-        'sensor': 'Class3/1',
-        'data_type': '3_TSA_DIF'
+        'sensor': 'Class1/1',
+        'data_type': '1_TSA_DIF',
+        'user_min': 0.0,
+        'user_max': 1.0
     }
 }
 
@@ -178,6 +182,11 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
     
     stats = domain_stats.get(domain, {})
     
+    # 도메인별 min-max 값 가져오기
+    domain_config = DOMAIN_CONFIG[domain]
+    user_min = domain_config['user_min']
+    user_max = domain_config['user_max']
+    
     # z-score 방식에서 stats가 필요하지만 없는 경우 에러 처리
     if normalization_mode == 'zscore' and ('mean' not in stats or 'std' not in stats):
         print(f"  ⚠️ 경고: 도메인 {domain}의 통계량이 없습니다. 해당 도메인을 건너뜁니다.")
@@ -214,8 +223,8 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
                 save_tiff_image(img_normalized, save_path)
                     
             elif normalization_mode == 'minmax':
-                # Min-Max 스케일링 방식
-                img_scaled = normalize_minmax(img, USER_MIN, USER_MAX)
+                # Min-Max 스케일링 방식 (도메인별 설정 사용)
+                img_scaled = normalize_minmax(img, user_min, user_max)
                 save_tiff_image(img_scaled, save_path)
             
             else:
@@ -239,7 +248,9 @@ def create_hdmap_datasets():
     
     print(f"\n정규화 설정:")
     print(f"  - Z-score: 전역 통계량 기반 (클리핑: [{CLIP_MIN}, {CLIP_MAX}])")
-    print(f"  - Min-Max: 사용자 제공 범위 [{USER_MIN}, {USER_MAX}] → [0, 1]")
+    print(f"  - Min-Max: 도메인별 사용자 제공 범위 → [0, 1]")
+    for domain, config in DOMAIN_CONFIG.items():
+        print(f"    도메인 {domain}: [{config['user_min']}, {config['user_max']}]")
     
     print("="*80)
     

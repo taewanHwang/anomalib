@@ -1334,7 +1334,7 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 anomaly_map_tensor.cpu().numpy(),
                 target_size,
                 cmap='hot',        # 원하는 colormap으로 변경 가능
-                show_colorbar=True    # colorbar 표시: True/False
+                show_colorbar=False    # colorbar 표시: True/False
             )
             
             # 오버레이 생성 (원본 + anomaly map)
