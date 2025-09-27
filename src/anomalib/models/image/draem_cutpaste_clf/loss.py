@@ -6,17 +6,15 @@ for the DraemCutPasteClf model.
 The loss combines:
 1. L2 reconstruction loss (from DRAEM)
 2. SSIM reconstruction loss (from DRAEM)
-3. Focal loss for anomaly mask prediction (from DRAEM)
+3. Focal loss for anomaly mask prediction (with configurable alpha)
 4. Cross-entropy loss for binary classification (new)
 """
 
 import torch
 from torch import nn
+from kornia.losses import FocalLoss, SSIMLoss
 
-from anomalib.models.image.draem.loss import DraemLoss
-
-
-class DraemCutPasteLoss(DraemLoss):
+class DraemCutPasteLoss(nn.Module):
     """Extended DRAEM loss with classification component.
 
     Extends the existing DraemLoss with additional classification loss
@@ -26,9 +24,10 @@ class DraemCutPasteLoss(DraemLoss):
         clf_weight (float, optional): Weight for classification loss. Defaults to ``1.0``.
 
     Example:
-        >>> loss_fn = DraemCutPasteLoss(clf_weight=1.0)
+        >>> loss_fn = DraemCutPasteLoss(
+        ...     clf_weight=1.0,
+        ... )
         >>> # During training forward pass
-        >>> reconstruction, prediction, classification = model(batch)
         >>> total_loss, loss_dict = loss_fn(
         ...     reconstruction, original_batch,
         ...     prediction, anomaly_mask,
@@ -40,11 +39,14 @@ class DraemCutPasteLoss(DraemLoss):
         self,
         clf_weight: float = 1.0,
     ):
-        super().__init__()  # Initialize base DRAEM loss (L2 + SSIM + Focal)
+        super().__init__()
 
         self.clf_weight = clf_weight
 
-        # Add classification loss
+        # All loss components managed directly (no inheritance confusion)
+        self.l2_loss = nn.MSELoss()
+        self.focal_loss = FocalLoss(alpha=1.0, reduction="mean")
+        self.ssim_loss = SSIMLoss(window_size=11)
         self.clf_loss = nn.CrossEntropyLoss()
 
     def forward(
@@ -71,26 +73,23 @@ class DraemCutPasteLoss(DraemLoss):
                 - total_loss: Combined weighted loss
                 - loss_dict: Dictionary with individual loss components
         """
-        # 1. Get base DRAEM loss (L2 + SSIM + Focal)
-        base_loss = super().forward(original, reconstruction, anomaly_mask, prediction)
+        # 1. Compute individual DRAEM loss components directly
+        loss_l2 = self.l2_loss(reconstruction, original)
+        loss_ssim = self.ssim_loss(reconstruction, original) * 2  # DRAEM multiplies by 2
+        loss_focal = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
 
-        # 2. Classification loss (CrossEntropy)
+        # 2. Base DRAEM loss (L2 + SSIM + Focal with custom alpha)
+        base_loss = loss_l2 + loss_ssim + loss_focal
+
+        # 3. Classification loss (CrossEntropy)
         if anomaly_labels.dtype != torch.long:
             anomaly_labels = anomaly_labels.long()
 
         loss_clf = self.clf_loss(classification, anomaly_labels)
 
-        # 3. Total loss with classification component
-        total_loss = base_loss + self.clf_weight * loss_clf
-
-        # 4. Create detailed loss dictionary for logging
-        # Extract individual components from base loss for detailed logging
-        loss_l2 = self.l2_loss(reconstruction, original)
-        loss_ssim = self.ssim_loss(reconstruction, original) * 2  # DRAEM multiplies by 2
-        loss_focal = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
-
-        # Clamp focal loss to prevent negative values (numerical instability)
-        loss_focal = torch.clamp(loss_focal, min=0.0)
+        # 4. Total loss with classification component
+        # total_loss = base_loss + self.clf_weight * loss_clf
+        total_loss = self.clf_weight * loss_clf
 
         loss_dict = {
             "loss_l2": loss_l2,
@@ -98,7 +97,7 @@ class DraemCutPasteLoss(DraemLoss):
             "loss_focal": loss_focal,
             "loss_clf": loss_clf,
             "loss_base": base_loss,
-            "total_loss": total_loss
+            "total_loss": total_loss,
         }
 
         return total_loss, loss_dict
@@ -110,7 +109,7 @@ class DraemCutPasteLoss(DraemLoss):
             dict: Loss configuration parameters
         """
         return {
-            "base_loss": "DraemLoss",
+            "loss_type": "DraemCutPasteLoss",
             "clf_weight": self.clf_weight,
         }
 
