@@ -49,13 +49,11 @@ class DraemCutPasteClf(AnomalibModule):
             Defaults to ``10.0``.
         augment_probability (float, optional): Probability of applying augmentation.
             Defaults to ``0.5``.
-        norm (bool, optional): Enable normalization in CutPaste augmentation.
-            Defaults to ``True``.
 
         # Loss function parameters
         clf_weight (float, optional): Weight for classification loss.
             Defaults to ``1.0``. (L2, SSIM, Focal weights use DRAEM defaults)
-
+            
         # Standard anomalib parameters
         evaluator (Evaluator | bool, optional): Evaluator instance.
             Defaults to ``True``.
@@ -63,7 +61,6 @@ class DraemCutPasteClf(AnomalibModule):
     Example:
         >>> model = DraemCutPasteClf(
         ...     image_size=(256, 256),
-        ...     norm=True,
         ...     clf_weight=1.0
         ... )
         >>> # Training with Lightning trainer
@@ -84,10 +81,12 @@ class DraemCutPasteClf(AnomalibModule):
         a_fault_start: float = 1.0,
         a_fault_range_end: float = 10.0,
         augment_probability: float = 0.5,
-        norm: bool = True,
 
         # Loss function parameters
         clf_weight: float = 1.0,
+        
+        # Severity head input configuration
+        severity_input_channels: str = "original+mask+recon",
 
         # Standard anomalib parameters
         evaluator: Evaluator | bool = True,
@@ -108,10 +107,12 @@ class DraemCutPasteClf(AnomalibModule):
         self.a_fault_start = a_fault_start
         self.a_fault_range_end = a_fault_range_end
         self.augment_probability = augment_probability
-        self.norm = norm
 
         # Loss weights
         self.clf_weight = clf_weight
+        
+        # Severity head configuration
+        self.severity_input_channels = severity_input_channels
 
         # Model and loss will be created in setup()
         self.model: DraemCutPasteModel
@@ -141,12 +142,12 @@ class DraemCutPasteClf(AnomalibModule):
             sspcab=self.sspcab,
             image_size=self.image_size,
             severity_dropout=self.severity_dropout,
+            severity_input_channels=self.severity_input_channels,
             cut_w_range=self.cut_w_range,
             cut_h_range=self.cut_h_range,
             a_fault_start=self.a_fault_start,
             a_fault_range_end=self.a_fault_range_end,
             augment_probability=self.augment_probability,
-            norm=self.norm,
         )
 
         self.loss = DraemCutPasteLoss(
@@ -287,10 +288,10 @@ class DraemCutPasteClf(AnomalibModule):
             "a_fault_start": self.a_fault_start,
             "a_fault_range_end": self.a_fault_range_end,
             "augment_probability": self.augment_probability,
-            "norm": self.norm,
 
             # Loss parameters
             "clf_weight": self.clf_weight,
+            "focal_alpha": self.focal_alpha,
         }
 
 

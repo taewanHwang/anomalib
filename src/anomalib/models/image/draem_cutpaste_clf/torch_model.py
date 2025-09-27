@@ -23,7 +23,6 @@ class DraemCutPasteModel(nn.Module):
     This model extends the original DRAEM architecture with:
     1. CutPaste-based synthetic fault generation (instead of Perlin noise)
     2. CNN-based classification head for binary anomaly detection
-    3. Configurable normalization in augmentation
 
     Args:
         sspcab (bool, optional): Enable SSPCAB training in reconstructive network.
@@ -31,6 +30,9 @@ class DraemCutPasteModel(nn.Module):
         image_size (tuple[int, int], optional): Expected input size for severity head.
             Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head. Defaults to ``0.3``.
+        severity_input_channels (str, optional): Channels to use for severity head input.
+            Options: "original", "mask", "recon", "original+mask", "original+recon", 
+            "mask+recon", "original+mask+recon". Defaults to ``"original+mask+recon"``.
 
         # CutPaste generator parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths. Defaults to ``(10, 80)``.
@@ -38,13 +40,11 @@ class DraemCutPasteModel(nn.Module):
         a_fault_start (float, optional): Minimum fault amplitude. Defaults to ``1.0``.
         a_fault_range_end (float, optional): Maximum fault amplitude. Defaults to ``10.0``.
         augment_probability (float, optional): Probability of applying augmentation. Defaults to ``0.5``.
-        norm (bool, optional): Enable normalization in CutPaste. Defaults to ``True``.
 
     Example:
         >>> model = DraemCutPasteModel(
         ...     sspcab=False,
         ...     image_size=(256, 256),
-        ...     norm=True
         ... )
         >>> input_tensor = torch.randn(4, 3, 256, 256)
         >>> reconstruction, prediction, classification = model(input_tensor)
@@ -55,23 +55,29 @@ class DraemCutPasteModel(nn.Module):
         sspcab: bool = False,
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
+        severity_input_channels: str = "original+mask+recon",
         # CutPaste generator parameters
         cut_w_range: tuple[int, int] = (10, 80),
         cut_h_range: tuple[int, int] = (1, 2),
         a_fault_start: float = 1.0,
         a_fault_range_end: float = 10.0,
         augment_probability: float = 0.5,
-        norm: bool = True,
     ) -> None:
         super().__init__()
+
+        # Store severity input configuration
+        self.severity_input_channels = severity_input_channels
+        
+        # Calculate number of input channels for severity head
+        self.severity_in_channels = self._calculate_severity_in_channels(severity_input_channels)
 
         # Core DRAEM networks (reuse from original implementation)
         self.reconstructive_subnetwork = ReconstructiveSubNetwork(sspcab=sspcab)
         self.discriminative_subnetwork = DiscriminativeSubNetwork(in_channels=6, out_channels=2)
 
-        # New: Severity head for classification (2-channel input: original + mask)
+        # New: Severity head for classification (dynamic channel input)
         self.severity_head = SeverityHead(
-            in_channels=2,
+            in_channels=self.severity_in_channels,
             dropout_rate=severity_dropout,
             input_size=image_size
         )
@@ -83,9 +89,57 @@ class DraemCutPasteModel(nn.Module):
             a_fault_start=a_fault_start,
             a_fault_range_end=a_fault_range_end,
             probability=augment_probability,
-            norm=norm,
             validation_enabled=True
         )
+
+    def _calculate_severity_in_channels(self, severity_input_channels: str) -> int:
+        """Calculate number of input channels based on configuration.
+        
+        Args:
+            severity_input_channels: Channel configuration string
+            
+        Returns:
+            Number of input channels for severity head
+        """
+        channel_count = 0
+        if "original" in severity_input_channels:
+            channel_count += 1
+        if "mask" in severity_input_channels:
+            channel_count += 1
+        if "recon" in severity_input_channels:
+            channel_count += 1
+        
+        if channel_count == 0:
+            raise ValueError(f"Invalid severity_input_channels: {severity_input_channels}")
+            
+        return channel_count
+
+    def _create_severity_input(
+        self, 
+        original_single_ch: torch.Tensor,
+        predicted_mask: torch.Tensor, 
+        reconstruction_single_ch: torch.Tensor
+    ) -> torch.Tensor:
+        """Create severity head input based on configuration.
+        
+        Args:
+            original_single_ch: Single channel original image
+            predicted_mask: Predicted anomaly mask
+            reconstruction_single_ch: Single channel reconstructed image
+            
+        Returns:
+            Concatenated tensor for severity head input
+        """
+        inputs = []
+        
+        if "original" in self.severity_input_channels:
+            inputs.append(original_single_ch)
+        if "mask" in self.severity_input_channels:
+            inputs.append(predicted_mask)
+        if "recon" in self.severity_input_channels:
+            inputs.append(reconstruction_single_ch)
+            
+        return torch.cat(inputs, dim=1)
 
     def forward(
         self,
@@ -128,7 +182,7 @@ class DraemCutPasteModel(nn.Module):
                 (reconstruction, prediction, classification)
         """
         # Apply CutPaste augmentation
-        augmented_batch, anomaly_mask, _, anomaly_labels = self.synthetic_generator(batch)
+        augmented_batch, anomaly_mask, anomaly_labels = self.synthetic_generator(batch)
 
         # Pass through reconstructive network (reconstruct augmented images)
         reconstruction = self.reconstructive_subnetwork(augmented_batch)
@@ -140,12 +194,15 @@ class DraemCutPasteModel(nn.Module):
         # Pass through discriminative network to get anomaly prediction
         prediction = self.discriminative_subnetwork(joined_input)
 
-        # Prepare input for severity head: [augmented_1ch + predicted_mask_1ch]
+        # Prepare input for severity head based on configuration
         # Use augmented image instead of original to provide meaningful signal
         augmented_single_ch = augmented_batch[:, :1, :, :]  # First channel of augmented image
         predicted_mask = prediction[:, 1:2, :, :]  # Anomaly channel from prediction
+        reconstruction_single_ch = reconstruction[:, :1, :, :]  # First channel of reconstruction
 
-        severity_input = torch.cat([augmented_single_ch, predicted_mask], dim=1)
+        severity_input = self._create_severity_input(
+            augmented_single_ch, predicted_mask, reconstruction_single_ch
+        )
 
         # Pass through severity head for classification
         classification = self.severity_head(severity_input)
@@ -170,10 +227,14 @@ class DraemCutPasteModel(nn.Module):
         # Pass through discriminative network
         prediction = self.discriminative_subnetwork(joined_input)
 
-        # Prepare input for severity head
+        # Prepare input for severity head based on configuration
         original_single_ch = batch[:, :1, :, :]
         predicted_mask = prediction[:, 1:2, :, :]
-        severity_input = torch.cat([original_single_ch, predicted_mask], dim=1)
+        reconstruction_single_ch = reconstruction[:, :1, :, :]  # First channel of reconstruction
+        
+        severity_input = self._create_severity_input(
+            original_single_ch, predicted_mask, reconstruction_single_ch
+        )
 
         # Get classification probabilities
         classification_logits = self.severity_head(severity_input)

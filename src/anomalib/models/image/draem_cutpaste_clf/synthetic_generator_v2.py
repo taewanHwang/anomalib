@@ -1,7 +1,7 @@
 """CutPaste-based synthetic fault generator for DRAEM CutPaste Classification.
 
 This module implements the CutPaste augmentation approach from the original DRAME_CutPaste
-implementation, adapted for anomalib integration with configurable normalization.
+implementation, adapted for anomalib integration.
 
 Based on DRAME_CutPaste/utils/utils_data_loader_v2.py and synthetic_generator_v2.py
 """
@@ -32,8 +32,6 @@ class CutPasteSyntheticGenerator(nn.Module):
             Defaults to ``10.0``.
         probability (float, optional): Probability of applying CutPaste augmentation.
             Value between 0.0 and 1.0. Defaults to ``0.5``.
-        norm (bool, optional): Legacy parameter, kept for compatibility.
-            Defaults to ``True``.
         validation_enabled (bool, optional): Enable automatic boundary validation.
             Defaults to ``True``.
 
@@ -43,7 +41,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         ...     cut_h_range=(1, 2),
         ...     probability=0.5
         ... )
-        >>> synthetic_image, fault_mask, severity_map, severity_label = generator(image)
+        >>> synthetic_image, fault_mask, severity_label = generator(image)
     """
 
     def __init__(
@@ -53,7 +51,6 @@ class CutPasteSyntheticGenerator(nn.Module):
         a_fault_start: float = 1.0,
         a_fault_range_end: float = 10.0,
         probability: float = 0.5,
-        norm: bool = True,
         validation_enabled: bool = True,
     ) -> None:
         super().__init__()
@@ -63,7 +60,6 @@ class CutPasteSyntheticGenerator(nn.Module):
         self.a_fault_start = a_fault_start
         self.a_fault_range_end = a_fault_range_end
         self.probability = probability
-        self.norm = norm  # Configurable normalization option
         self.validation_enabled = validation_enabled
 
         # Validate input parameters
@@ -90,7 +86,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         self,
         image: torch.Tensor,
         return_patch_info: bool = False
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Generate synthetic faults using CutPaste approach.
 
         Args:
@@ -104,7 +100,6 @@ class CutPasteSyntheticGenerator(nn.Module):
             tuple containing:
                 - synthetic_image (torch.Tensor): Image with synthetic faults (or original if no fault)
                 - fault_mask (torch.Tensor): Binary mask indicating fault locations
-                - severity_map (torch.Tensor): Pixel-wise severity map
                 - severity_label (torch.Tensor): Image-level severity value (fault amplitude)
                 - patch_info (dict, optional): Detailed patch information if return_patch_info=True
         """
@@ -112,7 +107,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         if image.dim() == 3:
             image = image.unsqueeze(0)  # Add batch dimension
 
-        batch_size, channels, height, width = image.shape
+        batch_size, _, height, width = image.shape
 
         # Process all channels (changed from original single-channel processing)
         multi_channel_image = image
@@ -124,19 +119,18 @@ class CutPasteSyntheticGenerator(nn.Module):
         # Initialize outputs
         synthetic_images = []
         fault_masks = []
-        severity_maps = []
         severity_labels = []
         all_patch_info = []
 
         for i in range(batch_size):
             # Generate synthetic fault for multi-channel image
             if return_patch_info:
-                synthetic_multi_ch, fault_mask, severity_map, severity_label, patch_info = self._generate_single_fault(
+                synthetic_multi_ch, fault_mask, severity_label, patch_info = self._generate_single_fault(
                     multi_channel_image[i:i+1], return_patch_info=True
                 )
                 all_patch_info.append(patch_info)
             else:
-                synthetic_multi_ch, fault_mask, severity_map, severity_label = self._generate_single_fault(
+                synthetic_multi_ch, fault_mask, severity_label = self._generate_single_fault(
                     multi_channel_image[i:i+1], return_patch_info=False
                 )
 
@@ -145,22 +139,20 @@ class CutPasteSyntheticGenerator(nn.Module):
 
             synthetic_images.append(synthetic_img)
             fault_masks.append(fault_mask)
-            severity_maps.append(severity_map)
             severity_labels.append(severity_label)
 
         # Stack results
         synthetic_image = torch.cat(synthetic_images, dim=0)
         fault_mask = torch.cat(fault_masks, dim=0)
-        severity_map = torch.cat(severity_maps, dim=0)
         severity_label = torch.stack(severity_labels, dim=0)
 
         if return_patch_info:
             if batch_size == 1:
-                return synthetic_image, fault_mask, severity_map, severity_label, all_patch_info[0]
+                return synthetic_image, fault_mask, severity_label, all_patch_info[0]
             else:
-                return synthetic_image, fault_mask, severity_map, severity_label, all_patch_info
+                return synthetic_image, fault_mask, severity_label, all_patch_info
         else:
-            return synthetic_image, fault_mask, severity_map, severity_label
+            return synthetic_image, fault_mask, severity_label
 
     def _validate_image_dimensions(self, height: int, width: int) -> None:
         """Validate that patch sizes are compatible with image dimensions."""
@@ -180,7 +172,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         self,
         image: torch.Tensor,
         return_patch_info: bool = False
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Generate synthetic fault for a single image using CutPaste approach.
 
         Args:
@@ -188,7 +180,7 @@ class CutPasteSyntheticGenerator(nn.Module):
             return_patch_info (bool): Whether to return detailed patch information
 
         Returns:
-            tuple: (synthetic_image, fault_mask, severity_map, severity_label[, patch_info])
+            tuple: (synthetic_image, fault_mask, severity_label[, patch_info])
         """
         batch_size, _, height, width = image.shape
 
@@ -212,11 +204,10 @@ class CutPasteSyntheticGenerator(nn.Module):
                     "has_anomaly": 0,
                     "patch_type": "No fault (normal data)",
                     "coverage_percentage": 0.0,
-                    "normalization_applied": self.norm
                 }
-                return image, empty_mask, empty_mask, zero_severity, patch_info
+                return image, empty_mask, zero_severity, patch_info
             else:
-                return image, empty_mask, empty_mask, zero_severity
+                return image, empty_mask, zero_severity
 
         # Anomaly data creation
         # Sample cut region dimensions
@@ -277,16 +268,15 @@ class CutPasteSyntheticGenerator(nn.Module):
         synthetic_image = image.clone()
         synthetic_image[0, :, to_location_h:to_location_h+cut_h, to_location_w:to_location_w+cut_w] = augmented_patch
 
-        # Create fault mask and severity map
+        # Clamp synthetic image values to [0, 1] range if any values exceed 1
+        # This is important for normalized images to maintain valid pixel range
+        synthetic_image = torch.clamp(synthetic_image, max=1.0)
+
+        # Create fault mask
         fault_mask = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)
-        severity_map = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)
 
         # Mark fault location
         fault_mask[0, 0, to_location_h:to_location_h+cut_h, to_location_w:to_location_w+cut_w] = 1.0
-
-        # Set severity map with normalized fault amplitude (clamp to [0,1])
-        normalized_severity = min(a_fault / self.a_fault_range_end, 1.0)
-        severity_map[0, 0, to_location_h:to_location_h+cut_h, to_location_w:to_location_w+cut_w] = normalized_severity
 
         # Image-level severity (fault amplitude value)
         severity_label = torch.tensor(a_fault, dtype=torch.float32, device=image.device)
@@ -307,9 +297,9 @@ class CutPasteSyntheticGenerator(nn.Module):
                 "approach": "CutPaste with amplitude scaling",
                 "patch_amplitude_scaling": a_fault
             }
-            return synthetic_image, fault_mask, severity_map, severity_label, patch_info
+            return synthetic_image, fault_mask, severity_label, patch_info
         else:
-            return synthetic_image, fault_mask, severity_map, severity_label
+            return synthetic_image, fault_mask, severity_label
 
     def get_config_info(self) -> dict:
         """Get information about current generator configuration.
