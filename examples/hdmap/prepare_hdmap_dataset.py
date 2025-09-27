@@ -16,7 +16,6 @@ pkill -f prepare_hdmap_dataset.py
 
 import os
 import shutil
-from pathlib import Path
 
 import numpy as np
 import scipy.io
@@ -25,19 +24,16 @@ import tifffile
 # =============================================================================
 # 🚀 사용자 설정 (필요에 따라 수정)
 # =============================================================================
-# 전역 정규화 설정 (z-score 방식용)
-CLIP_MIN = -4.0  # 클리핑 최솟값 (z-score 기준)
-CLIP_MAX = 20.0  # 클리핑 최댓값 (z-score 기준)
-
 # 데이터 설정
-N_TRAINING = 10000  # 훈련 샘플 수
+N_TRAINING = 1000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
 SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF만)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명
 
 # 정규화 방식 설정
 NORMALIZATION_MODES = [
-    # 'zscore',      # 기존 domain_stats 기반 z-score 정규화
+    'original',    # 원본 데이터 (스케일링 없음)
+    'zscore',      # 기존 domain_stats 기반 z-score 정규화
     'minmax',      # 사용자 제공 min-max 스케일링
 ]
 
@@ -115,7 +111,10 @@ def generate_paths():
 
 def generate_folder_name(save_format, normalization_mode):
     """설정에 따른 데이터셋 폴더명 생성"""
-    return f"{N_TRAINING}_{save_format}_original_{normalization_mode}"
+    if normalization_mode == 'original':
+        return f"{N_TRAINING}_{save_format}_original"
+    else:
+        return f"{N_TRAINING}_{save_format}_{normalization_mode}"
 
 def save_tiff_image(img_array, save_path):
     """이미지를 32비트 부동소수점 TIFF 파일로 저장"""
@@ -180,17 +179,19 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
         ('test_fault', 'test/fault', N_TESTING, "고장 테스트")
     ]
     
-    stats = domain_stats.get(domain, {})
+    # 정규화 모드에 따라 필요한 변수만 준비
+    stats = {}
+    user_min = user_max = None
     
-    # 도메인별 min-max 값 가져오기
-    domain_config = DOMAIN_CONFIG[domain]
-    user_min = domain_config['user_min']
-    user_max = domain_config['user_max']
-    
-    # z-score 방식에서 stats가 필요하지만 없는 경우 에러 처리
-    if normalization_mode == 'zscore' and ('mean' not in stats or 'std' not in stats):
-        print(f"  ⚠️ 경고: 도메인 {domain}의 통계량이 없습니다. 해당 도메인을 건너뜁니다.")
-        return
+    if normalization_mode == 'zscore':
+        stats = domain_stats.get(domain, {})
+        if 'mean' not in stats or 'std' not in stats:
+            print(f"  ⚠️ 경고: 도메인 {domain}의 통계량이 없습니다. 해당 도메인을 건너뜁니다.")
+            return
+    elif normalization_mode == 'minmax':
+        domain_config = DOMAIN_CONFIG[domain]
+        user_min = domain_config['user_min']
+        user_max = domain_config['user_max']
     
     for data_key, save_key, max_samples, description in data_mapping:
         mat_path = domain_paths[data_key]
@@ -217,7 +218,11 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
             save_path = os.path.join(save_dir, filename)
             
             # 정규화 방식에 따른 처리
-            if normalization_mode == 'zscore':
+            if normalization_mode == 'original':
+                # 원본 데이터 그대로 저장 (스케일링 없음)
+                save_tiff_image(img, save_path)
+                
+            elif normalization_mode == 'zscore':
                 # Z-score 정규화 방식
                 img_normalized, _, _ = normalize_zscore(img, stats['mean'], stats['std'])
                 save_tiff_image(img_normalized, save_path)
@@ -247,7 +252,8 @@ def create_hdmap_datasets():
     print(f"정규화 방식: {len(NORMALIZATION_MODES)}개 ({', '.join(NORMALIZATION_MODES)})")
     
     print(f"\n정규화 설정:")
-    print(f"  - Z-score: 전역 통계량 기반 (클리핑: [{CLIP_MIN}, {CLIP_MAX}])")
+    print(f"  - Original: 원본 데이터 그대로 저장 (스케일링 없음)")
+    print(f"  - Z-score: 전역 통계량 기반")
     print(f"  - Min-Max: 도메인별 사용자 제공 범위 → [0, 1]")
     for domain, config in DOMAIN_CONFIG.items():
         print(f"    도메인 {domain}: [{config['user_min']}, {config['user_max']}]")
@@ -257,8 +263,12 @@ def create_hdmap_datasets():
     # 1. 경로 준비
     paths = generate_paths()
     
-    # 2. z-score 방식용 전역 통계량 계산 (min-max 방식에서는 사용하지 않음)
-    domain_stats = compute_domain_statistics()
+    # 2. z-score 방식용 전역 통계량 계산 (z-score 모드가 활성화된 경우만)
+    domain_stats = {}
+    if 'zscore' in NORMALIZATION_MODES:
+        domain_stats = compute_domain_statistics()
+    else:
+        print("🔢 Z-score 모드가 비활성화되어 통계량 계산을 건너뜁니다.")
     
     # 3. 각 정규화 방식, 저장 형식별로 데이터 처리
     for normalization_mode in NORMALIZATION_MODES:
