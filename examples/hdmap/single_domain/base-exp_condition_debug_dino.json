@@ -6,7 +6,7 @@
       "config": {
         "model_type": "dinomaly",
         "source_domain": "domain_A",
-        "max_epochs": 5,
+        "max_epochs": 3,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,

@@ -118,12 +118,12 @@ class BaseAnomalyTrainer:
             'sspcab': self.config["sspcab"],
             'image_size': tuple(self.config["image_size"]),
             'severity_dropout': self.config["severity_dropout"],
+            'severity_input_channels': self.config["severity_input_channels"],
             'cut_w_range': tuple(self.config["cut_w_range"]),
             'cut_h_range': tuple(self.config["cut_h_range"]),
             'a_fault_start': self.config["a_fault_start"],
             'a_fault_range_end': self.config["a_fault_range_end"],
             'augment_probability': self.config["augment_probability"],
-            'norm': self.config["norm"],
             'clf_weight': self.config["clf_weight"],
         }
 
@@ -274,7 +274,7 @@ class BaseAnomalyTrainer:
         callbacks = self.create_callbacks()
         
         # TensorBoard 로거 설정
-        tb_logger = TensorBoardLogger(
+        self.tb_logger = TensorBoardLogger(
             save_dir=str(self.experiment_dir),
             name="tensorboard_logs",
             version=""
@@ -287,7 +287,7 @@ class BaseAnomalyTrainer:
         engine_kwargs = {
             "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
             "devices": [0] if torch.cuda.is_available() else 1,
-            "logger": tb_logger,
+            "logger": self.tb_logger,
             "callbacks": callbacks,
             "enable_checkpointing": True,
             "log_every_n_steps": 10,
@@ -345,6 +345,21 @@ class BaseAnomalyTrainer:
             )
             
             if evaluation_metrics:
+                # TensorBoard에 test 메트릭 로깅
+                if hasattr(self, 'tb_logger') and self.tb_logger is not None:
+                    test_metrics = {
+                        "test_auroc": evaluation_metrics["auroc"],
+                        "test_f1_score": evaluation_metrics["f1_score"],
+                        "test_accuracy": evaluation_metrics["accuracy"],
+                        "test_precision": evaluation_metrics["precision"],
+                        "test_recall": evaluation_metrics["recall"]
+                    }
+                    self.tb_logger.log_metrics(test_metrics, step=0)
+                    print(f"   📊 TensorBoard에 test 메트릭 로깅 완료:")
+                    print(f"      - test_auroc: {evaluation_metrics['auroc']:.4f}")
+                    print(f"      - test_f1_score: {evaluation_metrics['f1_score']:.4f}")
+                    logger.info(f"📊 TensorBoard에 test 메트릭 로깅 완료: AUROC={evaluation_metrics['auroc']:.4f}, F1={evaluation_metrics['f1_score']:.4f}")
+                
                 # 결과 정리
                 results = {
                     "domain": domain,

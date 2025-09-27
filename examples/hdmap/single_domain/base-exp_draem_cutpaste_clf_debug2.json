@@ -1,0 +1,305 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-16.1",
+      "description": "Domain A - Severity Input: Original Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "original"
+      }
+    },
+    {
+      "name": "exp-16.2",
+      "description": "Domain A - Severity Input: Mask Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "mask"
+      }
+    },
+    {
+      "name": "exp-16.3",
+      "description": "Domain A - Severity Input: Reconstruction Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "recon"
+      }
+    },
+    {
+      "name": "exp-16.4",
+      "description": "Domain A - Severity Input: Original + Mask",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "original+mask"
+      }
+    },
+    {
+      "name": "exp-16.5",
+      "description": "Domain A - Severity Input: Original + Reconstruction",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "original+recon"
+      }
+    },
+    {
+      "name": "exp-16.6",
+      "description": "Domain A - Severity Input: Mask + Reconstruction",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "mask+recon"
+      }
+    },
+    {
+      "name": "exp-16.7",
+      "description": "Domain A - Severity Input: Original + Mask + Reconstruction",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [
+          256,
+          256
+        ],
+        "resize_method": "resize",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "optimizer": "adam",
+        "weight_decay": 0.001,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          256,
+          256
+        ],
+        "severity_dropout": 0.1,
+        "cut_w_range": [
+          27,
+          216
+        ],
+        "cut_h_range": [
+          8,
+          17
+        ],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 10.0,
+        "augment_probability": 0.5,
+        "norm": true,
+        "clf_weight": 1,
+        "severity_input_channels": "original+mask+recon"
+      }
+    }
+  ]
+}

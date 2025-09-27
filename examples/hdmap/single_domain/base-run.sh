@@ -10,6 +10,7 @@
 #
 # 🔥 백그라운드 실행 (추천):
 #   nohup ./examples/hdmap/single_domain/base-run.sh all > single_domain_training.log 2>&1 &
+#   nohup ./examples/hdmap/single_domain/base-run.sh all > single_domain_training_debug.log 2>&1 &
 #   nohup ./examples/hdmap/single_domain/base-run.sh 2 > patchcore_test.log 2>&1 &
 #
 # 📊 실행 상태 확인:
@@ -48,17 +49,22 @@ if [ ! -f "$PYTHON_CMD" ]; then
 fi
 
 # 사용 가능한 GPU 리스트
-AVAILABLE_GPUS=(2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+AVAILABLE_GPUS=(0 2 3 4 9 10 11 12)
 
 # 기본 설정
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_debug.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition1_dinomaly_debug.json"
+# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_debug.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition3_patchcore_debug.json"
+CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug1.json"
-CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_debug.json"
+# CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug2.json"
+
+
+# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_debug_draemcutpaste.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_debug_dino.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_debug_draem.json"
+# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition_debug_patchcore.json"
 
 # 인자 처리
 MODE=${1:-0}
