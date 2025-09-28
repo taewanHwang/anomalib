@@ -7,7 +7,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -38,7 +38,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "original",
         "scheduler": {
           "type": "steplr",
@@ -54,7 +54,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -85,7 +85,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "mask",
         "scheduler": {
           "type": "steplr",
@@ -101,7 +101,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -132,7 +132,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "recon",
         "scheduler": {
           "type": "steplr",
@@ -148,7 +148,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -179,7 +179,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "original+mask",
         "scheduler": {
           "type": "steplr",
@@ -195,7 +195,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -226,7 +226,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "original+recon",
         "scheduler": {
           "type": "steplr",
@@ -242,7 +242,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -273,7 +273,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "mask+recon",
         "scheduler": {
           "type": "steplr",
@@ -289,7 +289,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 32,
-        "early_stopping_patience": 5,
+        "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 32,
         "target_size": [
@@ -320,7 +320,7 @@
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
-        "clf_weight": 0.5,
+        "clf_weight": 1,
         "severity_input_channels": "original+mask+recon",
         "scheduler": {
           "type": "steplr",

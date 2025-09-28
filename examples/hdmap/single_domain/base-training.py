@@ -7,9 +7,9 @@ Base Single Domain Training Script for HDMAP Dataset
 
 지원 모델:
 - DRAEM: Reconstruction + Anomaly Detection
+- DRAEM CutPaste Clf: DRAEM + CutPaste augmentation + CNN classification
 - Dinomaly: Vision Transformer 기반 anomaly detection with DINOv2
-- PatchCore: Memory bank 기반 few-shot anomaly detection  
-- DRAEM-SevNet: Selective feature reconstruction
+- PatchCore: Memory bank 기반 few-shot anomaly detection
 
 사용법:
     python examples/hdmap/single_domain/base-training.py --config base-exp_condition1.json

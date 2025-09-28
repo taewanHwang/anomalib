@@ -259,10 +259,13 @@ class DraemCutPasteClf(AnomalibModule):
         # Convert severity labels to binary classification labels (0=normal, 1=anomaly)
         anomaly_labels = (anomaly_labels > 0).long()  # Any non-zero severity is anomaly
 
+        # Extract single channel from original images to match reconstruction
+        images_single_ch = images[:, :1, :, :]
+
         # Compute loss
         total_loss, loss_dict = self.loss(
             reconstruction=reconstruction,
-            original=images,
+            original=images_single_ch,
             prediction=prediction,
             anomaly_mask=anomaly_mask,
             classification=classification,

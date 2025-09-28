@@ -17,7 +17,12 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42
+        "seed": 42,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -37,7 +42,12 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42
+        "seed": 42,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     }
   ]

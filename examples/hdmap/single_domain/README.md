@@ -2,7 +2,7 @@
 
 ## 🎯 개요
 
-이 디렉토리는 통합된 Base 시스템을 통해 모든 anomaly detection 모델의 단일 도메인 실험을 효율적으로 관리합니다. 
+이 디렉토리는 통합된 **BaseAnomalyTrainer** 시스템을 통해 모든 anomaly detection 모델의 단일 도메인 실험을 효율적으로 관리합니다.
 개별 모델별 파일 대신 공통 Base 템플릿을 사용하여 코드 중복을 제거하고 실험 일관성을 확보합니다.
 
 ## 📁 파일 구조
@@ -13,7 +13,8 @@ single_domain/
 ├── anomaly_trainer.py                 # BaseAnomalyTrainer 클래스 (핵심)
 ├── base-training.py                   # 메인 실행 스크립트
 ├── base-run.sh                        # 병렬 실험 실행 스크립트
-└── base-exp_condition1.json          # 실험 조건 설정 파일
+├── base-exp_condition1.json          # 기본 실험 조건 설정 파일
+└── base-exp_condition*.json          # 다양한 모델별 실험 설정 파일들
 ```
 
 ## 🚀 빠른 시작
@@ -25,17 +26,25 @@ python examples/hdmap/single_domain/base-training.py \
     --config examples/hdmap/single_domain/base-exp_condition1.json \
     --experiment-id 0 \
     --gpu-id 0
+
+# DRAEM CutPaste Clf 실험 (다양한 severity input 조합)
+python examples/hdmap/single_domain/base-training.py \
+    --config examples/hdmap/single_domain/base-exp_condition4_draem_cutpasteclf.json \
+    --experiment-id 0 \
+    --gpu-id 0
 ```
 
 ### 모든 실험 병렬 실행 (추천)
 ```bash
-# 백그라운드에서 모든 실험 실행
+# 백그라운드에서 모든 실험 실행 (GPU 자동 할당)
 nohup ./examples/hdmap/single_domain/base-run.sh all > training.log 2>&1 &
 
 # 실행 상태 확인
 tail -f training.log                               # 메인 스크립트 진행 상황
 tail -f results/*/training_detail.log             # 개별 실험 상세 로그
 tail -f results/*/domain*_single.log              # 실험별 구조화된 로그
+
+# 참고: base-run.sh의 CONFIG_FILE 변수를 수정하여 다른 모델 실험으로 전환 가능
 ```
 
 ## 🏗️ 시스템 아키텍처
@@ -98,9 +107,9 @@ class BaseAnomalyTrainer:
 | 모델 | model_type | 설명 | 주요 특징 |
 |------|------------|------|-----------|
 | **DRAEM** | `"draem"` | Reconstruction 기반 anomaly detection | 빠른 훈련, 안정적 |
+| **DRAEM CutPaste Clf** | `"draem_cutpaste_clf"` | DRAEM + CutPaste augmentation + CNN classification | 높은 표현력, 다양한 input 조합 |
 | **Dinomaly** | `"dinomaly"` | Vision Transformer 기반 with DINOv2 | 높은 성능, 메모리 집약적 |
 | **PatchCore** | `"patchcore"` | Memory bank 기반 few-shot learning | 메모리 효율적, 빠른 추론 |
-| **DRAEM-SevNet** | `"draem_sevnet"` | Selective feature reconstruction | 정교한 anomaly 탐지 |
 
 ## 📊 로그 구조 및 모니터링
 
@@ -163,7 +172,31 @@ grep "Image AUROC" results/*/domain*_single.log
 - `learning_rate`: 0.0001
 - `anomaly_source_path`: None (기본값 사용)
 
-#### Dinomaly  
+#### DRAEM CutPaste Clf
+- `batch_size`: 32
+- `learning_rate`: 0.0001
+- `max_epochs`: 32
+- `image_size`: [256, 256]
+- `severity_input_channels`: 다양한 조합 지원
+  - `"original"`: 원본 이미지만
+  - `"mask"`: 예측 마스크만
+  - `"recon"`: 재구성 이미지만
+  - `"original+mask"`: 원본 + 마스크
+  - `"original+recon"`: 원본 + 재구성
+  - `"mask+recon"`: 마스크 + 재구성
+  - `"original+mask+recon"`: 모든 채널 (기본값)
+- **CutPaste 파라미터**:
+  - `cut_w_range`: [27, 216] (패치 너비 범위)
+  - `cut_h_range`: [8, 17] (패치 높이 범위)
+  - `a_fault_start`: 1.0 (최소 fault 강도)
+  - `a_fault_range_end`: 2.0 (최대 fault 강도)
+  - `augment_probability`: 0.5 (증강 확률)
+- **아키텍처 설정**:
+  - `base_width`: 128 (DiscriminativeSubNetwork)
+  - `scheduler`: StepLR (step_size=2, gamma=0.5)
+  - `early_stopping_patience`: 10
+
+#### Dinomaly
 - `batch_size`: 8 (메모리 제약)
 - `encoder_name`: `"dinov2reg_vit_base_14"`
 - `target_layers`: `[2,3,4,5,6,7,8,9]`
@@ -173,9 +206,6 @@ grep "Image AUROC" results/*/domain*_single.log
 - `coreset_sampling_ratio`: 0.1
 - `num_neighbors`: 9
 
-#### DRAEM-SevNet
-- `batch_size`: 16
-- 동일한 DRAEM 파라미터 + SevNet head
 
 ## 🔧 고급 사용법
 
@@ -224,12 +254,14 @@ tensorboard --logdir results/20250831_*/tensorboard_logs
 
 ### 성능 벤치마크 예시
 
-| 모델 | Domain A AUROC | 훈련 시간 | 메모리 사용량 |
-|------|----------------|-----------|---------------|
-| PatchCore | 0.85+ | ~5분 | 낮음 |
-| DRAEM | 0.80+ | ~30분 | 중간 |
-| Dinomaly | 0.88+ | ~60분 | 높음 |
-| DRAEM-SevNet | 0.82+ | ~40분 | 중간 |
+| 모델 | Domain A AUROC | 훈련 시간 | 메모리 사용량 | 파라미터 개수 | 특징 |
+|------|----------------|-----------|---------------|---------------|------|
+| DRAEM CutPaste Clf | 0.90+ | ~45분 | 중간 | 182M | CutPaste + CNN 분류 |
+| Dinomaly | 0.88+ | ~60분 | 높음 | 86M | Vision Transformer |
+| PatchCore | 0.85+ | ~5분 | 낮음 | 0M | Memory Bank |
+| DRAEM | 0.80+ | ~30분 | 중간 | 97M | 기본 DRAEM |
+
+각 모델은 서로 다른 장단점을 가지고 있으며, 사용 목적에 따라 선택할 수 있습니다.
 
 ## 🛠️ 문제 해결
 
@@ -237,49 +269,76 @@ tensorboard --logdir results/20250831_*/tensorboard_logs
 
 #### 1. GPU 메모리 부족
 ```bash
-# Dinomaly 배치 사이즈 줄이기
+# 모델별 배치 사이즈 조정
+# DRAEM CutPaste Clf (큰 모델)
+"batch_size": 16  # 32에서 16으로 변경
+
+# Dinomaly (메모리 집약적)
 "batch_size": 4  # 8에서 4로 변경
+
+# 다른 모델들
+"batch_size": 8   # 기본값에서 줄이기
 ```
 
-#### 2. 실험 중단됨
+#### 2. 모델 성능이 기대보다 낮음
+```bash
+# DRAEM CutPaste Clf의 경우 - severity_input_channels 조합 실험
+"severity_input_channels": "original+mask+recon"  # 모든 채널 사용
+
+# CutPaste 파라미터 조정
+"cut_w_range": [27, 216],
+"cut_h_range": [8, 17],
+"a_fault_range_end": 2.0  # fault 강도 조정
+
+# 다른 모델들의 경우 - 학습률 조정
+"learning_rate": 0.0001,
+"max_epochs": 50
+```
+
+#### 3. 실험 중단됨
 ```bash
 # 실행 중인 프로세스 확인
 ps aux | grep base-training
 
 # 특정 실험만 재실행
-python base-training.py --config base-exp_condition1.json --experiment-id 2
+python base-training.py --config [CONFIG_FILE] --experiment-id [ID]
 ```
 
-#### 3. 로그 파일을 찾을 수 없음
+#### 4. 로그 파일을 찾을 수 없음
 ```bash
 # 최신 결과 디렉토리 확인
 ls -la results/
 find results -name "*.log" | head -5
+
+# 특정 실험 로그 확인
+tail -f results/*/[EXPERIMENT_NAME]_*/training_detail.log
 ```
-
-## 🔄 마이그레이션 가이드
-
-### 기존 개별 스크립트에서 Base 시스템으로 이전
-
-기존의 `draem-training.py`, `dinomaly-training.py` 등을 사용하던 경우:
-
-1. **실험 설정 이전**: 기존 파라미터를 `base-exp_condition1.json`으로 복사
-2. **실행 방식 변경**: `base-training.py` 사용
-3. **로그 위치 확인**: 새로운 계층적 로그 구조 적응
-
-### 호환성 보장
-
-Base 시스템은 기존 개별 스크립트와 동일한 결과를 보장합니다:
-- 동일한 모델 파라미터
-- 동일한 데이터 처리 로직  
-- 동일한 평가 메트릭
 
 ## 📚 추가 리소스
 
 - **실험 조건 예시**: `base-exp_condition1.json` 참고
-- **로그 분석 도구**: `examples/hdmap/analyze_experiment_results.py`
-- **TensorBoard 시각화**: `tensorboard --logdir results/*/tensorboard_logs`
+- **로그 분석 도구**: `python examples/hdmap/analyze_experiment_results.py --results_dir results --all-models`
+- **TensorBoard 시각화**: `tensorboard --logdir=results --port=6006 --bind_all`
 
 ---
 
+## 🎉 요약
+
 이 통합 시스템을 통해 **단일 코드베이스**로 모든 anomaly detection 모델의 실험을 효율적으로 관리하고, 일관된 성능 비교를 수행할 수 있습니다.
+
+### 주요 개선사항
+1. **다양한 모델 지원**: DRAEM, DRAEM CutPaste Clf, Dinomaly, PatchCore 등
+2. **통합 BaseAnomalyTrainer**: 모든 모델을 단일 인터페이스로 관리
+3. **자동 GPU 할당**: 멀티 GPU 환경에서 병렬 실험 자동 분배
+4. **구조화된 로깅**: 실험별 상세 로그 및 결과 추적
+
+### 🚀 시작하기
+```bash
+# 모든 실험 병렬 실행
+nohup ./examples/hdmap/single_domain/base-run.sh all > training.log 2>&1 &
+
+# 실시간 진행 상황 확인
+tail -f training.log
+```
+
+**💡 팁**: base-run.sh 파일에서 CONFIG_FILE 변수를 수정하여 다른 모델 실험으로 쉽게 전환할 수 있습니다.
