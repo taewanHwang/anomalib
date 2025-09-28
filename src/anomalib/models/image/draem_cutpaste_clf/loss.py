@@ -88,8 +88,7 @@ class DraemCutPasteLoss(nn.Module):
         loss_clf = self.clf_loss(classification, anomaly_labels)
 
         # 4. Total loss with classification component
-        # total_loss = base_loss + self.clf_weight * loss_clf
-        total_loss = self.clf_weight * loss_clf
+        total_loss = base_loss + self.clf_weight * loss_clf
 
         loss_dict = {
             "loss_l2": loss_l2,
