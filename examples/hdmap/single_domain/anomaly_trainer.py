@@ -95,12 +95,14 @@ class BaseAnomalyTrainer:
         
         # DRAEM 모델 생성
         model = Draem(evaluator=evaluator)
-        
+
         # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
         model._training_config = {
             'learning_rate': self.config["learning_rate"],
             'optimizer': self.config["optimizer"],
             'weight_decay': self.config["weight_decay"],
+            'max_epochs': self.config["max_epochs"],
+            'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
         }
         
         return model
@@ -135,6 +137,8 @@ class BaseAnomalyTrainer:
             'learning_rate': self.config["learning_rate"],
             'optimizer': self.config["optimizer"],
             'weight_decay': self.config["weight_decay"],
+            'max_epochs': self.config["max_epochs"],
+            'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
         }
 
         return model

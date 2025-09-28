@@ -17,7 +17,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -26,7 +26,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -39,7 +39,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "original"
+        "severity_input_channels": "original",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -59,7 +64,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -68,7 +73,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -81,7 +86,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "mask"
+        "severity_input_channels": "mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -101,7 +111,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -110,7 +120,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -123,7 +133,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "recon"
+        "severity_input_channels": "recon",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -143,7 +158,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -152,7 +167,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -165,7 +180,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "original+mask"
+        "severity_input_channels": "original+mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -185,7 +205,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -194,7 +214,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -207,7 +227,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "original+recon"
+        "severity_input_channels": "original+recon",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -227,7 +252,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -236,7 +261,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -249,7 +274,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "mask+recon"
+        "severity_input_channels": "mask+recon",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     },
     {
@@ -269,7 +299,7 @@
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -278,7 +308,7 @@
           256,
           256
         ],
-        "severity_dropout": 0.1,
+        "severity_dropout": 0.3,
         "cut_w_range": [
           27,
           216
@@ -291,7 +321,12 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.5,
-        "severity_input_channels": "original+mask+recon"
+        "severity_input_channels": "original+mask+recon",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 2,
+          "gamma": 0.5
+        }
       }
     }
   ]

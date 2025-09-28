@@ -49,7 +49,7 @@ if [ ! -f "$PYTHON_CMD" ]; then
 fi
 
 # 사용 가능한 GPU 리스트
-AVAILABLE_GPUS=(0 2 3 4 9 10 11 12)
+AVAILABLE_GPUS=(0 3 4 8 9 14 15)
 
 # 기본 설정
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
@@ -57,6 +57,7 @@ PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_debug.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition3_patchcore_debug.json"
 CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf.json"
+# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf.2.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug1.json"
 # CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug2.json"
 

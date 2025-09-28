@@ -154,11 +154,11 @@ class DraemCutPasteClf(AnomalibModule):
             clf_weight=self.clf_weight,
         )
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        """Configure the optimizer.
+    def configure_optimizers(self) -> dict[str, Any] | torch.optim.Optimizer:
+        """Configure the optimizer and learning rate scheduler.
 
         Returns:
-            torch.optim.Optimizer: Optimizer for training
+            dict[str, Any] | torch.optim.Optimizer: Optimizer and optional scheduler configuration
         """
         # 학습 설정 가져오기 (anomaly_trainer.py에서 설정된 값)
         training_config = getattr(self, '_training_config', {})
@@ -184,7 +184,61 @@ class DraemCutPasteClf(AnomalibModule):
         else:
             raise ValueError(f"지원하지 않는 옵티마이저: {optimizer_type}")
 
-        return optimizer
+        # 스케줄러 설정 (optional)
+        scheduler_config = training_config.get('scheduler', None)
+
+        if scheduler_config is None:
+            # 스케줄러 없이 옵티마이저만 반환
+            return optimizer
+
+        scheduler_type = scheduler_config.get('type', 'none').lower()
+
+        if scheduler_type == 'none':
+            return optimizer
+
+        elif scheduler_type == 'steplr':
+            # StepLR 스케줄러 설정
+            step_size = scheduler_config.get('step_size', 5)
+            gamma = scheduler_config.get('gamma', 0.5)
+
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=step_size,
+                gamma=gamma
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',  # epoch 단위로 step
+                    'frequency': 1,
+                }
+            }
+
+        elif scheduler_type == 'cosineannealinglr':
+            # CosineAnnealingLR 스케줄러 설정
+            max_epochs = training_config.get('max_epochs', 50)
+            eta_min = scheduler_config.get('eta_min', 1e-6)
+
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=max_epochs,
+                eta_min=eta_min
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',
+                    'frequency': 1,
+                }
+            }
+
+        else:
+            print(f"Warning: Unknown scheduler type '{scheduler_type}', using optimizer only")
+            return optimizer
 
     def training_step(self, batch: Batch, batch_idx: int) -> STEP_OUTPUT:
         """Training step.
