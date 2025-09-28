@@ -124,31 +124,48 @@ class DraemCutPasteModel(nn.Module):
             
         return channel_count
 
+
     def _create_severity_input(
-        self, 
+        self,
         original_single_ch: torch.Tensor,
-        predicted_mask: torch.Tensor, 
-        reconstruction_single_ch: torch.Tensor
+        prediction: torch.Tensor,
+        reconstruction: torch.Tensor
     ) -> torch.Tensor:
-        """Create severity head input based on configuration.
-        
+        """Create severity head input with channel-wise normalization and optional detach.
+
+        Detach prevents CE loss gradients from flowing to reconstructive/discriminative subnets,
+        allowing each subnet to focus on its dedicated loss (MSE/SSIM/Focal).
+
         Args:
-            original_single_ch: Single channel original image
-            predicted_mask: Predicted anomaly mask
-            reconstruction_single_ch: Single channel reconstructed image
-            
+            original_single_ch: Single channel original image (already 0~1 normalized)
+            prediction: Full prediction tensor from discriminative network (logit values)
+            reconstruction: Single channel reconstructed image (needs normalization)
+
         Returns:
-            Concatenated tensor for severity head input
+            Concatenated tensor for severity head input with consistent 0~1 scale
         """
         inputs = []
-        
+
         if "original" in self.severity_input_channels:
+            # Original is already normalized to [0, 1]
             inputs.append(original_single_ch)
+
         if "mask" in self.severity_input_channels:
-            inputs.append(predicted_mask)
+            # Convert logit prediction to probability using softmax (0~1 range)
+            mask_normalized = torch.softmax(prediction, dim=1)[:, 1:2, :, :]
+            # Detach during training to prevent CE gradients flowing to discriminative subnet
+            if self.training:
+                mask_normalized = mask_normalized.detach()
+            inputs.append(mask_normalized)
+
         if "recon" in self.severity_input_channels:
-            inputs.append(reconstruction_single_ch)
-            
+            # Normalize reconstruction using sigmoid to [0, 1] range
+            recon_normalized = torch.sigmoid(reconstruction)
+            # Detach during training to prevent CE gradients flowing to reconstructive subnet
+            if self.training:
+                recon_normalized = recon_normalized.detach()
+            inputs.append(recon_normalized)
+
         return torch.cat(inputs, dim=1)
 
     def forward(
@@ -209,11 +226,8 @@ class DraemCutPasteModel(nn.Module):
 
         # Prepare input for severity head based on configuration
         # Use augmented image instead of original to provide meaningful signal
-        predicted_mask = prediction[:, 1:2, :, :]  # Anomaly channel from prediction
-        reconstruction_single_ch = reconstruction  # Already single channel
-
         severity_input = self._create_severity_input(
-            augmented_single_ch, predicted_mask, reconstruction_single_ch
+            augmented_single_ch, prediction, reconstruction
         )
 
         # Pass through severity head for classification
@@ -243,12 +257,8 @@ class DraemCutPasteModel(nn.Module):
         prediction = self.discriminative_subnetwork(joined_input)
 
         # Prepare input for severity head based on configuration
-        original_single_ch = batch_single_ch
-        predicted_mask = prediction[:, 1:2, :, :]
-        reconstruction_single_ch = reconstruction  # Already single channel
-        
         severity_input = self._create_severity_input(
-            original_single_ch, predicted_mask, reconstruction_single_ch
+            batch_single_ch, prediction, reconstruction
         )
 
         # Get classification probabilities

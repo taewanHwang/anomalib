@@ -278,6 +278,13 @@ class DraemCutPasteClf(AnomalibModule):
             if loss_name != "total_loss":  # Avoid duplicate logging
                 self.log(f"train_{loss_name}", loss_value, on_step=False, on_epoch=True)
 
+        # Gradient Norm Monitoring (log every 100 steps for efficiency)
+        if batch_idx % 100 == 0:
+            for name, param in self.model.named_parameters():
+                if param.grad is not None:
+                    grad_norm = param.grad.data.norm(2).item()
+                    self.log(f"grad_norm/{name}", grad_norm, on_step=True, on_epoch=False)
+
         return total_loss
 
     def validation_step(self, batch: Batch, batch_idx: int) -> STEP_OUTPUT:
