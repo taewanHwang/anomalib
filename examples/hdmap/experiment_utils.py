@@ -328,13 +328,13 @@ def extract_training_info(engine: Engine) -> Dict[str, Any]:
     # 학습 완료 방식 결정
     if training_info["early_stopped"]:
         completion_type = "early_stopping"
-        completion_description = f"에폭 {training_info['last_trained_epoch']}에서 early stopping으로 중단"
+        completion_description = f"Early stopped at epoch {training_info['last_trained_epoch']}"
     elif training_info["last_trained_epoch"] >= training_info["max_epochs_configured"]:
         completion_type = "max_epochs_reached"
-        completion_description = f"최대 에폭 {training_info['max_epochs_configured']} 완료"
+        completion_description = f"Completed max epochs {training_info['max_epochs_configured']}"
     else:
         completion_type = "interrupted"
-        completion_description = f"에폭 {training_info['last_trained_epoch']}에서 중단됨"
+        completion_description = f"Interrupted at epoch {training_info['last_trained_epoch']}"
     
     training_info["completion_type"] = completion_type
     training_info["completion_description"] = completion_description
@@ -436,7 +436,7 @@ def save_experiment_results(
                     logger.info(f"   {domain}: {domain_auroc}")
     else:
         logger.info("❌ 실험 실패!")
-        logger.info(f"   오류: {result.get('error', '알 수 없는 오류')}")
+        logger.info(f"   Error: {result.get('error', 'Unknown error')}")
     
     logger.info(f"📁 결과 파일: {result_path}")
     
@@ -1187,7 +1187,7 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
             
     else:
         # 알 수 없는 모델 타입: 일반적인 속성으로 시도
-        print(f"   ⚠️ 알 수 없는 모델 타입: {model_type}, 일반적인 속성으로 시도")
+        print(f"   ⚠️ Unknown model type: {model_type}, trying generic attributes")
         if hasattr(model_output, 'pred_score'):
             final_scores = model_output.pred_score.cpu().numpy()
         elif hasattr(model_output, 'final_score'):
@@ -1396,3 +1396,629 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
             print(f"❌ 샘플 {i} 시각화 실패: {e}")
             import traceback
             traceback.print_exc()
+
+
+# ===========================
+# Multi-Domain Specific Functions
+# ===========================
+
+def create_multi_domain_datamodule(
+    source_domain: str,
+    target_domains: Union[List[str], str],
+    dataset_root: str,
+    batch_size: int = 32,
+    image_size: Tuple[int, int] = (256, 256),
+    resize_method: str = "resize",
+    num_workers: int = 8,
+    seed: int = 42,
+    verbose: bool = True
+):
+    """Multi-Domain용 MultiDomainHDMAPDataModule 생성 및 설정.
+
+    Args:
+        source_domain: 소스 도메인 이름 (예: "domain_A")
+        target_domains: 타겟 도메인 리스트 또는 "auto" (auto면 source 제외 모든 도메인)
+        dataset_root: 데이터셋 루트 경로 (필수)
+        batch_size: 배치 크기
+        image_size: 이미지 크기 (height, width)
+        num_workers: 워커 수
+        seed: 랜덤 시드
+        verbose: 상세 로그 출력 여부
+
+    Returns:
+        설정된 MultiDomainHDMAPDataModule
+
+    Examples:
+        # 수동으로 타겟 도메인 지정
+        datamodule = create_multi_domain_datamodule(
+            source_domain="domain_A",
+            target_domains=["domain_B", "domain_C"],
+            dataset_root="/path/to/dataset",
+            batch_size=32
+        )
+
+        # 자동으로 타겟 도메인 설정 (source 제외한 모든 도메인)
+        datamodule = create_multi_domain_datamodule(
+            source_domain="domain_A",
+            target_domains="auto",
+            dataset_root="/path/to/dataset"
+        )
+    """
+    from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
+    from pathlib import Path
+
+    # Path 객체로 변환 및 검증
+    dataset_root = Path(dataset_root).resolve()
+
+    if not dataset_root.exists():
+        raise FileNotFoundError(f"데이터셋 경로가 존재하지 않습니다: {dataset_root}")
+
+    # target_domains 처리
+    if target_domains == "auto":
+        all_domains = ["domain_A", "domain_B", "domain_C", "domain_D"]
+        target_domains_list = [d for d in all_domains if d != source_domain]
+    else:
+        target_domains_list = target_domains
+
+    if verbose:
+        print(f"\n📦 MultiDomainHDMAPDataModule 생성 중...")
+        print(f"   🌍 소스 도메인: {source_domain}")
+        print(f"   🎯 타겟 도메인: {target_domains_list}")
+        print(f"   📁 데이터셋 경로: {dataset_root}")
+        print(f"   📏 이미지 크기: {image_size[0]}x{image_size[1]}")
+        print(f"   📊 배치 크기: {batch_size}")
+        print(f"   👷 워커 수: {num_workers}")
+        print(f"   🎲 시드: {seed}")
+
+    # MultiDomainHDMAPDataModule 생성
+    datamodule = MultiDomainHDMAPDataModule(
+        root=str(dataset_root),
+        source_domain=source_domain,
+        target_domains=target_domains_list,
+        validation_strategy="source_test",  # 고정값: source test를 validation으로 사용
+        train_batch_size=batch_size,
+        eval_batch_size=batch_size,
+        num_workers=num_workers,
+        target_size=image_size,
+        resize_method=resize_method,
+        seed=seed
+    )
+
+    # Setup 호출
+    datamodule.setup()
+
+    if verbose:
+        # 데이터셋 정보 출력
+        print(f"\n✅ MultiDomainHDMAPDataModule 설정 완료:")
+        print(f"   - Train 샘플 수: {len(datamodule.train_data)}")
+        print(f"   - Validation 샘플 수 (source test): {len(datamodule.val_data)}")
+        print(f"   - Test 도메인 수: {len(datamodule.test_data)}")
+        for i, target_domain in enumerate(target_domains_list):
+            print(f"     • {target_domain}: {len(datamodule.test_data[i])} 샘플")
+
+    return datamodule
+
+
+def evaluate_source_domain(
+    model,
+    datamodule,
+    visualization_dir: Optional[Path] = None,
+    model_type: str = "unknown",
+    max_visualization_batches: int = 5,
+    verbose: bool = True
+):
+    """소스 도메인에서 모델 평가 (validation 역할).
+
+    Source domain의 test 데이터를 사용하여 validation 수행.
+    선택적으로 시각화도 생성.
+
+    Args:
+        model: 학습된 모델
+        datamodule: MultiDomainHDMAPDataModule
+        visualization_dir: 시각화 저장 디렉터리 (None이면 시각화 안함)
+        model_type: 모델 타입 (점수 추출에 사용)
+        max_visualization_batches: 시각화할 최대 배치 수 (-1이면 전체 시각화)
+        verbose: 상세 출력 여부
+
+    Returns:
+        dict: 평가 결과
+            - domain: 소스 도메인 이름
+            - auroc: AUROC 점수
+            - metrics: 기타 메트릭 (accuracy, precision, recall, f1)
+            - num_samples: 평가 샘플 수
+            - visualization_dir: 시각화 디렉터리 경로
+
+    Example:
+        >>> source_results = evaluate_source_domain(
+        ...     model=trained_model,
+        ...     datamodule=datamodule,
+        ...     visualization_dir=Path("./results/viz/source"),
+        ...     model_type="draem"
+        ... )
+    """
+    import torch
+    import numpy as np
+    from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
+    from pathlib import Path
+
+    if verbose:
+        print(f"\n📊 소스 도메인 ({datamodule.source_domain}) 평가 시작...")
+
+    # 시각화 디렉터리 생성
+    if visualization_dir:
+        visualization_dir = Path(visualization_dir)
+        visualization_dir.mkdir(parents=True, exist_ok=True)
+        if verbose:
+            print(f"   📁 시각화 저장 경로: {visualization_dir}")
+
+    # Validation dataloader (source domain test)
+    val_loader = datamodule.val_dataloader()
+
+    # 평가 모드로 전환하고 GPU로 이동
+    model.eval()
+    if torch.cuda.is_available():
+        model = model.cuda()
+
+    all_scores = []
+    all_labels = []
+    all_image_paths = []
+
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(val_loader):
+            # GPU로 이동 (가능한 경우)
+            if torch.cuda.is_available():
+                image_tensor = batch.image.cuda()
+                if hasattr(batch, 'mask'):
+                    mask_tensor = batch.mask.cuda()
+            else:
+                image_tensor = batch.image
+
+            # 모델 예측
+            outputs = model(image_tensor)
+
+            # 점수 추출 (모델별로 다름)
+            scores = extract_scores_from_model_output(
+                outputs,
+                len(image_tensor),
+                batch_idx,
+                model_type
+            )
+            all_scores.extend(scores)
+
+            # 이미지 경로 추출
+            if hasattr(batch, 'image_path'):
+                image_paths = batch.image_path
+                if not isinstance(image_paths, list):
+                    image_paths = [image_paths]
+                all_image_paths.extend(image_paths)
+
+                # Ground truth 추출 (이미지 경로에서)
+                gt_labels = []
+                for path in image_paths:
+                    if '/fault/' in path:
+                        gt_labels.append(1)  # anomaly
+                    elif '/good/' in path:
+                        gt_labels.append(0)  # normal
+                    else:
+                        gt_labels.append(0)  # 기본값
+                all_labels.extend(gt_labels)
+
+            # 시각화 생성 (max_visualization_batches=-1이면 전체, 아니면 지정된 배치 수만)
+            should_visualize = (max_visualization_batches == -1 or batch_idx < max_visualization_batches)
+            if visualization_dir and should_visualize:
+                # create_batch_visualizations가 내부적으로 fault/good 폴더를 생성함
+                create_batch_visualizations(
+                    image_tensor,
+                    outputs,
+                    image_paths,
+                    visualization_dir,  # batch 폴더 없이 직접 전달
+                    batch_idx
+                )
+
+            if verbose and (batch_idx + 1) % 10 == 0:
+                print(f"   처리 중: {batch_idx + 1}/{len(val_loader)} 배치")
+
+    # 메트릭 계산
+    all_scores = np.array(all_scores)
+    all_labels = np.array(all_labels)
+
+    # NaN 처리
+    nan_mask = np.isnan(all_scores)
+    if nan_mask.any():
+        if verbose:
+            print(f"   ⚠️ NaN 점수 {nan_mask.sum()}개 발견, 제거 후 계속")
+        valid_mask = ~nan_mask
+        all_scores = all_scores[valid_mask]
+        all_labels = all_labels[valid_mask]
+
+    # AUROC 계산
+    try:
+        auroc = roc_auc_score(all_labels, all_scores)
+    except Exception as e:
+        if verbose:
+            print(f"   ⚠️ AUROC 계산 실패: {e}")
+        auroc = 0.0
+
+    # 이진 분류 메트릭 계산 (threshold = 0.5)
+    predictions = (all_scores > 0.5).astype(int)
+    accuracy = accuracy_score(all_labels, predictions)
+    precision = precision_score(all_labels, predictions, zero_division=0)
+    recall = recall_score(all_labels, predictions, zero_division=0)
+    f1 = f1_score(all_labels, predictions, zero_division=0)
+
+    if verbose:
+        print(f"\n✅ 소스 도메인 평가 완료:")
+        print(f"   - Domain: {datamodule.source_domain}")
+        print(f"   - AUROC: {auroc:.4f}")
+        print(f"   - Accuracy: {accuracy:.4f}")
+        print(f"   - Precision: {precision:.4f}")
+        print(f"   - Recall: {recall:.4f}")
+        print(f"   - F1-Score: {f1:.4f}")
+        print(f"   - 샘플 수: {len(all_scores)}")
+
+    return {
+        'domain': datamodule.source_domain,
+        'auroc': float(auroc),
+        'metrics': {
+            'accuracy': float(accuracy),
+            'precision': float(precision),
+            'recall': float(recall),
+            'f1_score': float(f1)
+        },
+        'num_samples': len(all_scores),
+        'visualization_dir': str(visualization_dir) if visualization_dir else None
+    }
+
+
+def evaluate_target_domains(
+    model,
+    datamodule,
+    visualization_base_dir: Optional[Path] = None,
+    model_type: str = "unknown",
+    max_visualization_batches: int = 5,
+    verbose: bool = True
+):
+    """타겟 도메인들에서 모델 평가 및 시각화.
+
+    각 타겟 도메인에 대해 개별적으로 평가하고 결과를 수집.
+    선택적으로 각 도메인별 시각화 생성.
+
+    Args:
+        model: 학습된 모델
+        datamodule: MultiDomainHDMAPDataModule
+        visualization_base_dir: 시각화 저장 기본 디렉터리 (None이면 시각화 안함)
+        model_type: 모델 타입 (점수 추출에 사용)
+        max_visualization_batches: 도메인별 시각화할 최대 배치 수 (-1이면 전체 시각화)
+        verbose: 상세 출력 여부
+
+    Returns:
+        dict: 타겟 도메인별 평가 결과
+            각 도메인 키에 대해:
+            - domain: 도메인 이름
+            - auroc: AUROC 점수
+            - metrics: 기타 메트릭 (accuracy, precision, recall, f1)
+            - num_samples: 평가 샘플 수
+            - visualization_dir: 시각화 디렉터리 경로
+
+    Example:
+        >>> target_results = evaluate_target_domains(
+        ...     model=trained_model,
+        ...     datamodule=datamodule,
+        ...     visualization_base_dir=Path("./results/viz/targets"),
+        ...     model_type="draem"
+        ... )
+        >>> for domain, result in target_results.items():
+        ...     print(f"{domain}: AUROC={result['auroc']:.4f}")
+    """
+    import torch
+    import numpy as np
+    from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
+    from pathlib import Path
+
+    if verbose:
+        print(f"\n🎯 타겟 도메인 평가 시작...")
+        print(f"   타겟 도메인 목록: {datamodule.target_domains}")
+
+    # 시각화 기본 디렉터리 생성
+    if visualization_base_dir:
+        visualization_base_dir = Path(visualization_base_dir)
+        visualization_base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Test dataloaders 가져오기
+    test_dataloaders = datamodule.test_dataloader()
+    if not isinstance(test_dataloaders, list):
+        test_dataloaders = [test_dataloaders]
+
+    # 평가 모드로 전환하고 GPU로 이동
+    model.eval()
+    if torch.cuda.is_available():
+        model = model.cuda()
+
+    target_results = {}
+
+    # 각 타겟 도메인별로 평가
+    for domain_idx, target_domain in enumerate(datamodule.target_domains):
+        if verbose:
+            print(f"\n   📊 {target_domain} 평가 중...")
+
+        # 해당 도메인의 dataloader
+        test_loader = test_dataloaders[domain_idx]
+
+        # 도메인별 시각화 디렉터리
+        if visualization_base_dir:
+            domain_viz_dir = visualization_base_dir / target_domain
+            domain_viz_dir.mkdir(exist_ok=True)
+            if verbose:
+                print(f"      📁 시각화 저장: {domain_viz_dir}")
+        else:
+            domain_viz_dir = None
+
+        # 평가 데이터 수집
+        all_scores = []
+        all_labels = []
+        all_image_paths = []
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(test_loader):
+                # GPU로 이동 (가능한 경우)
+                if torch.cuda.is_available():
+                    image_tensor = batch.image.cuda()
+                    if hasattr(batch, 'mask'):
+                        mask_tensor = batch.mask.cuda()
+                else:
+                    image_tensor = batch.image
+
+                # 모델 예측
+                outputs = model(image_tensor)
+
+                # 점수 추출
+                scores = extract_scores_from_model_output(
+                    outputs,
+                    len(image_tensor),
+                    batch_idx,
+                    model_type
+                )
+                all_scores.extend(scores)
+
+                # 이미지 경로 추출
+                if hasattr(batch, 'image_path'):
+                    image_paths = batch.image_path
+                    if not isinstance(image_paths, list):
+                        image_paths = [image_paths]
+                    all_image_paths.extend(image_paths)
+
+                    # Ground truth 추출 (이미지 경로에서)
+                    gt_labels = []
+                    for path in image_paths:
+                        if '/fault/' in path:
+                            gt_labels.append(1)  # anomaly
+                        elif '/good/' in path:
+                            gt_labels.append(0)  # normal
+                        else:
+                            gt_labels.append(0)  # 기본값
+                    all_labels.extend(gt_labels)
+
+                # 시각화 생성 (max_visualization_batches=-1이면 전체, 아니면 지정된 배치 수만)
+                should_visualize = (max_visualization_batches == -1 or batch_idx < max_visualization_batches)
+                if domain_viz_dir and should_visualize:
+                    # create_batch_visualizations가 내부적으로 fault/good 폴더를 생성함
+                    create_batch_visualizations(
+                        image_tensor,
+                        outputs,
+                        image_paths,
+                        domain_viz_dir,  # batch 폴더 없이 직접 전달
+                        batch_idx
+                    )
+
+                if verbose and (batch_idx + 1) % 10 == 0:
+                    print(f"      처리 중: {batch_idx + 1}/{len(test_loader)} 배치")
+
+        # 메트릭 계산
+        all_scores = np.array(all_scores)
+        all_labels = np.array(all_labels)
+
+        # NaN 처리
+        nan_mask = np.isnan(all_scores)
+        if nan_mask.any():
+            if verbose:
+                print(f"      ⚠️ NaN 점수 {nan_mask.sum()}개 발견, 제거 후 계속")
+            valid_mask = ~nan_mask
+            all_scores = all_scores[valid_mask]
+            all_labels = all_labels[valid_mask]
+
+        # AUROC 계산
+        try:
+            auroc = roc_auc_score(all_labels, all_scores)
+        except Exception as e:
+            if verbose:
+                print(f"      ⚠️ AUROC 계산 실패: {e}")
+            auroc = 0.0
+
+        # 이진 분류 메트릭 계산 (threshold = 0.5)
+        predictions = (all_scores > 0.5).astype(int)
+        accuracy = accuracy_score(all_labels, predictions)
+        precision = precision_score(all_labels, predictions, zero_division=0)
+        recall = recall_score(all_labels, predictions, zero_division=0)
+        f1 = f1_score(all_labels, predictions, zero_division=0)
+
+        if verbose:
+            print(f"      ✅ {target_domain} 평가 완료:")
+            print(f"         - AUROC: {auroc:.4f}")
+            print(f"         - Accuracy: {accuracy:.4f}")
+            print(f"         - F1-Score: {f1:.4f}")
+            print(f"         - 샘플 수: {len(all_scores)}")
+
+        # 결과 저장
+        target_results[target_domain] = {
+            'domain': target_domain,
+            'auroc': float(auroc),
+            'metrics': {
+                'accuracy': float(accuracy),
+                'precision': float(precision),
+                'recall': float(recall),
+                'f1_score': float(f1)
+            },
+            'num_samples': len(all_scores),
+            'visualization_dir': str(domain_viz_dir) if domain_viz_dir else None
+        }
+
+    # 평균 성능 계산
+    if verbose:
+        auroc_values = [r['auroc'] for r in target_results.values()]
+        avg_auroc = np.mean(auroc_values) if auroc_values else 0.0
+
+        print(f"\n📈 타겟 도메인 평균 성능:")
+        print(f"   - 평균 AUROC: {avg_auroc:.4f}")
+        print(f"   - 도메인별 AUROC:")
+        for domain, result in target_results.items():
+            print(f"     • {domain}: {result['auroc']:.4f}")
+
+    return target_results
+
+
+def analyze_experiment_results(
+    source_results: Dict,
+    target_results: Dict,
+    training_info: Optional[Dict] = None,
+    experiment_config: Optional[Dict] = None,
+    save_path: Optional[Union[str, Path]] = None,
+    verbose: bool = True
+) -> Dict:
+    """Multi-domain 실험 결과 종합 분석.
+
+    소스 및 타겟 도메인 결과를 종합적으로 분석하고 보고서 생성.
+
+    Args:
+        source_results: 소스 도메인 평가 결과
+        target_results: 타겟 도메인별 평가 결과 딕셔너리
+        training_info: 훈련 정보 (optional)
+        experiment_config: 실험 설정 (optional)
+        save_path: 분석 결과 저장 경로 (optional)
+        verbose: 상세 출력 여부
+
+    Returns:
+        dict: 종합 분석 결과
+    """
+    import numpy as np
+    from pathlib import Path
+    import json
+    from datetime import datetime
+
+    if verbose:
+        print("\n" + "="*80)
+        print("📊 Multi-Domain 실험 결과 종합 분석")
+        print("="*80)
+
+    # 소스 도메인 성능
+    source_performance = {
+        'domain': source_results['domain'],
+        'auroc': source_results['auroc'],
+        'metrics': source_results.get('metrics', {})
+    }
+
+    # 타겟 도메인별 성능
+    target_performance = {}
+    for domain, result in target_results.items():
+        target_performance[domain] = {
+            'auroc': result['auroc'],
+            'metrics': result.get('metrics', {}),
+            'num_samples': result.get('num_samples', 0)
+        }
+
+    # 평균 메트릭 계산
+    target_aurocs = [r['auroc'] for r in target_results.values()]
+    target_accuracies = [r['metrics']['accuracy'] for r in target_results.values() if 'metrics' in r]
+    target_f1_scores = [r['metrics']['f1_score'] for r in target_results.values() if 'metrics' in r]
+
+    average_metrics = {
+        'source_auroc': source_performance['auroc'],
+        'target_avg_auroc': np.mean(target_aurocs) if target_aurocs else 0.0,
+        'target_std_auroc': np.std(target_aurocs) if target_aurocs else 0.0,
+        'target_avg_accuracy': np.mean(target_accuracies) if target_accuracies else 0.0,
+        'target_avg_f1': np.mean(target_f1_scores) if target_f1_scores else 0.0
+    }
+
+    # 도메인 전이 성능 차이 (Source - Target Average)
+    domain_transfer_gap = source_performance['auroc'] - average_metrics['target_avg_auroc']
+
+    # 최고/최저 성능 타겟 도메인
+    if target_aurocs:
+        best_idx = np.argmax(target_aurocs)
+        worst_idx = np.argmin(target_aurocs)
+        target_domains_list = list(target_results.keys())
+
+        best_target_domain = {
+            'domain': target_domains_list[best_idx],
+            'auroc': target_aurocs[best_idx]
+        }
+
+        worst_target_domain = {
+            'domain': target_domains_list[worst_idx],
+            'auroc': target_aurocs[worst_idx]
+        }
+    else:
+        best_target_domain = worst_target_domain = None
+
+    # 분석 결과 구성
+    analysis = {
+        'timestamp': datetime.now().isoformat(),
+        'source_performance': source_performance,
+        'target_performance': target_performance,
+        'average_metrics': average_metrics,
+        'domain_transfer_gap': float(domain_transfer_gap),
+        'best_target_domain': best_target_domain,
+        'worst_target_domain': worst_target_domain,
+        'training_info': training_info or {},
+        'experiment_config': experiment_config or {}
+    }
+
+    # 결과 출력
+    if verbose:
+        print(f"\n📌 소스 도메인 ({source_performance['domain']}):")
+        print(f"   - AUROC: {source_performance['auroc']:.4f}")
+        if source_performance['metrics']:
+            print(f"   - Accuracy: {source_performance['metrics'].get('accuracy', 0):.4f}")
+            print(f"   - F1-Score: {source_performance['metrics'].get('f1_score', 0):.4f}")
+
+        print(f"\n📌 타겟 도메인 평균 성능:")
+        print(f"   - 평균 AUROC: {average_metrics['target_avg_auroc']:.4f} (±{average_metrics['target_std_auroc']:.4f})")
+        print(f"   - 평균 Accuracy: {average_metrics['target_avg_accuracy']:.4f}")
+        print(f"   - 평균 F1-Score: {average_metrics['target_avg_f1']:.4f}")
+
+        print(f"\n📌 도메인별 AUROC:")
+        for domain, perf in target_performance.items():
+            print(f"   - {domain}: {perf['auroc']:.4f}")
+
+        if best_target_domain:
+            print(f"\n📌 최고 성능 타겟: {best_target_domain['domain']} (AUROC: {best_target_domain['auroc']:.4f})")
+            print(f"📌 최저 성능 타겟: {worst_target_domain['domain']} (AUROC: {worst_target_domain['auroc']:.4f})")
+
+        print(f"\n📌 도메인 전이 성능 차이: {domain_transfer_gap:+.4f}")
+        print(f"   {'✅ 긍정적' if domain_transfer_gap < 0.1 else '⚠️ 주의 필요'}: Source-Target Gap")
+
+        print("="*80)
+
+    # 분석 결과 저장
+    if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(save_path, 'w') as f:
+            json.dump(analysis, f, indent=2)
+
+        if verbose:
+            print(f"\n💾 분석 결과 저장: {save_path}")
+
+    return analysis
+
+
+def organize_source_domain_results(*args, **kwargs):
+    """Deprecated - 시각화는 evaluate 함수에서 직접 처리됨."""
+    import warnings
+    warnings.warn(
+        "organize_source_domain_results is deprecated. "
+        "Visualizations are now handled directly in evaluate functions.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return {'organized': True}

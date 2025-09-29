@@ -92,6 +92,8 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
         train_batch_size: int = 32,
         eval_batch_size: int = 32,
         num_workers: int = 8,
+        target_size: tuple[int, int] | None = None,
+        resize_method: str = "resize",
         **kwargs: Any,
     ) -> None:
         """Initialize MultiDomain HDMAP DataModule / 멀티 도메인 HDMAP 데이터모듈 초기화."""
@@ -110,7 +112,9 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
 
         self.root = Path(root)
         self.source_domain = source_domain
-        
+        self.target_size = target_size
+        self.resize_method = resize_method
+
         # target_domains 자동 설정: "auto"이면 전체 도메인에서 source 제외
         # Automatic target_domains setting: exclude source from all domains if "auto"
         if target_domains == "auto":
@@ -118,7 +122,7 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
             self.target_domains = [d for d in all_domains if d != source_domain]
         else:
             self.target_domains = target_domains
-            
+
         self.validation_strategy = validation_strategy
 
         # 지원되는 validation 전략 확인 / Check supported validation strategies
@@ -157,6 +161,8 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
             root=self.root,
             domain=self.source_domain,
             split=Split.TRAIN,
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
         
         # 소스 도메인 검증 데이터 (정상+이상 데이터)
@@ -165,6 +171,8 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
             root=self.root,
             domain=self.source_domain,
             split=Split.TEST,  # source test를 validation으로 사용
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
 
         # 2. 타겟 도메인 테스트 데이터셋들 생성 / Create target domain test datasets
@@ -175,6 +183,8 @@ class MultiDomainHDMAPDataModule(AnomalibDataModule):
                 root=self.root,
                 domain=target_domain,
                 split=Split.TEST,
+                target_size=self.target_size,
+                resize_method=self.resize_method,
             )
             self.test_data.append(target_test_data)
 

@@ -12,20 +12,17 @@ Single domain과 달리 source domain에서 훈련하고 multiple target domains
 """
 
 import os
-import json
 import logging
 import torch
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pytorch_lightning.loggers import TensorBoardLogger
 
 # Anomalib imports
 from anomalib.models.image.draem import Draem
 from anomalib.models.image.dinomaly import Dinomaly
 from anomalib.models.image.patchcore import Patchcore
-from anomalib.models.image.draem_sevnet import DraemSevNet
-from anomalib.data.datamodules.image.multi_domain_hdmap import MultiDomainHDMAPDataModule
 from anomalib.engine import Engine
 from anomalib.metrics import AUROC, Evaluator
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -34,296 +31,382 @@ from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from experiment_utils import (
-    setup_warnings_filter,
     cleanup_gpu_memory,
     create_multi_domain_datamodule,
     evaluate_source_domain,
     evaluate_target_domains,
     extract_training_info,
-    organize_source_domain_results,
     save_experiment_results,
-    create_common_experiment_result,
     analyze_experiment_results
 )
 
 
 class MultiDomainAnomalyTrainer:
     """Multi-Domain Anomaly Detection 전용 훈련 클래스"""
-    
-    def __init__(self, config: Dict[str, Any], experiment_name: str, session_timestamp: str, experiment_dir: str):
+
+    def __init__(self, config: Dict[str, Any], experiment_name: str, session_timestamp: str, experiment_dir: str = None):
         """
         Args:
             config: 실험 설정 딕셔너리 (model_type, source_domain, target_domains 포함)
             experiment_name: 실험 이름
             session_timestamp: 세션 timestamp
-            experiment_dir: 실험 디렉터리 경로
+            experiment_dir: 실험 디렉터리 경로 (선택적)
         """
         self.config = config
         self.experiment_name = experiment_name
         self.session_timestamp = session_timestamp
-        self.experiment_dir = Path(experiment_dir)
-        
+        self.external_experiment_dir = experiment_dir
+
         # Multi-domain 설정 추출
         self.model_type = config["model_type"].lower()
         self.source_domain = config["source_domain"]
         self.target_domains = config["target_domains"]
-        
-        # 결과 저장 경로 설정 (single domain과 동일한 구조)
-        self.results_dir = self.experiment_dir
-        
+
+        # 경로 설정
+        self.setup_paths()
+
         # 로거 설정
         self.logger = logging.getLogger(f"multi_domain_{self.model_type}")
+
+    def setup_paths(self):
+        """실험 경로 설정"""
+        if self.external_experiment_dir:
+            # bash 스크립트에서 전달받은 디렉터리 사용
+            self.experiment_dir = Path(self.external_experiment_dir)
+            self.results_dir = self.experiment_dir.parent
+        else:
+            # 호환성을 위한 기본 방식 (단독 실행 시)
+            self.results_dir = Path("results") / self.session_timestamp
+            self.experiment_dir = self.results_dir / f"{self.experiment_name}_{self.session_timestamp}"
+            self.experiment_dir.mkdir(parents=True, exist_ok=True)
         
     def create_model(self):
         """Factory pattern으로 모델 생성 (multi-domain 최적화)"""
         if self.model_type == "draem":
             return self._create_draem_model()
+        elif self.model_type == "draem_cutpaste_clf":
+            return self._create_draem_cutpaste_clf_model()
         elif self.model_type == "dinomaly":
             return self._create_dinomaly_model()
         elif self.model_type == "patchcore":
             return self._create_patchcore_model()
-        elif self.model_type == "draem_sevnet":
-            return self._create_draem_sevnet_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
     def _create_draem_model(self):
-        """DRAEM 모델 생성 (multi-domain 평가용)"""
-        # Multi-domain 평가를 위한 메트릭 설정
+        """DRAEM 모델 생성"""
+        # 명시적으로 test_image_AUROC 메트릭 설정
         val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
+
+        # DRAEM 모델 생성
         model = Draem(evaluator=evaluator)
-        
-        # Config를 모델에 저장 (optimizer 설정용)
-        if hasattr(model, '_config'):
-            model._config = self.config
-        else:
-            setattr(model, '_training_config', self.config)
-            
+
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'optimizer': self.config["optimizer"],
+            'weight_decay': self.config["weight_decay"],
+            'max_epochs': self.config["max_epochs"],
+            'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
+        }
+
         return model
     
     def _create_dinomaly_model(self):
-        """Dinomaly 모델 생성 (multi-domain 평가용)"""
-        # Config에서 Dinomaly 특화 설정 추출
-        encoder_name = self.config["encoder_name"]
-        target_layers = self.config["target_layers"]
-        remove_class_token = self.config["remove_class_token"]
-        
-        # Multi-domain 평가를 위한 메트릭 설정
-        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
-        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
-        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
-        model = Dinomaly(
-            encoder_name=encoder_name,
-            target_layers=target_layers,
-            remove_class_token=remove_class_token,
-            evaluator=evaluator
+        """Dinomaly 모델 생성"""
+        # Dinomaly는 기본 evaluator를 사용하여 trainable 파라미터 설정 문제 회피
+        return Dinomaly(
+            encoder_name=self.config["encoder_name"],
+            target_layers=self.config["target_layers"],
+            bottleneck_dropout=self.config["bottleneck_dropout"],
+            decoder_depth=self.config["decoder_depth"],
+            remove_class_token=self.config["remove_class_token"],
+            evaluator=True  # 기본 evaluator 사용
         )
-        
-        # Config 저장
-        setattr(model, '_training_config', self.config)
-        return model
     
     def _create_patchcore_model(self):
-        """PatchCore 모델 생성 (multi-domain 평가용)"""
-        # Config에서 PatchCore 설정 추출
-        backbone = self.config["backbone"]
-        layers = self.config["layers"]
-        coreset_sampling_ratio = self.config["coreset_sampling_ratio"]
-        num_neighbors = self.config["num_neighbors"]
-        
-        # Multi-domain 평가를 위한 메트릭 설정  
+        """Patchcore 모델 생성"""
+        return Patchcore(
+            backbone=self.config["backbone"],
+            layers=self.config["layers"],
+            pre_trained=self.config["pre_trained"],
+            coreset_sampling_ratio=self.config["coreset_sampling_ratio"],
+            num_neighbors=self.config["num_neighbors"]
+        )
+    
+    def _create_draem_cutpaste_clf_model(self):
+        """DRAEM CutPaste Classification 모델 생성"""
+        # 명시적으로 test_image_AUROC 메트릭 설정
         val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
-        model = Patchcore(
-            backbone=backbone,
-            layers=layers,
-            coreset_sampling_ratio=coreset_sampling_ratio,
-            num_neighbors=num_neighbors,
-            evaluator=evaluator
-        )
-        
-        # Config 저장
-        setattr(model, '_training_config', self.config)
+
+        # 모델 파라미터 설정 - config에서만 값 할당
+        model_params = {
+            'evaluator': evaluator,
+            'sspcab': self.config["sspcab"],
+            'image_size': tuple(self.config["target_size"]),
+            'severity_dropout': self.config["severity_dropout"],
+            'severity_input_channels': self.config["severity_input_channels"],
+            'cut_w_range': tuple(self.config["cut_w_range"]),
+            'cut_h_range': tuple(self.config["cut_h_range"]),
+            'a_fault_start': self.config["a_fault_start"],
+            'a_fault_range_end': self.config["a_fault_range_end"],
+            'augment_probability': self.config["augment_probability"],
+            'clf_weight': self.config["clf_weight"],
+        }
+
+        # DraemCutPasteClf 모델 생성
+        from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
+        model = DraemCutPasteClf(**model_params)
+
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'optimizer': self.config["optimizer"],
+            'weight_decay': self.config["weight_decay"],
+            'max_epochs': self.config["max_epochs"],
+            'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
+        }
+
         return model
-    
-    def _create_draem_sevnet_model(self):
-        """DRAEM-SevNet 모델 생성 (multi-domain 평가용)"""
-        # Config에서 DRAEM-SevNet 설정 추출
-        score_combination = self.config["score_combination"]
-        severity_loss_type = self.config["severity_loss_type"]
-        severity_head_pooling_type = self.config["severity_head_pooling_type"]
-        severity_weight = self.config["severity_weight"]
-        
-        # Multi-domain 평가를 위한 메트릭 설정
-        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
-        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
-        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
-        model = DraemSevNet(
-            score_combination=score_combination,
-            severity_loss_type=severity_loss_type,
-            severity_head_pooling_type=severity_head_pooling_type,
-            severity_weight=severity_weight,
-            evaluator=evaluator
-        )
-        
-        # Config 저장
-        setattr(model, '_training_config', self.config)
-        return model
-    
+
+    def create_callbacks(self):
+        """콜백 설정 - 모델별 적절한 early stopping 메트릭 사용"""
+        callbacks = []
+
+        # 모델별 EarlyStopping 설정
+        if self.model_type == "patchcore":
+            # PatchCore는 단일 epoch 훈련이므로 EarlyStopping과 ModelCheckpoint 모두 불필요
+            # Engine에서 자동으로 ModelCheckpoint를 추가하므로 별도 추가하지 않음
+            print("   ℹ️ PatchCore: EarlyStopping 및 ModelCheckpoint 비활성화 (단일 epoch 훈련)")
+            return []  # 빈 콜백 리스트 반환
+
+        else:
+            # 모델별로 다른 EarlyStopping monitor 설정
+            if self.model_type in ["draem", "draem_cutpaste_clf"]:
+                # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+            else:
+                # Dinomaly: val_loss 기반 EarlyStopping
+                monitor_metric = "val_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
+
+            early_stopping = EarlyStopping(
+                monitor=monitor_metric,
+                patience=self.config["early_stopping_patience"],
+                mode=monitor_mode,
+                verbose=True
+            )
+            callbacks.append(early_stopping)
+
+            # Model Checkpoint
+            if self.model_type in ["draem", "draem_cutpaste_clf"]:
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_multi_domain_{self.source_domain}_to_targets_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+                    monitor="val_image_AUROC",
+                    mode="max",
+                    save_top_k=1,
+                    verbose=True
+                )
+            else:
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_multi_domain_{self.source_domain}_to_targets_" + "{epoch:02d}_{val_loss:.4f}",
+                    monitor="val_loss",
+                    mode="min",
+                    save_top_k=1,
+                    verbose=True
+                )
+            callbacks.append(checkpoint)
+
+        return callbacks
+
+    def configure_optimizer(self, model):
+        """옵티마이저 설정 - 모든 모델 공통"""
+        # PatchCore는 옵티마이저가 필요하지 않음
+        if self.model_type == "patchcore":
+            return
+
     def create_datamodule(self):
         """MultiDomainHDMAPDataModule 생성"""
         return create_multi_domain_datamodule(
-            datamodule_class=MultiDomainHDMAPDataModule,
             source_domain=self.source_domain,
             target_domains=self.target_domains,
+            dataset_root=self.config["dataset_root"],
             batch_size=self.config["batch_size"],
-            image_size=self.config["image_size"],
+            image_size=self.config["target_size"],
+            resize_method=self.config["resize_method"],
             num_workers=self.config["num_workers"],
-            validation_strategy="source_test"  # Source test가 validation 역할
+            seed=self.config["seed"],
+            verbose=True
         )
     
-    def train_model(self, model, datamodule) -> tuple:
+    def train_model(self, model, datamodule, logger) -> tuple:
         """모델 훈련 수행"""
         print(f"\n🚀 {self.model_type.upper()} Multi-Domain 모델 훈련 시작")
-        self.logger.info(f"🚀 {self.model_type.upper()} Multi-Domain 모델 훈련 시작")
-        
-        # Early stopping 설정 (multi-domain은 val_image_AUROC 기반)
-        early_stopping = EarlyStopping(
-            monitor="val_image_AUROC",
-            patience=self.config["early_stopping_patience"],
-            mode="max",  # AUROC는 높을수록 좋음
-            verbose=True
-        )
-        
-        # Model checkpoint 설정
-        checkpoint_callback = ModelCheckpoint(
-            filename=f"{self.model_type}_multi_domain_{self.source_domain}_to_targets_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-            monitor="val_image_AUROC",
-            mode="max",
-            save_top_k=1,
-            verbose=True
-        )
-        
-        print(f"   📊 Early Stopping: patience={self.config['early_stopping_patience']}, monitor=val_image_AUROC (max)")
-        print(f"   💾 Model Checkpoint: monitor=val_image_AUROC (max), save_top_k=1")
-        
+        logger.info(f"🚀 {self.model_type.upper()} Multi-Domain 모델 훈련 시작")
+
+        # Config 설정 출력
+        print(f"   🔧 Config 설정:")
+        print(f"      Model Type: {self.model_type}")
+        if self.model_type != "patchcore":
+            print(f"      Max Epochs: {self.config['max_epochs']}")
+            print(f"      Learning Rate: {self.config['learning_rate']}")
+            print(f"      Early Stopping Patience: {self.config['early_stopping_patience']}")
+        print(f"      Batch Size: {self.config['batch_size']}")
+
+        # 옵티마이저 설정
+        self.configure_optimizer(model)
+
+        # 콜백 설정
+        callbacks = self.create_callbacks()
+
         # TensorBoard 로거 설정
-        tb_logger = TensorBoardLogger(
-            save_dir=str(self.results_dir),
-            name="tensorboard_logs", 
+        self.tb_logger = TensorBoardLogger(
+            save_dir=str(self.experiment_dir),
+            name="tensorboard_logs",
             version=""
         )
-        
-        # Engine 설정 (PatchCore 특수 처리)
-        max_epochs = self.config["max_epochs"]
-        
+
+        # Engine 설정
+        # PatchCore의 경우 max_epochs를 1로 강제 설정
+        max_epochs = 1 if self.model_type == "patchcore" else self.config["max_epochs"]
+
         engine_kwargs = {
             "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
             "devices": [0] if torch.cuda.is_available() else 1,
-            "logger": tb_logger,
-            "max_epochs": max_epochs,
-            "callbacks": [early_stopping, checkpoint_callback],
-            "check_val_every_n_epoch": 1,
+            "logger": self.tb_logger,
+            "callbacks": callbacks,
             "enable_checkpointing": True,
             "log_every_n_steps": 10,
             "enable_model_summary": True,
-            "num_sanity_val_steps": 0,
-            "default_root_dir": str(self.results_dir)
+            "default_root_dir": str(self.experiment_dir),
+            "max_epochs": max_epochs,
+            "check_val_every_n_epoch": 1,
+            "num_sanity_val_steps": 0
         }
-        
-        # Gradient clipping 설정
-        if "gradient_clip_val" in self.config and self.config["gradient_clip_val"] is not None:
-            engine_kwargs["gradient_clip_val"] = self.config["gradient_clip_val"]
-            print(f"   🔧 Gradient Clipping 설정: {self.config['gradient_clip_val']}")
-        
-        engine = Engine(**engine_kwargs)
-        
-        print(f"   🔧 Engine 설정 완료 - max_epochs: {max_epochs}")
-        print(f"   📁 결과 저장 경로: {self.results_dir}")
-        self.logger.info(f"🔧 Engine 설정 완료 - max_epochs: {max_epochs}")
-        
-        # 모델 훈련 시작
-        print(f"   🎯 모델 훈련 시작...")
-        self.logger.info("🎯 모델 훈련 시작...")
-        
+
         if self.model_type == "patchcore":
-            # PatchCore는 fit이 아닌 memory bank 구축
-            engine.fit(model=model, datamodule=datamodule)
+            print(f"   ℹ️ PatchCore: max_epochs 강제 설정 (1 epoch)")
         else:
-            # 일반 훈련 모델
-            engine.fit(model=model, datamodule=datamodule)
-        
-        print(f"   ✅ 모델 훈련 완료!")
-        self.logger.info("✅ 모델 훈련 완료!")
-        
-        # 최고 성능 체크포인트 확인
-        best_checkpoint = checkpoint_callback.best_model_path
+            print(f"   ℹ️ {self.model_type.upper()}: max_epochs = {max_epochs}")
+
+        engine = Engine(**engine_kwargs)
+
+        print(f"   🔧 Engine 설정 완료")
+        print(f"   📁 결과 저장 경로: {self.experiment_dir}")
+        logger.info(f"🔧 Engine 설정 완료")
+        logger.info(f"📁 결과 저장 경로: {self.experiment_dir}")
+
+        # 모델 훈련
+        print(f"   🎯 모델 훈련 시작...")
+        logger.info("🎯 모델 훈련 시작...")
+
+        engine.fit(model=model, datamodule=datamodule)
+
+        # 최고 체크포인트 찾기
+        best_checkpoint = ""
+        for callback in callbacks:
+            if isinstance(callback, ModelCheckpoint) and hasattr(callback, 'best_model_path'):
+                best_checkpoint = callback.best_model_path
+                break
+
         print(f"   🏆 Best Checkpoint: {best_checkpoint}")
-        self.logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
-        
+        logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
+
+        print(f"   ✅ 모델 훈련 완료!")
+        logger.info("✅ 모델 훈련 완료!")
+
         return model, engine, best_checkpoint
     
-    def run_multi_domain_evaluation(self, model, engine, datamodule, best_checkpoint):
+    def run_multi_domain_evaluation(self, model, datamodule, logger):
         """Multi-domain 평가 수행 (source + targets)"""
         print(f"\n📊 Multi-Domain 평가 시작")
-        self.logger.info("📊 Multi-Domain 평가 시작")
-        
+        logger.info("📊 Multi-Domain 평가 시작")
+
+        # 시각화 기본 디렉터리 설정
+        visualizations_dir = self.experiment_dir / "visualizations"
+
         # 1. Source Domain 평가 (validation 역할)
         print(f"📊 Source Domain ({self.source_domain}) 평가 시작")
-        self.logger.info(f"📊 Source Domain ({self.source_domain}) 평가 시작")
-        
+        logger.info(f"📊 Source Domain ({self.source_domain}) 평가 시작")
+
+        # 소스 도메인 시각화 경로: visualizations/source/domain_A/
+        source_viz_dir = visualizations_dir / "source" / self.source_domain
+
         source_results = evaluate_source_domain(
             model=model,
-            engine=engine,
             datamodule=datamodule,
-            checkpoint_path=best_checkpoint
+            visualization_dir=source_viz_dir,
+            model_type=self.model_type,
+            max_visualization_batches=self.config.get("max_visualization_batches", 5),
+            verbose=True
         )
-        
+
         # 2. Target Domains 평가 (test 역할)
         print(f"\n🎯 Target Domains {self.target_domains} 평가 시작")
-        self.logger.info(f"🎯 Target Domains {self.target_domains} 평가 시작")
-        
-        # TensorBoard 로그 경로 확인
-        try:
-            if hasattr(engine.trainer, 'logger') and hasattr(engine.trainer.logger, 'log_dir'):
-                tensorboard_path = Path(engine.trainer.logger.log_dir)
-            else:
-                tensorboard_path = self.results_dir / "tensorboard_logs"
-        except:
-            tensorboard_path = self.results_dir / "tensorboard_logs"
-        
+        logger.info(f"🎯 Target Domains {self.target_domains} 평가 시작")
+
+        # 타겟 도메인 시각화 경로: visualizations/target/
+        target_viz_base_dir = visualizations_dir / "target"
+
         target_results = evaluate_target_domains(
             model=model,
-            engine=engine,
             datamodule=datamodule,
-            checkpoint_path=best_checkpoint,
-            results_base_dir=str(tensorboard_path),
-            target_domains=self.target_domains,
-            save_samples=True,
-            current_version_path=str(tensorboard_path)
+            visualization_base_dir=target_viz_base_dir,
+            model_type=self.model_type,
+            max_visualization_batches=self.config.get("max_visualization_batches", 5),
+            verbose=True
         )
-        
-        # 3. Source/Target 시각화 결과 정리
-        try:
-            # Source domain 결과 정리
-            organize_source_domain_results(
-                sevnet_viz_path=str(tensorboard_path),
-                results_base_dir=str(tensorboard_path),
-                source_domain=self.source_domain
-            )
-            print(f"   ✅ Source domain 시각화 결과 정리 완료")
-        except Exception as e:
-            print(f"   ⚠️ Source domain 시각화 정리 중 오류: {e}")
-        
+
         return source_results, target_results
-    
+
+    def save_results(self, source_results, target_results, training_info, best_checkpoint, logger):
+        """실험 결과 저장"""
+        experiment_results = {
+            "experiment_name": self.experiment_name,
+            "description": f"{self.source_domain} to {self.target_domains} - {self.model_type.upper()} multi domain training",
+            "source_domain": self.source_domain,
+            "target_domains": self.target_domains,
+            "config": self.config,
+            "source_results": source_results,
+            "target_results": target_results,
+            "training_info": training_info,
+            "timestamp": datetime.now().isoformat(),
+            "checkpoint_path": best_checkpoint,
+            "status": "success",
+            "condition": {
+                "name": self.experiment_name,
+                "description": f"{self.source_domain} to {self.target_domains} - {self.model_type.upper()} multi domain training",
+                "config": {
+                    "source_domain": self.source_domain,
+                    "target_domains": self.target_domains,
+                    **self.config
+                }
+            }
+        }
+
+        # 결과 저장
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 실험 루트 디렉토리에 직접 저장
+        result_filename = f"result_{timestamp}.json"
+
+        results_file = save_experiment_results(
+            result=experiment_results,
+            result_filename=result_filename,
+            log_dir=Path(self.experiment_dir),  # 실험 루트 디렉토리
+            logger=logger,
+            model_type=self.model_type.upper()
+        )
+        print(f"📄 실험 결과 저장됨: {results_file}")
+
+        return experiment_results
+
     def run_experiment(self) -> Dict[str, Any]:
         """전체 multi-domain 실험 실행"""
         print(f"\n{'='*80}")
@@ -352,76 +435,61 @@ class MultiDomainAnomalyTrainer:
             print(f"   🌍 Source: {self.source_domain}")
             print(f"   🎯 Targets: {self.target_domains}")
             
+            # 로깅 설정
+            from experiment_utils import setup_experiment_logging
+            log_file_path = self.experiment_dir / f"{self.source_domain}_multi_domain.log"
+            logger = setup_experiment_logging(str(log_file_path), self.experiment_name)
+            logger.info(f"🚀 Multi-Domain 실험 시작: {self.experiment_name}")
+
             # 모델 훈련
-            model, engine, best_checkpoint = self.train_model(model, datamodule)
-            
+            model, engine, best_checkpoint = self.train_model(model, datamodule, logger)
+
             # Multi-domain 평가
             source_results, target_results = self.run_multi_domain_evaluation(
-                model, engine, datamodule, best_checkpoint
+                model, datamodule, logger
             )
             
             # 훈련 정보 추출
             training_info = extract_training_info(engine)
             
-            # 결과 분석
-            analysis = analyze_experiment_results(
+            # 결과 분석 및 저장
+            analysis_path = self.experiment_dir / "analysis_results.json"
+            analyze_experiment_results(
                 source_results=source_results,
                 target_results=target_results,
                 training_info=training_info,
-                condition={"name": self.experiment_name, "config": self.config},
-                model_type=self.model_type.upper()
+                experiment_config=self.config,
+                save_path=analysis_path,
+                verbose=True
             )
-            
-            # 실험 결과 정리
-            experiment_result = create_common_experiment_result(
-                condition={"name": self.experiment_name, "config": self.config},
-                status="success",
-                experiment_path=str(self.experiment_dir),
-                source_results=source_results,
-                target_results=target_results,
-                training_info=training_info,
-                best_checkpoint=best_checkpoint
-            )
-            
-            # 결과 저장
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            result_filename = f"result_{timestamp}.json"
-            
-            # TensorBoard 로그 경로 확인 후 저장
-            try:
-                if hasattr(engine.trainer, 'logger') and hasattr(engine.trainer.logger, 'log_dir'):
-                    log_dir = Path(engine.trainer.logger.log_dir)
-                else:
-                    log_dir = self.experiment_dir / "tensorboard_logs"
-            except:
-                log_dir = self.experiment_dir / "tensorboard_logs"
-            
-            save_experiment_results(
-                result=experiment_result,
-                result_filename=result_filename,
-                log_dir=log_dir,
-                logger=self.logger,
-                model_type=self.model_type.upper()
+
+            # 실험 결과 저장
+            experiment_result = self.save_results(
+                source_results, target_results, training_info, best_checkpoint, logger
             )
             
             # GPU 메모리 정리
             cleanup_gpu_memory()
             
             print(f"\n✅ Multi-Domain 실험 완료: {self.experiment_name}")
-            self.logger.info(f"✅ Multi-Domain 실험 완료: {self.experiment_name}")
+            logger.info(f"✅ Multi-Domain 실험 완료: {self.experiment_name}")
             
             return experiment_result
             
         except Exception as e:
             error_msg = f"Multi-Domain 실험 실패: {e}"
             print(f"\n❌ {error_msg}")
-            self.logger.error(f"❌ {error_msg}")
+            if 'logger' in locals():
+                logger.error(f"❌ {error_msg}")
+            else:
+                self.logger.error(f"❌ {error_msg}")
             
             # GPU 메모리 정리 (실패 시에도)
             cleanup_gpu_memory()
             
-            return create_common_experiment_result(
-                condition={"name": self.experiment_name, "config": self.config},
-                status="failed",
-                error=str(e)
-            )
+            return {
+                "status": "failed",
+                "error": str(e),
+                "experiment_name": self.experiment_name,
+                "config": self.config
+            }

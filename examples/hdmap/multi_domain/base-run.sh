@@ -38,7 +38,7 @@ set -e  # 오류 시 즉시 종료
 # =============================================================================
 
 # 사용할 GPU 목록 (0부터 시작, 사용 가능한 GPU ID를 나열)
-AVAILABLE_GPUS=(4 5 6 7)
+AVAILABLE_GPUS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 
 # 실험 설정 파일 및 실행 스크립트 경로
 SCRIPT_PATH="examples/hdmap/multi_domain/base-training.py"

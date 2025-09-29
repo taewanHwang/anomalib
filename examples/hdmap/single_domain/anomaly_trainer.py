@@ -12,12 +12,10 @@ BaseAnomalyTrainer - 통합 Anomaly Detection 모델 훈련을 위한 베이스 
 """
 
 import torch
-import numpy as np
 import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Tuple
-from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
 # 공통 유틸리티 함수들 import
 sys.path.append(str(Path(__file__).parent.parent))
@@ -26,7 +24,6 @@ from experiment_utils import (
     setup_experiment_logging,
     extract_training_info,
     save_experiment_results,
-    create_experiment_visualization,
     create_single_domain_datamodule,
     analyze_test_data_distribution,
     unified_model_evaluation
