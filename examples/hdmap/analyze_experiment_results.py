@@ -94,49 +94,93 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                     # Multi-domain 실험
                     exp_name = exp_dir.name
                     session_id = exp_dir.parent.name
-                    
+
+                    # Source AUROC 추출 (multi-domain 형식)
                     source_auroc = None
-                    if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
-                        source_auroc = data['source_results']['test_image_AUROC']
-                    
+                    source_domain = None
+                    if 'source_results' in data:
+                        if 'auroc' in data['source_results']:
+                            source_auroc = data['source_results']['auroc']
+                        elif 'test_image_AUROC' in data['source_results']:
+                            source_auroc = data['source_results']['test_image_AUROC']
+
+                        if 'domain' in data['source_results']:
+                            source_domain = data['source_results']['domain']
+
+                    # 실험 설정에서 source domain 추출 (fallback)
+                    if source_domain is None and 'source_domain' in data:
+                        source_domain = data['source_domain']
+
+                    # Target AUROCs 수집
+                    target_aurocs = []
+                    target_domains = []
+
                     # 각 target domain 결과를 개별 행으로 추가
                     for domain_key, domain_data in data['target_results'].items():
-                        if 'test_image_AUROC' in domain_data:
+                        auroc_value = None
+                        if 'auroc' in domain_data:
+                            auroc_value = domain_data['auroc']
+                        elif 'test_image_AUROC' in domain_data:
+                            auroc_value = domain_data['test_image_AUROC']
+
+                        if auroc_value is not None:
                             domain_name = domain_key.replace('domain_', '')
+                            target_aurocs.append(auroc_value)
+                            target_domains.append(domain_name)
+
                             experiment_results.append({
                                 'experiment_name': exp_name,
+                                'source_domain': source_domain,
                                 'source_AUROC': source_auroc,
-                                'target_AUROC': domain_data['test_image_AUROC'],
+                                'target_AUROC': auroc_value,
                                 'target_domain': domain_name,
                                 'session_id': session_id,
-                                'type': 'Multi-domain'
+                                'type': 'Multi-domain',
+                                'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
                             })
-                    
-                    # 평균 target AUROC도 추가
-                    if 'avg_target_auroc' in data:
+
+                    # 평균 target AUROC 계산 및 추가
+                    if target_aurocs:
+                        avg_target_auroc = sum(target_aurocs) / len(target_aurocs)
                         experiment_results.append({
                             'experiment_name': exp_name,
+                            'source_domain': source_domain,
                             'source_AUROC': source_auroc,
-                            'target_AUROC': data['avg_target_auroc'],
+                            'target_AUROC': avg_target_auroc,
                             'target_domain': 'Average',
                             'session_id': session_id,
-                            'type': 'Multi-domain'
+                            'type': 'Multi-domain',
+                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
                         })
                 
                 else:
                     # Single domain 실험
                     source_auroc = None
-                    if 'source_results' in data and 'test_image_AUROC' in data['source_results']:
-                        source_auroc = data['source_results']['test_image_AUROC']
-                    
+                    source_domain = None
+
+                    if 'source_results' in data:
+                        if 'auroc' in data['source_results']:
+                            source_auroc = data['source_results']['auroc']
+                        elif 'test_image_AUROC' in data['source_results']:
+                            source_auroc = data['source_results']['test_image_AUROC']
+
+                        if 'domain' in data['source_results']:
+                            source_domain = data['source_results']['domain']
+
+                    # 실험 설정에서 source domain 추출 (fallback)
+                    if source_domain is None and 'source_domain' in data:
+                        source_domain = data['source_domain']
+
                     if source_auroc is not None:
                         experiment_results.append({
                             'experiment_name': exp_dir.name,
+                            'source_domain': source_domain,
                             'source_AUROC': source_auroc,
                             'target_AUROC': 'N/A',
                             'target_domain': 'N/A',
                             'session_id': exp_dir.parent.name,
-                            'type': 'Single-domain'
+                            'type': 'Single-domain',
+                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
                         })
                     else:
                         print(f"   ⚠️ {exp_dir.name}에서 AUROC 값을 찾을 수 없습니다.")
@@ -167,6 +211,147 @@ def analyze_all_models(results_base_dir: str, output: str = None):
     
     print(f"\n📈 전체 실험 결과:")
     print(display_df.to_string(index=False))
+
+    # Multi-domain 실험 전용 분석 추가
+    multi_domain_df = combined_df[combined_df['type'] == 'Multi-domain'].copy()
+
+    if not multi_domain_df.empty:
+        print(f"\n{'='*80}")
+        print(f"🌍 Multi-Domain 실험 상세 분석")
+        print(f"{'='*80}")
+
+        # Multi-domain 실험의 평균 결과만 추출
+        multi_avg_df = multi_domain_df[multi_domain_df['target_domain'] == 'Average'].copy()
+
+        if not multi_avg_df.empty:
+            print(f"\n📊 Multi-Domain 실험별 평균 성능 (Source → Target Mean AUROC):")
+            print("-" * 80)
+
+            # 실험명에서 설정 정보 추출 및 정렬
+            multi_avg_df_sorted = multi_avg_df.sort_values(['source_domain', 'target_AUROC'], ascending=[True, False])
+
+            print(f"{'실험명':<45} {'Source':<8} {'Src AUROC':<10} {'Tgt Avg':<10} {'Severity Ch':<15}")
+            print("-" * 95)
+
+            for _, row in multi_avg_df_sorted.iterrows():
+                exp_name = row['experiment_name'][:40] + "..." if len(row['experiment_name']) > 40 else row['experiment_name']
+                source_dom = str(row['source_domain']).replace('domain_', '') if row['source_domain'] else 'N/A'
+                src_auroc = f"{row['source_AUROC']:.6f}" if row['source_AUROC'] is not None else 'N/A'
+                tgt_auroc = f"{row['target_AUROC']:.6f}" if row['target_AUROC'] != 'N/A' else 'N/A'
+                severity_ch = str(row['severity_input_channels'])[:12] + "..." if len(str(row['severity_input_channels'])) > 12 else str(row['severity_input_channels'])
+
+                print(f"{exp_name:<45} {source_dom:<8} {src_auroc:<10} {tgt_auroc:<10} {severity_ch:<15}")
+
+        # Source domain별 성능 요약
+        print(f"\n📈 Source Domain별 성능 요약:")
+        print("-" * 60)
+
+        source_summary = multi_avg_df.groupby('source_domain').agg({
+            'source_AUROC': ['mean', 'std', 'count'],
+            'target_AUROC': ['mean', 'std', 'count']
+        }).round(6)
+
+        source_summary.columns = ['Src_Mean', 'Src_Std', 'Src_Count', 'Tgt_Mean', 'Tgt_Std', 'Tgt_Count']
+        source_summary = source_summary.sort_values('Tgt_Mean', ascending=False)
+
+        print(f"{'Source':<8} {'Src AUROC':<20} {'Target Avg AUROC':<20} {'실험수':<8}")
+        print("-" * 60)
+
+        for source_dom, row in source_summary.iterrows():
+            source_dom_short = str(source_dom).replace('domain_', '') if source_dom else 'N/A'
+            src_perf = f"{row['Src_Mean']:.4f}±{row['Src_Std']:.4f}" if pd.notna(row['Src_Std']) else f"{row['Src_Mean']:.4f}"
+            tgt_perf = f"{row['Tgt_Mean']:.4f}±{row['Tgt_Std']:.4f}" if pd.notna(row['Tgt_Std']) else f"{row['Tgt_Mean']:.4f}"
+            exp_count = int(row['Src_Count'])
+
+            print(f"{source_dom_short:<8} {src_perf:<20} {tgt_perf:<20} {exp_count:<8}")
+
+        # Severity input channels별 성능 요약
+        severity_summary = multi_avg_df.groupby('severity_input_channels').agg({
+            'source_AUROC': ['mean', 'std', 'count'],
+            'target_AUROC': ['mean', 'std', 'count']
+        }).round(6)
+
+        severity_summary.columns = ['Src_Mean', 'Src_Std', 'Src_Count', 'Tgt_Mean', 'Tgt_Std', 'Tgt_Count']
+        severity_summary = severity_summary.sort_values('Tgt_Mean', ascending=False)
+
+        print(f"\n🔧 Severity Input Channels별 성능 요약:")
+        print("-" * 70)
+        print(f"{'Severity Channels':<20} {'Src AUROC':<20} {'Target Avg AUROC':<20} {'실험수':<8}")
+        print("-" * 70)
+
+        for severity_ch, row in severity_summary.iterrows():
+            severity_ch_str = str(severity_ch)[:18] + ".." if len(str(severity_ch)) > 18 else str(severity_ch)
+            src_perf = f"{row['Src_Mean']:.4f}±{row['Src_Std']:.4f}" if pd.notna(row['Src_Std']) else f"{row['Src_Mean']:.4f}"
+            tgt_perf = f"{row['Tgt_Mean']:.4f}±{row['Tgt_Std']:.4f}" if pd.notna(row['Tgt_Std']) else f"{row['Tgt_Mean']:.4f}"
+            exp_count = int(row['Src_Count'])
+
+            print(f"{severity_ch_str:<20} {src_perf:<20} {tgt_perf:<20} {exp_count:<8}")
+
+        # Target domain별 상세 분석 (개별 target domain 성능)
+        multi_targets_df = multi_domain_df[multi_domain_df['target_domain'] != 'Average'].copy()
+
+        if not multi_targets_df.empty:
+            print(f"\n🎯 Target Domain별 상세 성능 분석:")
+            print("-" * 80)
+
+            target_perf = multi_targets_df.groupby(['source_domain', 'target_domain']).agg({
+                'target_AUROC': ['mean', 'std', 'count']
+            }).round(6)
+
+            target_perf.columns = ['Mean', 'Std', 'Count']
+            target_perf = target_perf.sort_values('Mean', ascending=False)
+
+            print(f"{'Source → Target':<20} {'AUROC':<20} {'실험수':<8}")
+            print("-" * 50)
+
+            for (src, tgt), row in target_perf.iterrows():
+                src_short = str(src).replace('domain_', '') if src else 'N/A'
+                tgt_short = str(tgt).replace('domain_', '') if tgt else 'N/A'
+                transfer = f"{src_short} → {tgt_short}"
+                perf = f"{row['Mean']:.4f}±{row['Std']:.4f}" if pd.notna(row['Std']) else f"{row['Mean']:.4f}"
+                exp_count = int(row['Count'])
+
+                print(f"{transfer:<20} {perf:<20} {exp_count:<8}")
+
+        # Multi-domain 실험 결과 매트릭스 생성
+        if not multi_avg_df.empty:
+            print(f"\n📋 Multi-Domain 성능 매트릭스 (Source → Target Average AUROC):")
+            print("-" * 80)
+
+            # 피벗 테이블 생성
+            pivot_matrix = multi_avg_df.pivot_table(
+                values='target_AUROC',
+                index=['source_domain', 'severity_input_channels'],
+                columns='target_domain',
+                fill_value=None
+            )
+
+            # 매트릭스 출력
+            if 'Average' in pivot_matrix.columns:
+                # Source domain과 severity channels로 그룹화하여 출력
+                print(f"{'Source_Severity':<25} {'Avg AUROC':<12} {'Src AUROC':<12}")
+                print("-" * 50)
+
+                for (src_dom, severity_ch), row in pivot_matrix.iterrows():
+                    if pd.notna(row['Average']):
+                        src_short = str(src_dom).replace('domain_', '') if src_dom else 'N/A'
+                        severity_short = str(severity_ch)[:12] + ".." if len(str(severity_ch)) > 12 else str(severity_ch)
+                        src_severity = f"{src_short}_{severity_short}"
+
+                        # 해당 source AUROC 찾기
+                        src_auroc_row = multi_avg_df[
+                            (multi_avg_df['source_domain'] == src_dom) &
+                            (multi_avg_df['severity_input_channels'] == severity_ch)
+                        ]
+                        src_auroc = src_auroc_row['source_AUROC'].iloc[0] if not src_auroc_row.empty else 'N/A'
+                        src_auroc_str = f"{src_auroc:.6f}" if src_auroc != 'N/A' else 'N/A'
+
+                        print(f"{src_severity:<25} {row['Average']:<12.6f} {src_auroc_str:<12}")
+
+        # Multi-domain CSV 저장
+        multi_domain_summary_path = Path(output).parent / "multi_domain_analysis.csv" if output else results_base_path / "multi_domain_analysis.csv"
+        multi_domain_df.to_csv(multi_domain_summary_path, index=False, encoding='utf-8-sig')
+        print(f"\n💾 Multi-domain 분석 결과 저장됨: {multi_domain_summary_path}")
     
     # 도메인별 평균과 실험 조건별 전체 평균 분석 (Single-domain 실험만)
     single_domain_df = combined_df[combined_df['type'] == 'Single-domain'].copy()
