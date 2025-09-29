@@ -1,19 +1,17 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-15.1",
-      "description": "Domain A - Severity Input: Original Only",
+      "name": "exp-16.D.1",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 1ch original",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -22,19 +20,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -44,23 +32,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.2",
-      "description": "Domain A - Severity Input: Mask Only",
+      "name": "exp-16.D.2",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 1ch mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -69,19 +56,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -91,23 +68,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.3",
-      "description": "Domain A - Severity Input: Reconstruction Only",
+      "name": "exp-16.D.3",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 1ch recon",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -116,19 +92,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -138,23 +104,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.4",
-      "description": "Domain A - Severity Input: Original + Mask",
+      "name": "exp-16.D.4",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 2ch original+mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -163,19 +128,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -185,23 +140,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.5",
-      "description": "Domain A - Severity Input: Original + Reconstruction",
+      "name": "exp-16.D.5",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 2ch original+recon",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -210,19 +164,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -232,23 +176,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.6",
-      "description": "Domain A - Severity Input: Mask + Reconstruction",
+      "name": "exp-16.D.6",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 2ch mask+recon",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -257,19 +200,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -279,23 +212,22 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     },
     {
-      "name": "exp-15.7",
-      "description": "Domain A - Severity Input: Original + Mask + Reconstruction",
+      "name": "exp-16.D.7",
+      "description": "Domain D → A,B,C DRAEM CutPaste Clf 3ch original+mask+recon",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 16,
-        "target_size": [
-          256,
-          256
-        ],
+        "target_size": [256, 256],
         "resize_method": "resize",
         "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
@@ -304,19 +236,9 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "image_size": [
-          256,
-          256
-        ],
         "severity_dropout": 0.3,
-        "cut_w_range": [
-          27,
-          216
-        ],
-        "cut_h_range": [
-          8,
-          17
-        ],
+        "cut_w_range": [27, 216],
+        "cut_h_range": [8, 17],
         "a_fault_start": 1.0,
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
@@ -326,7 +248,8 @@
           "type": "steplr",
           "step_size": 2,
           "gamma": 0.5
-        }
+        },
+        "max_visualization_batches": -1
       }
     }
   ]

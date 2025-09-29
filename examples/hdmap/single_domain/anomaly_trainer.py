@@ -12,6 +12,7 @@ BaseAnomalyTrainer - 통합 Anomaly Detection 모델 훈련을 위한 베이스 
 """
 
 import torch
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -316,20 +317,36 @@ class BaseAnomalyTrainer:
         logger.info("🎯 모델 훈련 시작...")
         
         engine.fit(model=model, datamodule=datamodule)
-        
+
         # 최고 체크포인트 찾기
         best_checkpoint = ""
         for callback in callbacks:
             if isinstance(callback, ModelCheckpoint) and hasattr(callback, 'best_model_path'):
                 best_checkpoint = callback.best_model_path
                 break
-        
+
         print(f"   🏆 Best Checkpoint: {best_checkpoint}")
         logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
-        
+
+        # Best checkpoint 로드 (PatchCore 제외)
+        if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type != "patchcore":
+            print(f"   📂 Best checkpoint 로드 중...")
+            checkpoint = torch.load(best_checkpoint, map_location='cuda' if torch.cuda.is_available() else 'cpu')
+
+            # state_dict 로드
+            model.load_state_dict(checkpoint['state_dict'])
+
+            print(f"   ✅ Best checkpoint 로드 완료!")
+            logger.info(f"✅ Best checkpoint 로드 완료: {best_checkpoint}")
+        elif self.model_type == "patchcore":
+            print(f"   ℹ️ PatchCore: Best checkpoint 로드 건너뜀 (단일 epoch 모델)")
+        else:
+            print(f"   ⚠️ Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")
+            logger.warning(f"Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")
+
         print(f"   ✅ 모델 훈련 완료!")
         logger.info("✅ 모델 훈련 완료!")
-        
+
         return model, engine, best_checkpoint
     
     def evaluate_model(self, model, datamodule, logger) -> Dict[str, Any]:

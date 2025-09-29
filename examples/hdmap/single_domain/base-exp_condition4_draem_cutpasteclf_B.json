@@ -2,11 +2,11 @@
   "experiment_conditions": [
     {
       "name": "exp-15.1",
-      "description": "Domain A - Severity Input: Original Only",
+      "description": "Domain B - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -49,11 +49,11 @@
     },
     {
       "name": "exp-15.2",
-      "description": "Domain A - Severity Input: Mask Only",
+      "description": "Domain B - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -96,11 +96,11 @@
     },
     {
       "name": "exp-15.3",
-      "description": "Domain A - Severity Input: Reconstruction Only",
+      "description": "Domain B - Severity Input: Reconstruction Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -143,11 +143,11 @@
     },
     {
       "name": "exp-15.4",
-      "description": "Domain A - Severity Input: Original + Mask",
+      "description": "Domain B - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -190,11 +190,11 @@
     },
     {
       "name": "exp-15.5",
-      "description": "Domain A - Severity Input: Original + Reconstruction",
+      "description": "Domain B - Severity Input: Original + Reconstruction",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -237,11 +237,11 @@
     },
     {
       "name": "exp-15.6",
-      "description": "Domain A - Severity Input: Mask + Reconstruction",
+      "description": "Domain B - Severity Input: Mask + Reconstruction",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
@@ -284,11 +284,11 @@
     },
     {
       "name": "exp-15.7",
-      "description": "Domain A - Severity Input: Original + Mask + Reconstruction",
+      "description": "Domain B - Severity Input: Original + Mask + Reconstruction",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
+        "source_domain": "domain_B",
+        "max_epochs": 2,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
         "batch_size": 16,
