@@ -35,8 +35,10 @@ class DraemCutPasteModel(nn.Module):
             Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head. Defaults to ``0.3``.
         severity_input_channels (str, optional): Channels to use for severity head input.
-            Options: "original", "mask", "recon", "original+mask", "original+recon",
-            "mask+recon", "original+mask+recon". Defaults to ``"original+mask+recon"``.
+            Options: "original", "mask", "recon", "residual", "original+mask", "original+recon",
+            "original+residual", "mask+recon", "mask+residual", "recon+residual",
+            "original+mask+recon", "original+mask+residual", etc.
+            Defaults to ``"original+mask+recon"``.
 
         # CutPaste generator parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths. Defaults to ``(10, 80)``.
@@ -104,10 +106,10 @@ class DraemCutPasteModel(nn.Module):
 
     def _calculate_severity_in_channels(self, severity_input_channels: str) -> int:
         """Calculate number of input channels based on configuration.
-        
+
         Args:
             severity_input_channels: Channel configuration string
-            
+
         Returns:
             Number of input channels for severity head
         """
@@ -118,10 +120,12 @@ class DraemCutPasteModel(nn.Module):
             channel_count += 1
         if "recon" in severity_input_channels:
             channel_count += 1
-        
+        if "residual" in severity_input_channels:
+            channel_count += 1
+
         if channel_count == 0:
             raise ValueError(f"Invalid severity_input_channels: {severity_input_channels}")
-            
+
         return channel_count
 
 
@@ -135,6 +139,12 @@ class DraemCutPasteModel(nn.Module):
 
         Detach prevents CE loss gradients from flowing to reconstructive/discriminative subnets,
         allowing each subnet to focus on its dedicated loss (MSE/SSIM/Focal).
+
+        Supported input channels:
+        - "original": Original single channel image [0, 1]
+        - "mask": Anomaly probability mask from discriminative network [0, 1]
+        - "recon": Normalized reconstruction using sigmoid [0, 1]
+        - "residual": Reconstruction error |original - sigmoid(recon)| [0, 1]
 
         Args:
             original_single_ch: Single channel original image (already 0~1 normalized)
@@ -165,6 +175,14 @@ class DraemCutPasteModel(nn.Module):
             if self.training:
                 recon_normalized = recon_normalized.detach()
             inputs.append(recon_normalized)
+
+        if "residual" in self.severity_input_channels:
+            # Calculate residual (reconstruction error) as |original - sigmoid(reconstruction)|
+            residual = (original_single_ch - torch.sigmoid(reconstruction)).abs()
+            # Detach during training to prevent CE gradients flowing to reconstructive subnet
+            if self.training:
+                residual = residual.detach()
+            inputs.append(residual)
 
         return torch.cat(inputs, dim=1)
 

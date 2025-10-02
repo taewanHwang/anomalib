@@ -1,11 +1,11 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-15.B.1",
-      "description": "Domain B - Severity Input: Original Only",
+      "name": "exp-15.A.1",
+      "description": "Domain A - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -48,11 +48,11 @@
       }
     },
     {
-      "name": "exp-15.B.2",
-      "description": "Domain B - Severity Input: Mask Only",
+      "name": "exp-15.A.2",
+      "description": "Domain A - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -95,11 +95,11 @@
       }
     },
     {
-      "name": "exp-15.B.3",
-      "description": "Domain B - Severity Input: Residual Only",
+      "name": "exp-15.A.3",
+      "description": "Domain A - Severity Input: Residual Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -142,11 +142,11 @@
       }
     },
     {
-      "name": "exp-15.B.4",
-      "description": "Domain B - Severity Input: Original + Mask",
+      "name": "exp-15.A.4",
+      "description": "Domain A - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -189,11 +189,11 @@
       }
     },
     {
-      "name": "exp-15.B.5",
-      "description": "Domain B - Severity Input: Original + Residual",
+      "name": "exp-15.A.5",
+      "description": "Domain A - Severity Input: Original + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -236,11 +236,11 @@
       }
     },
     {
-      "name": "exp-15.B.6",
-      "description": "Domain B - Severity Input: Mask + Residual",
+      "name": "exp-15.A.6",
+      "description": "Domain A - Severity Input: Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -283,11 +283,11 @@
       }
     },
     {
-      "name": "exp-15.B.7",
-      "description": "Domain B - Severity Input: Original + Mask + Residual",
+      "name": "exp-15.A.7",
+      "description": "Domain A - Severity Input: Original + Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_B",
+        "source_domain": "domain_A",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,

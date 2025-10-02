@@ -42,7 +42,7 @@
         "batch_size": 32,
         "target_size": [224, 224],
         "resize_method": "resize",
-        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_original_minmax",
+        "dataset_root": "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adam",
         "weight_decay": 0.001,
         "val_split_ratio": 0.1,

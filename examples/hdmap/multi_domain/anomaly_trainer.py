@@ -200,6 +200,7 @@ class MultiDomainAnomalyTrainer:
             early_stopping = EarlyStopping(
                 monitor=monitor_metric,
                 patience=self.config["early_stopping_patience"],
+                min_delta=self.config.get("early_stopping_min_delta", 0.001),
                 mode=monitor_mode,
                 verbose=True
             )

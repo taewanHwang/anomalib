@@ -1,7 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-15.1",
+      "name": "exp-15.C.1",
       "description": "Domain C - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -48,7 +48,7 @@
       }
     },
     {
-      "name": "exp-15.2",
+      "name": "exp-15.C.2",
       "description": "Domain C - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -95,8 +95,8 @@
       }
     },
     {
-      "name": "exp-15.3",
-      "description": "Domain C - Severity Input: Reconstruction Only",
+      "name": "exp-15.C.3",
+      "description": "Domain C - Severity Input: Residual Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
         "source_domain": "Domain_C",
@@ -133,7 +133,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "recon",
+        "severity_input_channels": "residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -142,7 +142,7 @@
       }
     },
     {
-      "name": "exp-15.4",
+      "name": "exp-15.C.4",
       "description": "Domain C - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -189,8 +189,8 @@
       }
     },
     {
-      "name": "exp-15.5",
-      "description": "Domain C - Severity Input: Original + Reconstruction",
+      "name": "exp-15.C.5",
+      "description": "Domain C - Severity Input: Original + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
         "source_domain": "Domain_C",
@@ -227,7 +227,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "original+recon",
+        "severity_input_channels": "original+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -236,8 +236,8 @@
       }
     },
     {
-      "name": "exp-15.6",
-      "description": "Domain C - Severity Input: Mask + Reconstruction",
+      "name": "exp-15.C.6",
+      "description": "Domain C - Severity Input: Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
         "source_domain": "Domain_C",
@@ -274,7 +274,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "mask+recon",
+        "severity_input_channels": "mask+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -283,8 +283,8 @@
       }
     },
     {
-      "name": "exp-15.7",
-      "description": "Domain C - Severity Input: Original + Mask + Reconstruction",
+      "name": "exp-15.C.7",
+      "description": "Domain C - Severity Input: Original + Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
         "source_domain": "Domain_C",
@@ -321,7 +321,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "original+mask+recon",
+        "severity_input_channels": "original+mask+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,

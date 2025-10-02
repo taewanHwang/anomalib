@@ -1,11 +1,11 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-15.1",
-      "description": "Domain A - Severity Input: Original Only",
+      "name": "exp-15.D.1",
+      "description": "Domain D - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -48,11 +48,11 @@
       }
     },
     {
-      "name": "exp-15.2",
-      "description": "Domain A - Severity Input: Mask Only",
+      "name": "exp-15.D.2",
+      "description": "Domain D - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -95,11 +95,11 @@
       }
     },
     {
-      "name": "exp-15.3",
-      "description": "Domain A - Severity Input: Reconstruction Only",
+      "name": "exp-15.D.3",
+      "description": "Domain D - Severity Input: Residual Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -133,7 +133,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "recon",
+        "severity_input_channels": "residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -142,11 +142,11 @@
       }
     },
     {
-      "name": "exp-15.4",
-      "description": "Domain A - Severity Input: Original + Mask",
+      "name": "exp-15.D.4",
+      "description": "Domain D - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -189,11 +189,11 @@
       }
     },
     {
-      "name": "exp-15.5",
-      "description": "Domain A - Severity Input: Original + Reconstruction",
+      "name": "exp-15.D.5",
+      "description": "Domain D - Severity Input: Original + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -227,7 +227,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "original+recon",
+        "severity_input_channels": "original+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -236,11 +236,11 @@
       }
     },
     {
-      "name": "exp-15.6",
-      "description": "Domain A - Severity Input: Mask + Reconstruction",
+      "name": "exp-15.D.6",
+      "description": "Domain D - Severity Input: Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -274,7 +274,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "mask+recon",
+        "severity_input_channels": "mask+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,
@@ -283,11 +283,11 @@
       }
     },
     {
-      "name": "exp-15.7",
-      "description": "Domain A - Severity Input: Original + Mask + Reconstruction",
+      "name": "exp-15.D.7",
+      "description": "Domain D - Severity Input: Original + Mask + Residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
+        "source_domain": "Domain_D",
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -321,7 +321,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
-        "severity_input_channels": "original+mask+recon",
+        "severity_input_channels": "original+mask+residual",
         "scheduler": {
           "type": "steplr",
           "step_size": 2,

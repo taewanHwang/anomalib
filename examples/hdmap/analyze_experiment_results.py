@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-실험 결과 분석 스크립트
+실험 결과 분석 스크립트 (Single & Multi-Domain 통합 지원)
 
-이 스크립트는 여러 실험의 결과를 분석하여 각 실험별로
-image_AUROC 값을 추출합니다.
+이 스크립트는 Single-Domain과 Multi-Domain 실험의 결과를 분석하여
+AUROC 값과 성능 메트릭을 추출합니다.
 
 ==============================================================================
 🚀 기본 사용법:
@@ -21,20 +21,58 @@ image_AUROC 값을 추출합니다.
 ==============================================================================
 
 results/
-└── 20250831_074352/
-    ├── domainA_to_BCD_draem_quick_test_20250831_074352/
-    │   └── result_20250831_080624.json
+└── 20250929_121320/
+    ├── exp-16.A.3_20250929_121225/
+    │   └── result_20250929_131332.json  # Multi-domain 결과
     ├── domainA_patchcore_baseline_20250831_074352/
-    │   └── result_20250831_081234.json
+    │   └── result_20250831_081234.json  # Single-domain 결과
     └── ...
 
 ==============================================================================
-📊 출력 내용:
+📊 출력 내용 (Multi-Domain 확장):
 ==============================================================================
 
-- 전체 실험별 AUROC 값 (높은 순으로 정렬)
-- CSV 파일 자동 생성:
-  * experiment_analysis_summary.csv (전체 실험 결과)
+🌍 Multi-Domain 실험 분석:
+- Source → Target 전환 성능 분석
+- Source AUROC vs Target Average AUROC 비교
+- Severity Input Channels별 성능 요약
+- Target Domain별 상세 성능 분석
+- Multi-Domain 성능 매트릭스
+
+📊 Single-Domain 실험 분석:
+- 도메인별 성능 요약
+- 실험 조건별 전체 평균 분석
+
+📁 자동 생성 CSV 파일:
+- experiment_analysis_summary.csv (전체 실험 결과)
+- multi_domain_analysis.csv (Multi-domain 전용 분석)
+- experiment_condition_summary.csv (Single-domain 조건별 요약)
+
+==============================================================================
+🔧 Multi-Domain 실험 결과 형식:
+==============================================================================
+
+JSON 구조:
+{
+  "source_results": {
+    "domain": "domain_B",
+    "auroc": 0.999999,
+    ...
+  },
+  "target_results": {
+    "domain_A": {
+      "domain": "domain_A",
+      "auroc": 0.994671,
+      ...
+    },
+    "domain_C": {...},
+    "domain_D": {...}
+  },
+  "config": {
+    "severity_input_channels": "original+recon",
+    ...
+  }
+}
 
 ==============================================================================
 🔧 고급 옵션:
@@ -225,22 +263,42 @@ def analyze_all_models(results_base_dir: str, output: str = None):
 
         if not multi_avg_df.empty:
             print(f"\n📊 Multi-Domain 실험별 평균 성능 (Source → Target Mean AUROC):")
-            print("-" * 80)
+            print("-" * 110)
+
+            # 각 실험에 대해 target domain들의 std 계산
+            multi_targets_for_std = multi_domain_df[multi_domain_df['target_domain'] != 'Average'].copy()
+
+            # 실험별 target AUROC의 std 계산
+            exp_target_std = multi_targets_for_std.groupby('experiment_name')['target_AUROC'].std().to_dict()
+
+            # multi_avg_df에 std 추가
+            multi_avg_df['target_std'] = multi_avg_df['experiment_name'].map(exp_target_std)
 
             # 실험명에서 설정 정보 추출 및 정렬
             multi_avg_df_sorted = multi_avg_df.sort_values(['source_domain', 'target_AUROC'], ascending=[True, False])
 
-            print(f"{'실험명':<45} {'Source':<8} {'Src AUROC':<10} {'Tgt Avg':<10} {'Severity Ch':<15}")
-            print("-" * 95)
+            print(f"{'실험명':<40} {'Source':<8} {'Src AUROC':<10} {'Tgt Avg±Std':<18} {'Severity Ch':<15}")
+            print("-" * 110)
 
             for _, row in multi_avg_df_sorted.iterrows():
-                exp_name = row['experiment_name'][:40] + "..." if len(row['experiment_name']) > 40 else row['experiment_name']
+                exp_name = row['experiment_name'][:35] + "..." if len(row['experiment_name']) > 35 else row['experiment_name']
                 source_dom = str(row['source_domain']).replace('domain_', '') if row['source_domain'] else 'N/A'
-                src_auroc = f"{row['source_AUROC']:.6f}" if row['source_AUROC'] is not None else 'N/A'
-                tgt_auroc = f"{row['target_AUROC']:.6f}" if row['target_AUROC'] != 'N/A' else 'N/A'
+                src_auroc = f"{row['source_AUROC']:.4f}" if row['source_AUROC'] is not None else 'N/A'
+
+                # Target AUROC with std
+                if row['target_AUROC'] != 'N/A':
+                    tgt_mean = row['target_AUROC']
+                    tgt_std = row.get('target_std', None)
+                    if tgt_std is not None and not pd.isna(tgt_std):
+                        tgt_auroc = f"{tgt_mean:.4f}±{tgt_std:.4f}"
+                    else:
+                        tgt_auroc = f"{tgt_mean:.4f}"
+                else:
+                    tgt_auroc = 'N/A'
+
                 severity_ch = str(row['severity_input_channels'])[:12] + "..." if len(str(row['severity_input_channels'])) > 12 else str(row['severity_input_channels'])
 
-                print(f"{exp_name:<45} {source_dom:<8} {src_auroc:<10} {tgt_auroc:<10} {severity_ch:<15}")
+                print(f"{exp_name:<40} {source_dom:<8} {src_auroc:<10} {tgt_auroc:<18} {severity_ch:<15}")
 
         # Source domain별 성능 요약
         print(f"\n📈 Source Domain별 성능 요약:")
