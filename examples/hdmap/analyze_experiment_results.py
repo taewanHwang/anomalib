@@ -419,20 +419,31 @@ def analyze_all_models(results_base_dir: str, output: str = None):
         print(f"📊 실험 조건별 평균 성능 분석 (Single-domain)")
         print(f"{'='*80}")
         
-        # 실험 이름에서 도메인과 조건 추출
+        # 실험 이름에서 도메인과 조건 추출 (exp-15.A.3_20251002_022729 형태 처리)
         def extract_condition_and_domain(exp_name):
+            # timestamp 제거: 마지막 두 부분이 숫자_숫자 형태인 경우 제거
             parts = exp_name.split('_')
-            if len(parts) >= 2:
-                domain = parts[0]  # domainA, domainB, etc.
-                # timestamp 제거 (마지막 부분이 숫자로만 이루어진 경우)
-                condition_parts = []
-                for part in parts[1:]:
-                    if part.replace('_', '').isdigit() and len(part) >= 8:  # timestamp 형태
-                        break
-                    condition_parts.append(part)
-                condition = '_'.join(condition_parts)
-                return domain, condition
-            return None, None
+            if len(parts) >= 3:
+                # 마지막 두 부분이 timestamp인지 확인 (YYYYMMDD_HHMMSS 형태)
+                if (parts[-2].isdigit() and len(parts[-2]) == 8 and 
+                    parts[-1].isdigit() and len(parts[-1]) == 6):
+                    # timestamp 제거
+                    condition = '_'.join(parts[:-2])
+                else:
+                    condition = exp_name
+            else:
+                condition = exp_name
+            
+            # exp-15.A.3 형태에서 도메인 추출
+            if '.' in condition:
+                # exp-15.A.3 -> domain_A
+                parts = condition.split('.')
+                if len(parts) >= 2:
+                    domain_letter = parts[1]  # A, B, C, D
+                    domain = f"domain_{domain_letter}"
+                    return domain, condition
+            
+            return None, condition
         
         single_domain_df['domain'] = single_domain_df['experiment_name'].apply(lambda x: extract_condition_and_domain(x)[0])
         single_domain_df['condition'] = single_domain_df['experiment_name'].apply(lambda x: extract_condition_and_domain(x)[1])
@@ -495,6 +506,84 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                         line += f" {'N/A':<10}"
                 line += f" {row['Overall_Avg']:<10.6f}"
                 print(line)
+            
+            # 실험 번호별 그룹핑 분석 추가 (exp-15.x.1 -> 15.1로 그룹핑)
+            # 실험 조건에서 실험 번호 추출 (exp-15.A.1 -> 15.1)
+            def extract_experiment_number(condition):
+                if '.' in condition and condition.startswith('exp-'):
+                    parts = condition.split('.')
+                    if len(parts) >= 3:
+                        # exp-15.A.1 -> 15.1
+                        exp_prefix = parts[0].replace('exp-', '')
+                        exp_number = parts[2]
+                        return f"{exp_prefix}.{exp_number}"
+                return None
+            
+            valid_df['experiment_number'] = valid_df['condition'].apply(extract_experiment_number)
+            
+            # 실험 번호별 분석 (도메인 간 평균)
+            exp_number_df = valid_df[valid_df['experiment_number'].notna()].copy()
+            
+            if not exp_number_df.empty:
+                print(f"\n🔬 실험 번호별 도메인 간 성능 분석 (예: 15.1 = A,B,C,D 도메인 평균):")
+                print("-" * 80)
+                
+                # 실험 번호별 평균 계산
+                exp_number_avg = exp_number_df.groupby('experiment_number')['source_AUROC'].agg(['mean', 'std', 'count']).reset_index()
+                exp_number_avg.columns = ['experiment_number', 'avg_AUROC', 'std_AUROC', 'experiment_count']
+                exp_number_avg = exp_number_avg.sort_values('avg_AUROC', ascending=False)
+                
+                print(f"{'실험 번호':<15} {'평균 AUROC':<12} {'표준편차':<12} {'실험 수':<8} {'포함 도메인':<20}")
+                print("-" * 80)
+                
+                for _, row in exp_number_avg.iterrows():
+                    # 해당 실험 번호에 포함된 도메인들 찾기
+                    domains_in_exp = exp_number_df[exp_number_df['experiment_number'] == row['experiment_number']]['domain'].unique()
+                    domains_str = ', '.join([d.replace('domain_', '') for d in sorted(domains_in_exp)])
+                    
+                    std_str = f"±{row['std_AUROC']:.6f}" if pd.notna(row['std_AUROC']) and row['std_AUROC'] > 0 else "±0.000000"
+                    print(f"{row['experiment_number']:<15} {row['avg_AUROC']:.6f}     {std_str:<12} {int(row['experiment_count']):<8} {domains_str:<20}")
+                
+                # 실험 번호별, 도메인별 상세 매트릭스
+                exp_number_domain_pivot = exp_number_df.pivot_table(
+                    values='source_AUROC',
+                    index='experiment_number',
+                    columns='domain',
+                    aggfunc='mean',
+                    fill_value=None
+                )
+                
+                print(f"\n📊 실험 번호별 도메인 성능 매트릭스:")
+                print("=" * 100)
+                
+                # 각 실험 번호의 평균 추가
+                exp_number_domain_pivot['Average'] = exp_number_domain_pivot.mean(axis=1)
+                exp_number_domain_pivot = exp_number_domain_pivot.sort_values('Average', ascending=False)
+                
+                # 헤더 출력
+                header = f"{'실험 번호':<15}"
+                domains = [col for col in exp_number_domain_pivot.columns if col.startswith('domain_')]
+                for domain in sorted(domains):
+                    header += f" {domain.replace('domain_', 'Dom_'):<12}"
+                header += f" {'평균':<12}"
+                print(header)
+                print("-" * len(header))
+                
+                # 각 행 출력
+                for exp_num, row in exp_number_domain_pivot.iterrows():
+                    line = f"{exp_num:<15}"
+                    for domain in sorted(domains):
+                        if domain in row and pd.notna(row[domain]):
+                            line += f" {row[domain]:<12.6f}"
+                        else:
+                            line += f" {'N/A':<12}"
+                    line += f" {row['Average']:<12.6f}"
+                    print(line)
+                
+                # 실험 번호별 요약 CSV 저장
+                exp_number_summary_path = Path(output).parent / "experiment_number_summary.csv" if output else results_base_path / "experiment_number_summary.csv"
+                exp_number_domain_pivot.to_csv(exp_number_summary_path, encoding='utf-8-sig')
+                print(f"\n💾 실험 번호별 요약 저장됨: {exp_number_summary_path}")
             
             # CSV로도 저장
             condition_summary_path = Path(output).parent / "experiment_condition_summary.csv" if output else results_base_path / "experiment_condition_summary.csv"
