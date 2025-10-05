@@ -84,7 +84,10 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Loss function parameters
         clf_weight: float = 1.0,
-        
+
+        # Learning rate parameters
+        recon_lr_multiplier: float = 10.0,  # Reconstruction network LR multiplier
+
         # Severity head input configuration
         severity_input_channels: str = "original+mask+recon",
 
@@ -110,7 +113,10 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Loss weights
         self.clf_weight = clf_weight
-        
+
+        # Learning rate parameters
+        self.recon_lr_multiplier = recon_lr_multiplier
+
         # Severity head configuration
         self.severity_input_channels = severity_input_channels
 
@@ -168,17 +174,30 @@ class DraemCutPasteClf(AnomalibModule):
         optimizer_type = training_config['optimizer'].lower()
         weight_decay = training_config['weight_decay']
 
+        # Reconstruction network learning rate (increased for better reconstruction)
+        recon_lr = learning_rate * self.recon_lr_multiplier
+
+        # Parameter groups: reconstruction network vs others
+        recon_params = list(self.model.reconstructive_subnetwork.parameters())
+        other_params = [
+            p for n, p in self.model.named_parameters()
+            if not n.startswith('reconstructive_subnetwork')
+        ]
+
+        param_groups = [
+            {'params': recon_params, 'lr': recon_lr, 'name': 'reconstruction'},
+            {'params': other_params, 'lr': learning_rate, 'name': 'others'}
+        ]
+
         # 옵티마이저 선택
         if optimizer_type == 'adam':
             optimizer = torch.optim.Adam(
-                params=self.parameters(),
-                lr=learning_rate,
+                params=param_groups,
                 weight_decay=weight_decay,
             )
         elif optimizer_type == 'adamw':
             optimizer = torch.optim.AdamW(
-                params=self.parameters(),
-                lr=learning_rate,
+                params=param_groups,
                 weight_decay=weight_decay,
             )
         else:
@@ -236,6 +255,43 @@ class DraemCutPasteClf(AnomalibModule):
                 }
             }
 
+        elif scheduler_type == 'warmup_steplr':
+            # Warmup + StepLR 스케줄러 설정
+            warmup_epochs = scheduler_config.get('warmup_epochs', 2)
+            step_size = scheduler_config.get('step_size', 5)
+            gamma = scheduler_config.get('gamma', 0.5)
+
+            # Warmup phase: 0 → learning_rate
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=0.1,  # Start at 10% of base LR
+                end_factor=1.0,    # End at 100% of base LR
+                total_iters=warmup_epochs
+            )
+
+            # Main phase: StepLR decay
+            main_scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=step_size,
+                gamma=gamma
+            )
+
+            # Combine warmup and main scheduler
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, main_scheduler],
+                milestones=[warmup_epochs]
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',
+                    'frequency': 1,
+                }
+            }
+
         else:
             print(f"Warning: Unknown scheduler type '{scheduler_type}', using optimizer only")
             return optimizer
@@ -278,9 +334,11 @@ class DraemCutPasteClf(AnomalibModule):
             if loss_name != "total_loss":  # Avoid duplicate logging
                 self.log(f"train_{loss_name}", loss_value, on_step=False, on_epoch=True)
 
-        # Log learning rate
-        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
-        self.log("learning_rate", current_lr, on_step=True, on_epoch=True)
+        # Log learning rates for each parameter group
+        optimizer = self.trainer.optimizers[0]
+        for idx, param_group in enumerate(optimizer.param_groups):
+            group_name = param_group.get('name', f'group_{idx}')
+            self.log(f"lr/{group_name}", param_group['lr'], on_step=True, on_epoch=True)
 
         # Gradient Norm Monitoring (log every 100 steps for efficiency)
         if batch_idx % 100 == 0:

@@ -35,10 +35,9 @@ class DraemCutPasteModel(nn.Module):
             Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head. Defaults to ``0.3``.
         severity_input_channels (str, optional): Channels to use for severity head input.
-            Options: "original", "mask", "recon", "residual", "original+mask", "original+recon",
-            "original+residual", "mask+recon", "mask+residual", "recon+residual",
-            "original+mask+recon", "original+mask+residual", etc.
-            Defaults to ``"original+mask+recon"``.
+            Options: "original", "mask", "residual", "original+mask", "original+residual",
+            "mask+residual", "original+mask+residual", etc.
+            Defaults to ``"original+mask+residual"``.
 
         # CutPaste generator parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths. Defaults to ``(10, 80)``.
@@ -63,7 +62,7 @@ class DraemCutPasteModel(nn.Module):
         sspcab: bool = False,
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
-        severity_input_channels: str = "original+mask+recon",
+        severity_input_channels: str = "original+mask+residual",
         # CutPaste generator parameters
         cut_w_range: tuple[int, int] = (10, 80),
         cut_h_range: tuple[int, int] = (1, 2),
@@ -133,6 +132,8 @@ class DraemCutPasteModel(nn.Module):
     def _calculate_severity_in_channels(self, severity_input_channels: str) -> int:
         """Calculate number of input channels based on configuration.
 
+        Supported channels: original, mask, residual
+
         Args:
             severity_input_channels: Channel configuration string
 
@@ -143,8 +144,6 @@ class DraemCutPasteModel(nn.Module):
         if "original" in severity_input_channels:
             channel_count += 1
         if "mask" in severity_input_channels:
-            channel_count += 1
-        if "recon" in severity_input_channels:
             channel_count += 1
         if "residual" in severity_input_channels:
             channel_count += 1
@@ -167,18 +166,17 @@ class DraemCutPasteModel(nn.Module):
         allowing each subnet to focus on its dedicated loss (MSE/SSIM/Focal).
 
         Supported input channels:
-        - "original": Original single channel image [0, 1]
-        - "mask": Anomaly probability mask from discriminative network [0, 1]
-        - "recon": Normalized reconstruction using sigmoid [0, 1]
-        - "residual": Reconstruction error |original - sigmoid(recon)| [0, 1]
+        - "original": Original single channel image [0, 1] bounded
+        - "mask": Anomaly probability mask from discriminative network [0, 1] bounded
+        - "residual": Reconstruction error |original - recon_raw| [unbounded → bounded]
 
         Args:
             original_single_ch: Single channel original image (already 0~1 normalized)
             prediction: Full prediction tensor from discriminative network (logit values)
-            reconstruction: Single channel reconstructed image (needs normalization)
+            reconstruction: Single channel reconstructed image (raw output, unbounded)
 
         Returns:
-            Concatenated tensor for severity head input with consistent 0~1 scale
+            Concatenated tensor for severity head input
         """
         inputs = []
 
@@ -194,17 +192,10 @@ class DraemCutPasteModel(nn.Module):
                 mask_normalized = mask_normalized.detach()
             inputs.append(mask_normalized)
 
-        if "recon" in self.severity_input_channels:
-            # Normalize reconstruction using sigmoid to [0, 1] range
-            recon_normalized = torch.sigmoid(reconstruction)
-            # Detach during training to prevent CE gradients flowing to reconstructive subnet
-            if self.training:
-                recon_normalized = recon_normalized.detach()
-            inputs.append(recon_normalized)
-
         if "residual" in self.severity_input_channels:
-            # Calculate residual (reconstruction error) as |original - sigmoid(reconstruction)|
-            residual = (original_single_ch - torch.sigmoid(reconstruction)).abs()
+            # Calculate residual (reconstruction error) as |original - reconstruction|
+            # Use raw reconstruction output (consistent with L2/SSIM loss calculation)
+            residual = (original_single_ch - reconstruction).abs()
             # Detach during training to prevent CE gradients flowing to reconstructive subnet
             if self.training:
                 residual = residual.detach()
@@ -261,9 +252,9 @@ class DraemCutPasteModel(nn.Module):
         # Pass through reconstructive network (reconstruct augmented images)
         reconstruction = self.reconstructive_subnetwork(augmented_single_ch)
 
-        # Concatenate reconstruction and augmented single channel for discriminative network
-        # 1-channel DRAEM expects 2 channels: [reconstructed(1) + augmented(1)]
-        joined_input = torch.cat([reconstruction, augmented_single_ch], dim=1)
+        # Concatenate augmented and reconstruction for discriminative network
+        # Follow DRAEM convention: [original, reconstruction]
+        joined_input = torch.cat([augmented_single_ch, reconstruction], dim=1)
 
         # Pass through discriminative network to get anomaly prediction
         prediction = self.discriminative_subnetwork(joined_input)
@@ -294,8 +285,9 @@ class DraemCutPasteModel(nn.Module):
         # Pass through reconstructive network (no augmentation during inference)
         reconstruction = self.reconstructive_subnetwork(batch_single_ch)
 
-        # Concatenate reconstruction and original single channel for discriminative network
-        joined_input = torch.cat([reconstruction, batch_single_ch], dim=1)
+        # Concatenate original and reconstruction for discriminative network
+        # Follow DRAEM convention: [original, reconstruction]
+        joined_input = torch.cat([batch_single_ch, reconstruction], dim=1)
 
         # Pass through discriminative network
         prediction = self.discriminative_subnetwork(joined_input)
