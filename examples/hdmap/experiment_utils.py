@@ -968,10 +968,10 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             final_scores = extract_scores_from_model_output(
                 model_output, image_tensor.shape[0], batch_idx, model_type
             )
-            
+
             # 시각화 생성 (전체 배치)
-            create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx)
-            
+            create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=torch_model)
+
             # Ground truth 추출 (이미지 경로에서)
             gt_labels = []
             for path in image_paths:
@@ -1203,12 +1203,16 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
     return final_scores
 
 
-def create_anomaly_heatmap_with_colorbar(anomaly_map_array, target_size, cmap='viridis', show_colorbar=False):
+def create_anomaly_heatmap_with_colorbar(
+    anomaly_map_array,
+    cmap='viridis',
+    show_colorbar=False,
+    fixed_range=True
+):
     """Anomaly heatmap 생성 (colorbar 옵션)
-    
+
     Args:
         anomaly_map_array: numpy array [H, W]
-        target_size: (width, height) 목표 크기
         cmap: matplotlib colormap 이름 (기본값: 'viridis')
               - 'viridis': 파란색->초록색->노란색 (권장)
               - 'jet': 파란색->청록->노랑->빨강 (기존)
@@ -1218,7 +1222,8 @@ def create_anomaly_heatmap_with_colorbar(anomaly_map_array, target_size, cmap='v
               - 'turbo': 파란색->청록->초록->노랑->빨강
               - 'coolwarm': 파란색->흰색->빨강
         show_colorbar: colorbar 표시 여부 (기본값: False)
-        
+        fixed_range: colorbar range를 0~1로 고정할지 여부 (기본값: True)
+
     Returns:
         PIL.Image: heatmap 이미지 (colorbar 포함/제외)
     """
@@ -1227,147 +1232,341 @@ def create_anomaly_heatmap_with_colorbar(anomaly_map_array, target_size, cmap='v
     from matplotlib.colors import Normalize
     import io
     from PIL import Image
-    
-    # 값 범위 계산
-    vmin = anomaly_map_array.min()
-    vmax = anomaly_map_array.max()
-    
+    import numpy as np
+
+    # 값 범위 설정
+    if fixed_range:
+        vmin, vmax = 0.0, 1.0
+    else:
+        vmin = anomaly_map_array.min()
+        vmax = anomaly_map_array.max()
+
     # Figure 크기 및 레이아웃 설정
     if show_colorbar:
         # Colorbar 포함 레이아웃
         fig_width = 6
         fig_height = 4
-        fig, (ax_img, ax_cbar) = plt.subplots(1, 2, figsize=(fig_width, fig_height), 
+        fig, (ax_img, ax_cbar) = plt.subplots(1, 2, figsize=(fig_width, fig_height),
                                               gridspec_kw={'width_ratios': [4, 0.3]})
     else:
         # Colorbar 없는 레이아웃
         fig_width = 4
         fig_height = 4
         fig, ax_img = plt.subplots(1, 1, figsize=(fig_width, fig_height))
-    
+
     # Heatmap 생성
     norm = Normalize(vmin=vmin, vmax=vmax)
     im = ax_img.imshow(anomaly_map_array, cmap=cmap, norm=norm, aspect='auto')
     ax_img.axis('off')
-    
+
     # Colorbar 생성 (옵션에 따라)
     if show_colorbar:
         cbar = plt.colorbar(im, cax=ax_cbar)
         cbar.set_label('Anomaly Score', rotation=270, labelpad=15, fontsize=9)
         cbar.ax.tick_params(labelsize=8)
-    
+
     plt.tight_layout()
-    
+
     # PIL 이미지로 변환
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', pad_inches=0.05)
     buf.seek(0)
     heatmap_pil = Image.open(buf).convert('RGB')
     plt.close()
-    
+
     return heatmap_pil
 
 
-def create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx):
-    """배치에 대한 시각화 생성 (원본 이미지 + anomaly map)
-    
+def create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=None):
+    """배치에 대한 시각화 생성
+
+    - DRAEM 계열 (DRAEM, DRAEM CutPaste Clf): original, recon, residual, original+anomaly maps (4개)
+    - 기타 모델: original, original+anomaly maps (2개)
+
     Args:
         image_tensor: 입력 이미지 텐서 [B, C, H, W]
         model_output: 모델 출력 객체
         image_paths: 이미지 경로 리스트
         visualization_dir: 시각화 저장 디렉터리
         batch_idx: 배치 인덱스
+        model: 모델 객체 (DRAEM 계열 모델인 경우 reconstruction 계산용)
     """
     import numpy as np
     from PIL import Image
     from pathlib import Path
-    
+    import torch
+
     # anomalib 시각화 함수들 import
     from anomalib.visualization.image.functional import (
         overlay_images,
         create_image_grid,
         add_text_to_image
     )
-    
-    # 배치에서 anomaly map 추출
+
+    # 배치에서 anomaly map 및 mask 추출
     anomaly_maps = None
+    masks = None
     if hasattr(model_output, 'anomaly_map'):
         anomaly_maps = model_output.anomaly_map
     else:
         return
-    
+
+    # Mask 추출 (있는 경우) - pred_mask 또는 gt_mask
+    if hasattr(model_output, 'pred_mask') and model_output.pred_mask is not None:
+        masks = model_output.pred_mask
+    elif hasattr(model_output, 'gt_mask') and model_output.gt_mask is not None:
+        masks = model_output.gt_mask
+
+    # DRAEM 계열 모델인지 확인 (DRAEM, DRAEM CutPaste Clf)
+    is_draem = (model is not None and
+                hasattr(model, 'reconstructive_subnetwork') and
+                hasattr(model, 'discriminative_subnetwork'))
+
+    # DRAEM 계열 모델인 경우 reconstruction과 residual, discriminative anomaly 계산
+    recon_batch = None
+    residual_batch = None
+    disc_anomaly_batch = None
+    if is_draem:
+        with torch.no_grad():
+            # 모델의 입력 채널 수 확인
+            # DRAEM CutPaste Clf: 1채널, 원본 DRAEM: 3채널
+            # encoder.block1[0]이 첫 번째 Conv2d 레이어
+            model_input_channels = model.reconstructive_subnetwork.encoder.block1[0].in_channels
+
+            # 모델 타입 확인
+            model_name = "DRAEM CutPaste Clf" if hasattr(model, 'severity_head') else "DRAEM"
+            print(f"   📊 Model Type: {model_name}")
+            print(f"   🔧 Model Input Channels: {model_input_channels}")
+            print(f"   📷 Image Tensor Shape: {image_tensor.shape}")
+
+            # 모델 입력 채널 수에 맞게 이미지 준비
+            if model_input_channels == 1:
+                # 1채널 모델: 첫 번째 채널만 사용
+                batch_input = image_tensor[:, :1, :, :]
+                print(f"   ✂️  Using 1-channel mode: {batch_input.shape}")
+            else:
+                # 3채널 모델: 전체 사용
+                batch_input = image_tensor
+                print(f"   🎨 Using 3-channel mode: {batch_input.shape}")
+
+            # Reconstruction 계산 (raw 값 직접 사용, sigmoid 제거)
+            recon_batch = model.reconstructive_subnetwork(batch_input)
+
+            # 🔍 DEBUG: reconstruction 값 범위 출력
+            print(f"      🔍 Reconstruction stats:")
+            print(f"         - min={recon_batch.min():.4f}, max={recon_batch.max():.4f}, mean={recon_batch.mean():.4f}, std={recon_batch.std():.4f}")
+            print(f"      🔍 Input stats:")
+            print(f"         - min={batch_input.min():.4f}, max={batch_input.max():.4f}, mean={batch_input.mean():.4f}, std={batch_input.std():.4f}")
+
+            # Residual 계산 (첫 번째 채널만 사용하여 시각화)
+            residual_batch = (batch_input[:, :1, :, :] - recon_batch[:, :1, :, :]).abs()
+
+            # Discriminative network 계산 (anomaly channel 추출)
+            # Follow DRAEM convention: [original, reconstruction]
+            joined_input = torch.cat([batch_input, recon_batch], dim=1)
+            print(f"   🔗 Concat order: [original({batch_input.shape[1]}ch), recon({recon_batch.shape[1]}ch)] -> {joined_input.shape}")
+            disc_output = model.discriminative_subnetwork(joined_input)
+
+            # Softmax 적용하여 anomaly channel (channel 1) 추출
+            # disc_output shape: [B, 2, H, W] -> [B, 1, H, W] (anomaly channel만)
+            disc_anomaly_batch = torch.softmax(disc_output, dim=1)[:, 1:2, :, :]
+
+            # 🔍 DEBUG: discriminative anomaly 값 범위 출력
+            print(f"      🔍 Discriminative Anomaly stats:")
+            print(f"         - min={disc_anomaly_batch.min():.4f}, max={disc_anomaly_batch.max():.4f}, mean={disc_anomaly_batch.mean():.4f}, std={disc_anomaly_batch.std():.4f}")
+
     # 배치 크기
     batch_size = image_tensor.shape[0]
-    
+
     # 각 이미지에 대해 시각화 생성
     for i in range(batch_size):  # 전체 배치 시각화
         try:
             # 원본 이미지 추출 및 변환
             original_img_tensor = image_tensor[i]  # [C, H, W]
-            
-            # 텐서를 PIL 이미지로 변환 (정규화 해제)
-            # 이미지가 [0, 1] 범위라고 가정
-            if original_img_tensor.max() <= 1.0:
-                original_img_array = (original_img_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+
+            # Min-max normalization으로 [0, 1] 범위로 변환
+            original_np = original_img_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, C]
+            original_min = original_np.min()
+            original_max = original_np.max()
+            if original_max > original_min:
+                original_normalized = (original_np - original_min) / (original_max - original_min)
             else:
-                original_img_array = original_img_tensor.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
-            
+                original_normalized = np.zeros_like(original_np)
+            original_img_array = (original_normalized * 255).astype(np.uint8)
+
+            print(f"      🔍 Original normalization: [{original_min:.4f}, {original_max:.4f}] -> [0, 1]")
+
             # 그레이스케일인 경우 RGB로 변환
             if original_img_array.shape[2] == 1:
                 original_img_array = np.repeat(original_img_array, 3, axis=2)
             elif original_img_array.shape[2] > 3:
                 original_img_array = original_img_array[:, :, :3]
-                
+
             original_img_pil = Image.fromarray(original_img_array, mode='RGB')
-            
+
             # Anomaly map 추출 및 변환
             anomaly_map_tensor = anomaly_maps[i]  # [H, W] 또는 [1, H, W]
             if len(anomaly_map_tensor.shape) == 3:
                 anomaly_map_tensor = anomaly_map_tensor.squeeze(0)  # [H, W]
-            
-            # 원본 이미지와 anomaly map 크기 맞추기
-            target_size = original_img_pil.size
-            
-            # anomaly map을 matplotlib으로 시각화
-            # 다른 colormap 옵션: 'jet', 'hot', 'plasma', 'inferno', 'turbo', 'coolwarm'
+
+            # Mask 추출 (boundary 표시용)
+            mask_for_boundary = None
+            if masks is not None:
+                mask_tensor = masks[i]  # [H, W] 또는 [1, H, W]
+                if len(mask_tensor.shape) == 3:
+                    mask_tensor = mask_tensor.squeeze(0)  # [H, W]
+                mask_for_boundary = mask_tensor.cpu().numpy()
+
+            # anomaly map을 matplotlib으로 시각화 (colorbar=False)
             anomaly_map_vis = create_anomaly_heatmap_with_colorbar(
                 anomaly_map_tensor.cpu().numpy(),
-                target_size,
-                cmap='hot',        # 원하는 colormap으로 변경 가능
-                show_colorbar=False    # colorbar 표시: True/False
+                cmap='jet',
+                show_colorbar=False,
+                fixed_range=True  # 0~1 고정
             )
-            
-            # 오버레이 생성 (원본 + anomaly map)
+
+            # anomaly map 시각화 (colorbar=True)
+            anomaly_map_vis_with_colorbar = create_anomaly_heatmap_with_colorbar(
+                anomaly_map_tensor.cpu().numpy(),
+                cmap='jet',
+                show_colorbar=True,
+                fixed_range=True  # 0~1 고정
+            )
+
+            # 오버레이 생성 (원본 + anomaly map, colorbar=False)
             overlay_img = overlay_images(
                 base=original_img_pil,
                 overlays=anomaly_map_vis,
                 alpha=0.5
             )
-            
-            # 텍스트 추가
-            original_with_text = add_text_to_image(
-                original_img_pil.copy(), 
-                "Original Image",
-                font=None, size=10, color="white", background=(0, 0, 0, 128)
+
+            # 오버레이 생성 (원본 + anomaly map, colorbar=True)
+            overlay_img_with_colorbar = overlay_images(
+                base=original_img_pil,
+                overlays=anomaly_map_vis_with_colorbar,
+                alpha=0.5
             )
-            
-            overlay_with_text = add_text_to_image(
-                overlay_img.copy(), 
-                "Original + Anomaly Map",
-                font=None, size=10, color="white", background=(0, 0, 0, 128)
-            )
-            
-            # 2개 이미지를 가로로 배치
-            visualization_grid = create_image_grid(
-                [original_with_text, overlay_with_text], 
-                nrow=2
-            )
-            
+
+            # DRAEM 계열 모델인 경우 6개 이미지 시각화
+            if is_draem and recon_batch is not None and residual_batch is not None:
+                # Reconstruction 이미지 생성
+                recon_tensor = recon_batch[i]  # [C, H, W] - C는 1 또는 3
+
+                # Min-max normalization으로 [0, 1] 범위로 변환
+                recon_np = recon_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, C]
+                recon_min = recon_np.min()
+                recon_max = recon_np.max()
+                if recon_max > recon_min:
+                    recon_normalized = (recon_np - recon_min) / (recon_max - recon_min)
+                else:
+                    recon_normalized = np.zeros_like(recon_np)
+                recon_array = (recon_normalized * 255).astype(np.uint8)
+
+                print(f"      🔍 Recon normalization: [{recon_min:.4f}, {recon_max:.4f}] -> [0, 1]")
+
+                # 채널 수에 따라 처리
+                if recon_array.shape[2] == 1:
+                    recon_array = np.repeat(recon_array, 3, axis=2)  # 1채널 → RGB
+                elif recon_array.shape[2] == 3:
+                    pass  # 이미 3채널, 그대로 사용
+                else:
+                    recon_array = recon_array[:, :, :3]  # 3채널 초과시 앞 3개만
+                recon_img_pil = Image.fromarray(recon_array, mode='RGB')
+
+                # Residual 이미지 생성
+                residual_tensor = residual_batch[i]  # [1, H, W] - residual은 항상 1채널
+
+                # Min-max normalization으로 [0, 1] 범위로 변환
+                residual_np = residual_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, 1]
+                residual_min = residual_np.min()
+                residual_max = residual_np.max()
+                if residual_max > residual_min:
+                    residual_normalized = (residual_np - residual_min) / (residual_max - residual_min)
+                else:
+                    residual_normalized = np.zeros_like(residual_np)
+                residual_array = (residual_normalized * 255).astype(np.uint8)
+
+                print(f"      🔍 Residual normalization: [{residual_min:.4f}, {residual_max:.4f}] -> [0, 1]")
+
+                residual_array = np.repeat(residual_array, 3, axis=2)  # 1채널 → RGB
+                residual_img_pil = Image.fromarray(residual_array, mode='RGB')
+
+                # Discriminative Anomaly 이미지 생성
+                disc_anomaly_tensor = disc_anomaly_batch[i]  # [1, H, W] - softmax된 anomaly channel
+
+                # Softmax 출력은 [0, 1] 범위
+                disc_anomaly_array = (disc_anomaly_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                disc_anomaly_array = np.repeat(disc_anomaly_array, 3, axis=2)  # 1채널 → RGB
+                disc_anomaly_img_pil = Image.fromarray(disc_anomaly_array, mode='RGB')
+
+                # 텍스트 추가
+                original_with_text = add_text_to_image(
+                    original_img_pil.copy(),
+                    "Original",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                recon_with_text = add_text_to_image(
+                    recon_img_pil.copy(),
+                    "Reconstruction",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                residual_with_text = add_text_to_image(
+                    residual_img_pil.copy(),
+                    "Residual",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                disc_anomaly_with_text = add_text_to_image(
+                    disc_anomaly_img_pil.copy(),
+                    "Disc Anomaly",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                overlay_with_text = add_text_to_image(
+                    overlay_img.copy(),
+                    "Original + Anomaly Map",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                overlay_with_colorbar_text = add_text_to_image(
+                    overlay_img_with_colorbar.copy(),
+                    "Original + Anomaly Map (colorbar)",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                # 6개 이미지를 3열 그리드로 배치 (2행 x 3열)
+                visualization_grid = create_image_grid(
+                    [original_with_text, recon_with_text, residual_with_text,
+                     disc_anomaly_with_text, overlay_with_text, overlay_with_colorbar_text],
+                    nrow=3
+                )
+            else:
+                # 기타 모델: 2개 이미지 시각화
+                original_with_text = add_text_to_image(
+                    original_img_pil.copy(),
+                    "Original Image",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                overlay_with_text = add_text_to_image(
+                    overlay_img.copy(),
+                    "Original + Anomaly Map",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                # 2개 이미지를 가로로 배치
+                visualization_grid = create_image_grid(
+                    [original_with_text, overlay_with_text],
+                    nrow=2
+                )
+
             # 파일명 및 디렉터리 생성 (레이블별로 분류)
             if i < len(image_paths):
                 image_path = Path(image_paths[i])
                 image_filename = image_path.stem
-                
+
                 # 경로에서 레이블 추출 (fault 또는 good)
                 label = None
                 if '/fault/' in str(image_path):
@@ -1376,11 +1575,11 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     label = 'good'
                 else:
                     label = 'unknown'
-                
+
                 # 레이블별 디렉터리 생성
                 label_dir = visualization_dir / label
                 label_dir.mkdir(exist_ok=True)
-                
+
                 # 파일명은 원본 이미지 이름 사용
                 save_filename = f"{image_filename}.png"
                 save_path = label_dir / save_filename
@@ -1388,10 +1587,10 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 # 이미지 경로가 없는 경우 기본 형식 사용
                 save_filename = f"batch_{batch_idx:03d}_sample_{i:02d}.png"
                 save_path = visualization_dir / save_filename
-            
+
             # 이미지 저장
             visualization_grid.save(save_path)
-            
+
         except Exception as e:
             print(f"❌ 샘플 {i} 시각화 실패: {e}")
             import traceback
@@ -1612,7 +1811,8 @@ def evaluate_source_domain(
                     outputs,
                     image_paths,
                     visualization_dir,  # batch 폴더 없이 직접 전달
-                    batch_idx
+                    batch_idx,
+                    model=model.model if hasattr(model, 'model') else None
                 )
 
             if verbose and (batch_idx + 1) % 10 == 0:
@@ -1807,7 +2007,8 @@ def evaluate_target_domains(
                         outputs,
                         image_paths,
                         domain_viz_dir,  # batch 폴더 없이 직접 전달
-                        batch_idx
+                        batch_idx,
+                        model=model.model if hasattr(model, 'model') else None
                     )
 
                 if verbose and (batch_idx + 1) % 10 == 0:
@@ -2010,15 +2211,3 @@ def analyze_experiment_results(
             print(f"\n💾 분석 결과 저장: {save_path}")
 
     return analysis
-
-
-def organize_source_domain_results(*args, **kwargs):
-    """Deprecated - 시각화는 evaluate 함수에서 직접 처리됨."""
-    import warnings
-    warnings.warn(
-        "organize_source_domain_results is deprecated. "
-        "Visualizations are now handled directly in evaluate functions.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return {'organized': True}
