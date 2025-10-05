@@ -104,6 +104,32 @@ class DraemCutPasteModel(nn.Module):
             validation_enabled=True
         )
 
+        # Initialize weights for better training stability
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        """Initialize network weights using Kaiming/Xavier initialization.
+
+        - Conv layers: Kaiming initialization (better for ReLU)
+        - Linear layers: Xavier initialization (better for Sigmoid/Tanh)
+        - BatchNorm: weights=1, bias=0
+        """
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                # Kaiming initialization for conv layers (ReLU activation)
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.Linear):
+                # Xavier initialization for linear layers
+                nn.init.xavier_normal_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
+                # BatchNorm initialization
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+
     def _calculate_severity_in_channels(self, severity_input_channels: str) -> int:
         """Calculate number of input channels based on configuration.
 
