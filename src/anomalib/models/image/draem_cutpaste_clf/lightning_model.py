@@ -86,7 +86,7 @@ class DraemCutPasteClf(AnomalibModule):
         clf_weight: float = 1.0,
 
         # Learning rate parameters
-        recon_lr_multiplier: float = 10.0,  # Reconstruction network LR multiplier
+        recon_lr_multiplier: float = 1.0,  # Reconstruction network LR multiplier
 
         # Severity head input configuration
         severity_input_channels: str = "original+mask+recon",
