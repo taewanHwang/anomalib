@@ -235,10 +235,21 @@ class MultiDomainAnomalyTrainer:
 
     def create_datamodule(self):
         """MultiDomainHDMAPDataModule 생성"""
+        # dataset_root 상대 경로 처리
+        dataset_root = self.config["dataset_root"]
+        from pathlib import Path
+        dataset_path = Path(dataset_root)
+        if not dataset_path.is_absolute():
+            # 프로젝트 루트 찾기 (anomalib 디렉토리 기준)
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent.parent  # 4단계 상위 = anomalib/
+            dataset_root = str(project_root / dataset_root)
+            print(f"   📁 상대 경로를 절대 경로로 변환: {dataset_root}")
+        
         return create_multi_domain_datamodule(
             source_domain=self.source_domain,
             target_domains=self.target_domains,
-            dataset_root=self.config["dataset_root"],
+            dataset_root=dataset_root,
             batch_size=self.config["batch_size"],
             image_size=self.config["target_size"],
             resize_method=self.config["resize_method"],

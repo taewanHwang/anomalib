@@ -366,8 +366,50 @@ class DraemCutPasteClf(AnomalibModule):
         Returns:
             STEP_OUTPUT: Predictions for evaluation
         """
-        # During validation, we don't apply augmentation
+        # Get inference predictions (no augmentation)
         predictions = self.model(batch.image, training_phase=False)
+
+        # Calculate validation loss on real (non-augmented) data
+        images = batch.image
+        images_single_ch = images[:, :1, :, :]
+        
+        # Get model components for real data (eval mode)
+        with torch.no_grad():
+            # Get reconstruction
+            reconstruction = self.model.reconstructive_subnetwork(images_single_ch)
+            
+            # Get discriminative prediction
+            joined_input = torch.cat([images_single_ch, reconstruction], dim=1)
+            prediction_logits = self.model.discriminative_subnetwork(joined_input)
+            
+            # Get classification (severity head)
+            severity_input = self.model._create_severity_input(
+                images_single_ch, prediction_logits, reconstruction
+            )
+            classification = self.model.severity_head(severity_input)
+            
+            # For validation, we assume normal data (no anomaly)
+            # Create dummy anomaly mask and labels for loss computation
+            batch_size = images.shape[0]
+            device = images.device
+            anomaly_mask = torch.zeros(batch_size, 1, *images.shape[2:], device=device)
+            anomaly_labels = torch.zeros(batch_size, dtype=torch.long, device=device)
+        
+        # Compute validation loss (on normal data)
+        val_total_loss, val_loss_dict = self.loss(
+            reconstruction=reconstruction,
+            original=images_single_ch,
+            prediction=prediction_logits,
+            anomaly_mask=anomaly_mask,
+            classification=classification,
+            anomaly_labels=anomaly_labels,
+        )
+        
+        # Log validation losses
+        self.log("val_loss", val_total_loss, on_step=False, on_epoch=True, prog_bar=True)
+        for loss_name, loss_value in val_loss_dict.items():
+            if loss_name != "total_loss":
+                self.log(f"val_{loss_name}", loss_value, on_step=False, on_epoch=True)
 
         # Combine batch information with predictions for evaluator
         # This ensures AUROC metric gets both pred_score and gt_label

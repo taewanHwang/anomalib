@@ -171,10 +171,20 @@ class BaseAnomalyTrainer:
         if not domain:
             raise ValueError("config에서 'source_domain' 또는 'domain' 필드를 찾을 수 없습니다")
         
-        # dataset_root 필수 체크
+        # dataset_root 필수 체크 및 상대 경로 처리
         dataset_root = self.config.get("dataset_root")
         if not dataset_root:
             raise ValueError("config에서 'dataset_root' 필드를 찾을 수 없습니다")
+        
+        # 상대 경로인 경우 프로젝트 루트 기준으로 변환
+        from pathlib import Path
+        dataset_path = Path(dataset_root)
+        if not dataset_path.is_absolute():
+            # 프로젝트 루트 찾기 (anomalib 디렉토리 기준)
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent.parent  # 4단계 상위 = anomalib/
+            dataset_root = str(project_root / dataset_root)
+            print(f"   📁 상대 경로를 절대 경로로 변환: {dataset_root}")
         
         # target_size 설정 (list -> tuple 변환)
         target_size = self.config.get("target_size")
@@ -208,10 +218,10 @@ class BaseAnomalyTrainer:
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
             if self.model_type in ["draem", "draem_cutpaste_clf"]:
-                # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
-                monitor_metric = "val_image_AUROC"
-                monitor_mode = "max"
-                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+                # DRAEM: val_loss 기반 EarlyStopping (낮을수록 좋음)
+                monitor_metric = "val_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -231,9 +241,9 @@ class BaseAnomalyTrainer:
             
             if self.model_type in ["draem", "draem_cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
-                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-                    monitor="val_image_AUROC",
-                    mode="max",
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
+                    monitor="val_loss",
+                    mode="min",
                     save_top_k=1,
                     verbose=True
                 )
