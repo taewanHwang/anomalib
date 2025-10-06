@@ -107,21 +107,24 @@ class DraemCutPasteModel(nn.Module):
         self._initialize_weights()
 
     def _initialize_weights(self):
-        """Initialize network weights using Kaiming/Xavier initialization.
+        """Initialize network weights using Kaiming initialization for ReLU networks.
 
-        - Conv layers: Kaiming initialization (better for ReLU)
-        - Linear layers: Xavier initialization (better for Sigmoid/Tanh)
+        - Conv/ConvTranspose layers: Kaiming initialization (ReLU activation)
+        - Linear layers: Kaiming initialization (ReLU activation, fan_in mode)
         - BatchNorm: weights=1, bias=0
+
+        Note: ConvTranspose2d is critical for decoder stability in ReconstructiveSubNetwork.
         """
         for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                # Kaiming initialization for conv layers (ReLU activation)
+            if isinstance(module, (nn.Conv2d, nn.ConvTranspose2d)):
+                # Kaiming initialization for conv/deconv layers (ReLU activation)
                 nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
             elif isinstance(module, nn.Linear):
-                # Xavier initialization for linear layers
-                nn.init.xavier_normal_(module.weight)
+                # Kaiming initialization for linear layers (ReLU activation)
+                # Use fan_in mode for forward pass stability
+                nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
             elif isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
