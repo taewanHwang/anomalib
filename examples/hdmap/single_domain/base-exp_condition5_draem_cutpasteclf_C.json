@@ -7,7 +7,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -54,7 +54,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -101,7 +101,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -148,7 +148,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -195,7 +195,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -242,7 +242,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [
@@ -289,7 +289,7 @@
         "model_type": "draem_cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 32,
-        "early_stopping_patience": 10,
+        "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 16,
         "target_size": [

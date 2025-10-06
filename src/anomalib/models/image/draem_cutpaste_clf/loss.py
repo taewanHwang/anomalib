@@ -45,7 +45,7 @@ class DraemCutPasteLoss(nn.Module):
 
         # All loss components managed directly (no inheritance confusion)
         self.l2_loss = nn.MSELoss()
-        self.focal_loss = FocalLoss(alpha=1.0, reduction="mean")
+        self.focal_loss = FocalLoss(alpha=0.9, reduction="mean")  # High weight for anomaly class
         self.ssim_loss = SSIMLoss(window_size=11)
         self.clf_loss = nn.CrossEntropyLoss()
 
