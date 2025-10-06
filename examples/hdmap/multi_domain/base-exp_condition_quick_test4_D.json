@@ -1,12 +1,12 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-16.A.1",
+      "name": "exp-16.D.1",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 1ch original",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -37,12 +37,12 @@
       }
     },
     {
-      "name": "exp-16.A.2",
+      "name": "exp-16.D.2",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 1ch mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -73,12 +73,12 @@
       }
     },
     {
-      "name": "exp-16.A.3",
+      "name": "exp-16.D.3",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 1ch residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -109,12 +109,12 @@
       }
     },
     {
-      "name": "exp-16.A.4",
+      "name": "exp-16.D.4",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 2ch original+mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -145,12 +145,12 @@
       }
     },
     {
-      "name": "exp-16.A.5",
+      "name": "exp-16.D.5",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 2ch original+residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -181,12 +181,12 @@
       }
     },
     {
-      "name": "exp-16.A.6",
+      "name": "exp-16.D.6",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 2ch mask+residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
@@ -217,12 +217,12 @@
       }
     },
     {
-      "name": "exp-16.A.7",
+      "name": "exp-16.D.7",
       "description": "Domain A → B,C,D DRAEM CutPaste Clf 3ch original+mask+residual",
       "config": {
         "model_type": "draem_cutpaste_clf",
-        "source_domain": "domain_A",
-        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
         "max_epochs": 32,
         "early_stopping_patience": 10,
         "learning_rate": 0.0001,
