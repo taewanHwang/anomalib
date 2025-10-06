@@ -57,6 +57,7 @@ class DraemCutPasteLoss(nn.Module):
         anomaly_mask: torch.Tensor,
         classification: torch.Tensor,
         anomaly_labels: torch.Tensor,
+        use_focal_loss: bool = True,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """Compute extended DRAEM loss with classification.
 
@@ -67,6 +68,8 @@ class DraemCutPasteLoss(nn.Module):
             anomaly_mask (torch.Tensor): Ground truth anomaly masks
             classification (torch.Tensor): Classification logits
             anomaly_labels (torch.Tensor): Ground truth anomaly labels (0/1)
+            use_focal_loss (bool, optional): Whether to use focal loss.
+                Set to False for validation when pixel-level GT is unavailable. Defaults to True.
 
         Returns:
             tuple[torch.Tensor, dict[str, torch.Tensor]]:
@@ -76,7 +79,12 @@ class DraemCutPasteLoss(nn.Module):
         # 1. Compute individual DRAEM loss components directly
         loss_l2 = self.l2_loss(reconstruction, original)
         loss_ssim = self.ssim_loss(reconstruction, original) * 2  # DRAEM multiplies by 2
-        loss_focal = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+
+        # Focal loss only when pixel-level GT is available (training phase)
+        if use_focal_loss:
+            loss_focal = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+        else:
+            loss_focal = torch.tensor(0.0, device=reconstruction.device)
 
         # 2. Base DRAEM loss (L2 + SSIM + Focal with custom alpha)
         base_loss = loss_l2 + loss_ssim + loss_focal

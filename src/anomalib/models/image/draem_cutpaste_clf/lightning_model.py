@@ -325,7 +325,7 @@ class DraemCutPasteClf(AnomalibModule):
         images_single_ch = images[:, :1, :, :]
         # images_single_ch: (batch_size, 1, H, W), range: [0, 1], meaning: first channel of input (grayscale)
 
-        # Compute loss
+        # Compute loss (with focal loss)
         total_loss, loss_dict = self.loss(
             reconstruction=reconstruction,
             original=images_single_ch,
@@ -333,6 +333,7 @@ class DraemCutPasteClf(AnomalibModule):
             anomaly_mask=anomaly_mask,
             classification=classification,
             anomaly_labels=anomaly_labels,
+            use_focal_loss=True,  # Training has pixel-level GT
         )
 
         # Log losses
@@ -387,15 +388,18 @@ class DraemCutPasteClf(AnomalibModule):
                 images_single_ch, prediction_logits, reconstruction
             )
             classification = self.model.severity_head(severity_input)
-            
-            # For validation, we assume normal data (no anomaly)
-            # Create dummy anomaly mask and labels for loss computation
+
+            # Use actual ground truth labels from validation set
+            # Validation set contains both normal and anomalous samples from test set
+            anomaly_labels = batch.gt_label.long()  # Real labels: 0=normal, 1=anomaly
+
+            # No pixel-level ground truth mask available
+            # Create dummy mask (not used for classification loss, only for pixel-level losses)
             batch_size = images.shape[0]
             device = images.device
             anomaly_mask = torch.zeros(batch_size, 1, *images.shape[2:], device=device)
-            anomaly_labels = torch.zeros(batch_size, dtype=torch.long, device=device)
         
-        # Compute validation loss (on normal data)
+        # Compute validation loss (without focal loss - no pixel-level GT available)
         val_total_loss, val_loss_dict = self.loss(
             reconstruction=reconstruction,
             original=images_single_ch,
@@ -403,6 +407,7 @@ class DraemCutPasteClf(AnomalibModule):
             anomaly_mask=anomaly_mask,
             classification=classification,
             anomaly_labels=anomaly_labels,
+            use_focal_loss=False,  # Validation has no pixel-level GT mask
         )
         
         # Log validation losses
