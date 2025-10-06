@@ -187,10 +187,10 @@ class MultiDomainAnomalyTrainer:
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
             if self.model_type in ["draem", "draem_cutpaste_clf"]:
-                # DRAEM: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
-                monitor_metric = "val_image_AUROC"
-                monitor_mode = "max"
-                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+                # DRAEM: val_loss 기반 EarlyStopping (낮을수록 좋음)
+                monitor_metric = "val_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -209,9 +209,9 @@ class MultiDomainAnomalyTrainer:
             # Model Checkpoint
             if self.model_type in ["draem", "draem_cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
-                    filename=f"{self.model_type}_multi_domain_{self.source_domain}_to_targets_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-                    monitor="val_image_AUROC",
-                    mode="max",
+                    filename=f"{self.model_type}_multi_domain_{self.source_domain}_to_targets_" + "{epoch:02d}_{val_loss:.4f}",
+                    monitor="val_loss",
+                    mode="min",
                     save_top_k=1,
                     verbose=True
                 )
