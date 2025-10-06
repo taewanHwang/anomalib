@@ -251,6 +251,8 @@ class DraemCutPasteModel(nn.Module):
 
         # Pass through reconstructive network (reconstruct augmented images)
         reconstruction = self.reconstructive_subnetwork(augmented_single_ch)
+        # reconstruction shape: (batch_size, 1, height, width), range: unbounded (raw network output)
+        # expected range after training: ~[0, 1] (should converge to input range)
 
         # Concatenate augmented and reconstruction for discriminative network
         # Follow DRAEM convention: [original, reconstruction]
@@ -258,15 +260,25 @@ class DraemCutPasteModel(nn.Module):
 
         # Pass through discriminative network to get anomaly prediction
         prediction = self.discriminative_subnetwork(joined_input)
+        # prediction shape: (batch_size, 2, height, width)
+        # meaning: pixel-wise logits for [normal, anomaly] classes at each spatial location
+        # range: unbounded logits (before softmax)
+        # expected after training: softmax(prediction)[:, 1] will be ~0 for normal pixels, ~1 for anomaly pixels
 
         # Prepare input for severity head based on configuration
         # Use augmented image instead of original to provide meaningful signal
         severity_input = self._create_severity_input(
             augmented_single_ch, prediction, reconstruction
         )
+        # severity_input shape: (batch_size, severity_in_channels, height, width)
+        # range: [0, 1] for normalized channels, unbounded for residual
 
         # Pass through severity head for classification
         classification = self.severity_head(severity_input)
+        # classification shape: (batch_size, 2)
+        # meaning: image-level logits for [normal, anomaly] classes
+        # range: unbounded logits (before softmax)
+        # expected after training: softmax(classification)[:, 1] will be ~0 for normal images, ~1 for anomaly images
 
         return reconstruction, prediction, classification, anomaly_mask, anomaly_labels
 
@@ -281,9 +293,12 @@ class DraemCutPasteModel(nn.Module):
         """
         # Extract single channel for 1-channel model
         batch_single_ch = batch[:, :1, :, :]
+        # batch_single_ch shape: (batch_size, 1, height, width), range: [0, 1] normalized
 
         # Pass through reconstructive network (no augmentation during inference)
         reconstruction = self.reconstructive_subnetwork(batch_single_ch)
+        # reconstruction shape: (batch_size, 1, height, width), range: unbounded (raw network output)
+        # expected range after training: ~[0, 1] (should converge to input range)
 
         # Concatenate original and reconstruction for discriminative network
         # Follow DRAEM convention: [original, reconstruction]
@@ -291,24 +306,37 @@ class DraemCutPasteModel(nn.Module):
 
         # Pass through discriminative network
         prediction = self.discriminative_subnetwork(joined_input)
+        # prediction shape: (batch_size, 2, height, width)
+        # meaning: pixel-wise logits for [normal, anomaly] classes at each spatial location
+        # range: unbounded logits (before softmax)
+        # expected after training: softmax(prediction)[:, 1] will be ~0 for normal pixels, ~1 for anomaly pixels
 
         # Prepare input for severity head based on configuration
         severity_input = self._create_severity_input(
             batch_single_ch, prediction, reconstruction
         )
+        # severity_input shape: (batch_size, severity_in_channels, height, width)
+        # range: [0, 1] for normalized channels, unbounded for residual
 
         # Get classification probabilities
         classification_logits = self.severity_head(severity_input)
+        # classification_logits shape: (batch_size, 2)
+        # meaning: image-level logits for [normal, anomaly] classes
+        # range: unbounded logits (before softmax)
         classification_probs = torch.softmax(classification_logits, dim=1)
+        # classification_probs shape: (batch_size, 2), range: [0, 1] probabilities
 
         # Extract anomaly scores (use softmax probabilities for anomaly class)
         anomaly_scores = classification_probs[:, 1]  # Probability of anomaly class
+        # anomaly_scores shape: (batch_size,), range: [0, 1]
 
         # Create anomaly maps (apply softmax like DRAEM)
         anomaly_maps = torch.softmax(prediction, dim=1)[:, 1, ...]  # Softmax + anomaly channel
+        # anomaly_maps shape: (batch_size, height, width), range: [0, 1]
 
         # Create predictions (binary threshold at 0.5)
         predictions = (anomaly_scores > 0.5).float()
+        # predictions shape: (batch_size,), range: {0.0, 1.0}
 
         return InferenceBatch(
             anomaly_map=anomaly_maps,

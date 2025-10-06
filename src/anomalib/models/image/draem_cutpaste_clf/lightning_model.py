@@ -131,7 +131,7 @@ class DraemCutPasteClf(AnomalibModule):
         Returns:
             dict[str, Any]: Trainer arguments
         """
-        return {"gradient_clip_val": 0.5, "num_sanity_val_steps": 0}
+        return {}
 
     @property
     def learning_type(self) -> LearningType:
@@ -311,12 +311,19 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Forward pass with CutPaste augmentation
         reconstruction, prediction, classification, anomaly_mask, anomaly_labels = self.model(images, training_phase=True)
+        # reconstruction: (batch_size, 1, H, W), range: unbounded → ~[0,1] after training, meaning: reconstructed image
+        # prediction: (batch_size, 2, H, W), range: unbounded logits, meaning: pixel-wise [normal, anomaly] scores
+        # classification: (batch_size, 2), range: unbounded logits, meaning: image-level [normal, anomaly] scores
+        # anomaly_mask: (batch_size, 1, H, W), range: [0,1], meaning: ground truth anomaly regions (0=normal, 1=anomaly)
+        # anomaly_labels: (batch_size,), range: [0, ∞) continuous, meaning: fault severity (0=normal, >0=anomaly severity)
 
         # Convert severity labels to binary classification labels (0=normal, 1=anomaly)
         anomaly_labels = (anomaly_labels > 0).long()  # Any non-zero severity is anomaly
+        # anomaly_labels: (batch_size,), range: {0, 1}, meaning: binary labels (0=normal, 1=anomaly)
 
         # Extract single channel from original images to match reconstruction
         images_single_ch = images[:, :1, :, :]
+        # images_single_ch: (batch_size, 1, H, W), range: [0, 1], meaning: first channel of input (grayscale)
 
         # Compute loss
         total_loss, loss_dict = self.loss(

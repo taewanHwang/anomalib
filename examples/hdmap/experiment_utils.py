@@ -1213,6 +1213,8 @@ def create_anomaly_heatmap_with_colorbar(
 
     Args:
         anomaly_map_array: numpy array [H, W]
+                          range: [0, 1] if fixed_range=True, 아니면 data-dependent
+                          meaning: 픽셀별 이상 확률 (0=정상, 1=이상)
         cmap: matplotlib colormap 이름 (기본값: 'viridis')
               - 'viridis': 파란색->초록색->노란색 (권장)
               - 'jet': 파란색->청록->노랑->빨강 (기존)
@@ -1284,8 +1286,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
     - 기타 모델: original, original+anomaly maps (2개)
 
     Args:
-        image_tensor: 입력 이미지 텐서 [B, C, H, W]
-        model_output: 모델 출력 객체
+        image_tensor: 입력 이미지 텐서 [B, C, H, W] - range: [0, 1] normalized
+        model_output: 모델 출력 객체 (InferenceBatch containing anomaly_map, pred_score, etc.)
         image_paths: 이미지 경로 리스트
         visualization_dir: 시각화 저장 디렉터리
         batch_idx: 배치 인덱스
@@ -1406,6 +1408,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
 
             # Anomaly map 추출 및 변환
             anomaly_map_tensor = anomaly_maps[i]  # [H, W] 또는 [1, H, W]
+            # range: [0, 1] (이미 softmax가 적용된 anomaly probability)
+            # meaning: 픽셀별 이상 확률 (0=정상, 1=이상)
             if len(anomaly_map_tensor.shape) == 3:
                 anomaly_map_tensor = anomaly_map_tensor.squeeze(0)  # [H, W]
 
@@ -1451,6 +1455,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
             if is_draem and recon_batch is not None and residual_batch is not None:
                 # Reconstruction 이미지 생성
                 recon_tensor = recon_batch[i]  # [C, H, W] - C는 1 또는 3
+                # range: unbounded (raw network output)
+                # meaning: 재구성된 이미지 (학습 후 ~[0,1]에 수렴)
 
                 # Min-max normalization으로 [0, 1] 범위로 변환
                 recon_np = recon_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, C]
@@ -1475,6 +1481,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
 
                 # Residual 이미지 생성
                 residual_tensor = residual_batch[i]  # [1, H, W] - residual은 항상 1채널
+                # range: [0, ∞) (absolute difference |original - reconstruction|)
+                # meaning: 재구성 오차, 큰 값일수록 이상 가능성 높음
 
                 # Min-max normalization으로 [0, 1] 범위로 변환
                 residual_np = residual_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, 1]
@@ -1493,6 +1501,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
 
                 # Discriminative Anomaly 이미지 생성
                 disc_anomaly_tensor = disc_anomaly_batch[i]  # [1, H, W] - softmax된 anomaly channel
+                # range: [0, 1] (이미 softmax가 적용된 anomaly probability)
+                # meaning: discriminative network의 픽셀별 이상 확률
 
                 # Softmax 출력은 [0, 1] 범위
                 disc_anomaly_array = (disc_anomaly_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
