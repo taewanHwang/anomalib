@@ -15,7 +15,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -29,7 +29,8 @@
         "clf_weight": 1,
         "severity_input_channels": "original",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -51,7 +52,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -65,7 +66,8 @@
         "clf_weight": 1,
         "severity_input_channels": "mask",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -87,7 +89,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -101,7 +103,8 @@
         "clf_weight": 1,
         "severity_input_channels": "residual",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -123,7 +126,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -137,7 +140,8 @@
         "clf_weight": 1,
         "severity_input_channels": "original+mask",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -159,7 +163,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -173,7 +177,8 @@
         "clf_weight": 1,
         "severity_input_channels": "original+residual",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -195,7 +200,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -209,7 +214,8 @@
         "clf_weight": 1,
         "severity_input_channels": "mask+residual",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
@@ -231,7 +237,7 @@
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.01,
+        "weight_decay": 0.0001,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
@@ -245,7 +251,8 @@
         "clf_weight": 1,
         "severity_input_channels": "original+mask+residual",
         "scheduler": {
-          "type": "steplr",
+          "type": "warmup_steplr",
+          "warmup_epochs": 2,
           "step_size": 10,
           "gamma": 0.8
         },
