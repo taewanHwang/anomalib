@@ -1,45 +1,24 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-patchcore-optimized-1",
-      "description": "Domain A - PatchCore Optimized Configuration 1 (High Resolution + More Memory)",
+      "name": "exp-13.A",
+      "description": "Domain A - PatchCore Configuration 1 ",
       "config": {
         "model_type": "patchcore",
         "source_domain": "domain_A",
         "max_epochs": 1,
-        "batch_size": 2,
-        "target_size": [512, 512],
+        "batch_size": 8,
+        "target_size": [128, 128],
         "resize_method": "resize",
-        "dataset_root": "datasets/HDMAP/5000_tiff_original_minmax",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
         "val_split_ratio": 0.1,
         "num_workers": 4,
         "seed": 42,
-        "backbone": "wide_resnet50_2",
-        "layers": ["layer2", "layer3"],
+        "backbone": "resnet34",
+        "layers": ["layer2"],
         "pre_trained": true,
         "coreset_sampling_ratio": 0.01,
-        "num_neighbors": 9
-      }
-    },
-    {
-      "name": "exp-patchcore-optimized-2", 
-      "description": "Domain A - PatchCore Optimized Configuration 2 (Better Backbone + More Coreset)",
-      "config": {
-        "model_type": "patchcore",
-        "source_domain": "domain_A",
-        "max_epochs": 1,
-        "batch_size": 4,
-        "target_size": [384, 384],
-        "resize_method": "resize",
-        "dataset_root": "datasets/HDMAP/5000_tiff_original_minmax",
-        "val_split_ratio": 0.1,
-        "num_workers": 4,
-        "seed": 42,
-        "backbone": "resnet50",
-        "layers": ["layer1", "layer2", "layer3"],
-        "pre_trained": true,
-        "coreset_sampling_ratio": 0.05,
-        "num_neighbors": 15
+        "num_neighbors": 3
       }
     }
   ]

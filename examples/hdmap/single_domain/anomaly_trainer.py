@@ -6,6 +6,7 @@ BaseAnomalyTrainer - 통합 Anomaly Detection 모델 훈련을 위한 베이스 
 
 지원 모델:
 - DRAEM: Reconstruction + Anomaly Detection
+- DRAEM CutPaste: DRAEM with CutPaste augmentation (without severity head)
 - DRAEM CutPaste Clf: DRAEM with CutPaste augmentation + CNN classification
 - Dinomaly: Vision Transformer 기반 anomaly detection with DINOv2
 - PatchCore: Memory bank 기반 few-shot anomaly detection
@@ -32,6 +33,7 @@ from experiment_utils import (
 
 # 모델별 imports
 from anomalib.models.image.draem import Draem
+from anomalib.models.image.draem_cutpaste import DraemCutPaste
 from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
 from anomalib.models.image import Dinomaly, Patchcore
 from anomalib.engine import Engine
@@ -75,6 +77,8 @@ class BaseAnomalyTrainer:
         """Factory pattern으로 모델 생성"""
         if self.model_type == "draem":
             return self._create_draem_model()
+        elif self.model_type == "draem_cutpaste":
+            return self._create_draem_cutpaste_model()
         elif self.model_type == "draem_cutpaste_clf":
             return self._create_draem_cutpaste_clf_model()
         elif self.model_type == "dinomaly":
@@ -103,6 +107,38 @@ class BaseAnomalyTrainer:
             'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
         }
         
+        return model
+
+    def _create_draem_cutpaste_model(self):
+        """DRAEM CutPaste 모델 생성 (without severity head)"""
+        # 명시적으로 test_image_AUROC 메트릭 설정
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        # 모델 파라미터 설정
+        model_params = {
+            'evaluator': evaluator,
+            'enable_sspcab': self.config.get("sspcab", False),
+            'cut_w_range': tuple(self.config["cut_w_range"]),
+            'cut_h_range': tuple(self.config["cut_h_range"]),
+            'a_fault_start': self.config["a_fault_start"],
+            'a_fault_range_end': self.config["a_fault_range_end"],
+            'augment_probability': self.config["augment_probability"],
+        }
+
+        # DraemCutPaste 모델 생성
+        model = DraemCutPaste(**model_params)
+
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'optimizer': self.config["optimizer"],
+            'weight_decay': self.config["weight_decay"],
+            'max_epochs': self.config["max_epochs"],
+            'scheduler': self.config.get("scheduler", None),  # 스케줄러 설정 (선택사항)
+        }
+
         return model
 
     def _create_draem_cutpaste_clf_model(self):
@@ -217,8 +253,8 @@ class BaseAnomalyTrainer:
             
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
-            if self.model_type in ["draem", "draem_cutpaste_clf"]:
-                # DRAEM: val_loss 기반 EarlyStopping (낮을수록 좋음)
+            if self.model_type in ["draem", "draem_cutpaste", "draem_cutpaste_clf"]:
+                # DRAEM 계열: val_loss 기반 EarlyStopping (낮을수록 좋음)
                 monitor_metric = "val_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
@@ -227,7 +263,7 @@ class BaseAnomalyTrainer:
                 monitor_metric = "val_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
-            
+
             early_stopping = EarlyStopping(
                 monitor=monitor_metric,
                 patience=self.config["early_stopping_patience"],
@@ -235,11 +271,11 @@ class BaseAnomalyTrainer:
                 verbose=True
             )
             callbacks.append(early_stopping)
-            
+
             # Model Checkpoint
             domain = self.config.get("source_domain") or self.config.get("domain")
-            
-            if self.model_type in ["draem", "draem_cutpaste_clf"]:
+
+            if self.model_type in ["draem", "draem_cutpaste", "draem_cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
                     monitor="val_loss",

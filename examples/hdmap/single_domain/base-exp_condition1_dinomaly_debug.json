@@ -1,37 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-11",
-      "description": "Domain A - DinomaLy 기본 설정",
-      "config": {
-        "model_type": "dinomaly",
-        "source_domain": "domain_A",
-        "max_epochs": 32,
-        "early_stopping_patience": 5,
-        "learning_rate": 0.0001,
-        "batch_size": 32,
-        "target_size": [112, 112],
-        "resize_method": "resize",
-        "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
-        "optimizer": "adam",
-        "weight_decay": 0.001,
-        "val_split_ratio": 0.1,
-        "num_workers": 8,
-        "seed": 42,
-        "encoder_name": "dinov2reg_vit_base_14",
-        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
-        "bottleneck_dropout": 0.2,
-        "decoder_depth": 8,
-        "remove_class_token": false,
-        "scheduler": {
-          "type": "steplr",
-          "step_size": 2,
-          "gamma": 0.5
-        }
-      }
-    },
-    {
-      "name": "exp-12",
+      "name": "exp-12.A",
       "description": "Domain A - DinomaLy 기본 설정",
       "config": {
         "model_type": "dinomaly",
@@ -43,8 +13,8 @@
         "target_size": [224, 224],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
-        "optimizer": "adam",
-        "weight_decay": 0.001,
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 8,
         "seed": 42,
@@ -55,8 +25,98 @@
         "remove_class_token": false,
         "scheduler": {
           "type": "steplr",
-          "step_size": 2,
-          "gamma": 0.5
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-12.B",
+      "description": "Domain B - DinomaLy 기본 설정",
+      "config": {
+        "model_type": "dinomaly",
+        "source_domain": "domain_B",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [224, 224],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 8,
+        "seed": 42,
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-12.C",
+      "description": "Domain C - DinomaLy 기본 설정",
+      "config": {
+        "model_type": "dinomaly",
+        "source_domain": "domain_C",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [224, 224],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 8,
+        "seed": 42,
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-12.D",
+      "description": "Domain D - DinomaLy 기본 설정",
+      "config": {
+        "model_type": "dinomaly",
+        "source_domain": "domain_D",
+        "max_epochs": 32,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [224, 224],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/10000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 8,
+        "seed": 42,
+        "encoder_name": "dinov2reg_vit_base_14",
+        "target_layers": [2, 3, 4, 5, 6, 7, 8, 9],
+        "bottleneck_dropout": 0.2,
+        "decoder_depth": 8,
+        "remove_class_token": false,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
         }
       }
     }

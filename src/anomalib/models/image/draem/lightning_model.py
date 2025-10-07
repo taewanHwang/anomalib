@@ -292,60 +292,81 @@ class Draem(AnomalibModule):
             tuple[list[Adam], list[MultiStepLR]]: Tuple containing optimizer and
                 scheduler lists.
         """
-        # config에서 학습 파라미터 가져오기 (기본값 사용)
-        config = getattr(self, '_training_config', {})
-        learning_rate = config.get('learning_rate', 0.0001)
-        weight_decay = config.get('weight_decay', 0.0)
-        scheduler_type = config.get('scheduler', 'multistep')
-        optimizer_type = config.get('optimizer', 'adamw')  # 기본값을 AdamW로 변경
-        
+        # 학습 설정 가져오기 (anomaly_trainer.py에서 설정된 값)
+        training_config = getattr(self, '_training_config', {})
+
+        # 학습률 및 옵티마이저 설정
+        learning_rate = training_config.get('learning_rate', 0.0001)
+        optimizer_type = training_config.get('optimizer', 'adamw').lower()
+        weight_decay = training_config.get('weight_decay', 1e-5)
+
         # 옵티마이저 선택
-        if optimizer_type.lower() == 'adamw':
-            optimizer = torch.optim.AdamW(
-                params=self.model.parameters(), 
-                lr=learning_rate,
-                weight_decay=weight_decay
-            )
-        elif optimizer_type.lower() == 'adam':
+        if optimizer_type == 'adam':
             optimizer = torch.optim.Adam(
-                params=self.model.parameters(), 
+                params=self.model.parameters(),
                 lr=learning_rate,
-                weight_decay=weight_decay
+                weight_decay=weight_decay,
             )
-        else:
-            # 기본값: AdamW
+        elif optimizer_type == 'adamw':
             optimizer = torch.optim.AdamW(
-                params=self.model.parameters(), 
+                params=self.model.parameters(),
                 lr=learning_rate,
-                weight_decay=weight_decay
-            )
-        
-        # 스케줄러 선택
-        if scheduler_type == 'cosine':
-            # Cosine Annealing 스케줄러
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, 
-                T_max=config.get('max_epochs', 50),
-                eta_min=learning_rate * 0.01  # 최소 학습률을 1%로 설정
-            )
-        elif scheduler_type == 'warmup_cosine':
-            # Warmup + Cosine (간단 구현: 처음 몇 에포크는 linear warmup)
-            warmup_epochs = config.get('warmup_epochs', 5)
-            total_epochs = config.get('max_epochs', 50)
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer,
-                T_0=total_epochs - warmup_epochs,
-                eta_min=learning_rate * 0.01
+                weight_decay=weight_decay,
             )
         else:
-            # 기본 MultiStepLR 스케줄러
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                optimizer, 
-                milestones=[400, 600], 
-                gamma=0.1
+            raise ValueError(f"지원하지 않는 옵티마이저: {optimizer_type}")
+
+        # 스케줄러 설정 (optional)
+        scheduler_config = training_config.get('scheduler', None)
+
+        if scheduler_config is None:
+            # 스케줄러 없이 옵티마이저만 반환
+            return [optimizer], []
+
+        scheduler_type = scheduler_config.get('type', 'none').lower()
+
+        if scheduler_type == 'none':
+            return [optimizer], []
+
+        elif scheduler_type == 'steplr':
+            # StepLR 스케줄러 설정
+            step_size = scheduler_config.get('step_size', 5)
+            gamma = scheduler_config.get('gamma', 0.5)
+
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=step_size,
+                gamma=gamma
             )
-        
-        return [optimizer], [scheduler]
+            return [optimizer], [scheduler]
+
+        elif scheduler_type == 'cosineannealinglr':
+            # CosineAnnealingLR 스케줄러 설정
+            max_epochs = training_config.get('max_epochs', 50)
+            eta_min = scheduler_config.get('eta_min', 1e-6)
+
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=max_epochs,
+                eta_min=eta_min
+            )
+            return [optimizer], [scheduler]
+
+        elif scheduler_type == 'multisteplr':
+            # MultiStepLR 스케줄러 설정
+            milestones = scheduler_config.get('milestones', [400, 600])
+            gamma = scheduler_config.get('gamma', 0.1)
+
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=milestones,
+                gamma=gamma
+            )
+            return [optimizer], [scheduler]
+
+        else:
+            print(f"Warning: Unknown scheduler type '{scheduler_type}', using optimizer only")
+            return [optimizer], []
 
     @property
     def learning_type(self) -> LearningType:

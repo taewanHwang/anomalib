@@ -88,7 +88,8 @@ class DraemCutPaste(AnomalibModule):
         Returns:
             dict[str, Any]: Trainer arguments
         """
-        return {"gradient_clip_val": 0, "max_epochs": 200, "num_sanity_val_steps": 0}
+        # Note: max_epochs will be overridden by Engine config
+        return {"gradient_clip_val": 0, "num_sanity_val_steps": 0}
 
     @property
     def learning_type(self) -> LearningType:
@@ -122,21 +123,124 @@ class DraemCutPaste(AnomalibModule):
         """Configure the optimizer and learning rate scheduler.
 
         Returns:
-            dict | Optimizer: Optimizer configuration
+            dict[str, Any] | torch.optim.Optimizer: Optimizer and optional scheduler configuration
         """
-        optimizer = torch.optim.Adam(
-            params=self.model.parameters(),
-            lr=0.0001,
-            weight_decay=1e-5,
-        )
+        # 학습 설정 가져오기 (anomaly_trainer.py에서 설정된 값)
+        training_config = getattr(self, '_training_config', {})
 
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer=optimizer,
-            milestones=[400],
-            gamma=0.1,
-        )
+        # 학습률 및 옵티마이저 설정 (default 없이 명시적으로 값 가져오기)
+        learning_rate = training_config.get('learning_rate', 0.0001)
+        optimizer_type = training_config.get('optimizer', 'adam').lower()
+        weight_decay = training_config.get('weight_decay', 1e-5)
 
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        # 옵티마이저 선택
+        if optimizer_type == 'adam':
+            optimizer = torch.optim.Adam(
+                params=self.model.parameters(),
+                lr=learning_rate,
+                weight_decay=weight_decay,
+            )
+        elif optimizer_type == 'adamw':
+            optimizer = torch.optim.AdamW(
+                params=self.model.parameters(),
+                lr=learning_rate,
+                weight_decay=weight_decay,
+            )
+        else:
+            raise ValueError(f"지원하지 않는 옵티마이저: {optimizer_type}")
+
+        # 스케줄러 설정 (optional)
+        scheduler_config = training_config.get('scheduler', None)
+
+        if scheduler_config is None:
+            # 스케줄러 없이 옵티마이저만 반환
+            return optimizer
+
+        scheduler_type = scheduler_config.get('type', 'none').lower()
+
+        if scheduler_type == 'none':
+            return optimizer
+
+        elif scheduler_type == 'steplr':
+            # StepLR 스케줄러 설정
+            step_size = scheduler_config.get('step_size', 5)
+            gamma = scheduler_config.get('gamma', 0.5)
+
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=step_size,
+                gamma=gamma
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',  # epoch 단위로 step
+                    'frequency': 1,
+                }
+            }
+
+        elif scheduler_type == 'cosineannealinglr':
+            # CosineAnnealingLR 스케줄러 설정
+            max_epochs = training_config.get('max_epochs', 50)
+            eta_min = scheduler_config.get('eta_min', 1e-6)
+
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=max_epochs,
+                eta_min=eta_min
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',
+                    'frequency': 1,
+                }
+            }
+
+        elif scheduler_type == 'warmup_steplr':
+            # Warmup + StepLR 스케줄러 설정
+            warmup_epochs = scheduler_config.get('warmup_epochs', 2)
+            step_size = scheduler_config.get('step_size', 5)
+            gamma = scheduler_config.get('gamma', 0.5)
+
+            # Warmup phase: 0 → learning_rate
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=0.1,  # Start at 10% of base LR
+                end_factor=1.0,    # End at 100% of base LR
+                total_iters=warmup_epochs
+            )
+
+            # Main phase: StepLR decay
+            main_scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=step_size,
+                gamma=gamma
+            )
+
+            # Combine warmup and main scheduler
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, main_scheduler],
+                milestones=[warmup_epochs]
+            )
+
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',
+                    'frequency': 1,
+                }
+            }
+
+        else:
+            print(f"Warning: Unknown scheduler type '{scheduler_type}', using optimizer only")
+            return optimizer
 
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Perform training step.
