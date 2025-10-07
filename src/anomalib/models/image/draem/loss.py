@@ -52,6 +52,7 @@ class DraemLoss(nn.Module):
         reconstruction: torch.Tensor,
         anomaly_mask: torch.Tensor,
         prediction: torch.Tensor,
+        use_focal_loss: bool = True,
     ) -> torch.Tensor:
         """Compute the combined loss over a batch for the DRAEM model.
 
@@ -64,12 +65,20 @@ class DraemLoss(nn.Module):
                 ``(batch_size, 1, height, width)``
             prediction: Model predictions of shape
                 ``(batch_size, num_classes, height, width)``
+            use_focal_loss: Whether to include focal loss in the total loss.
+                Set to False during validation/test when pixel-level GT is unavailable.
+                Defaults to ``True``.
 
         Returns:
             torch.Tensor: Combined loss value
         """
         l2_loss_val = self.l2_loss(reconstruction, input_image)
-        focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
         ssim_loss_val = self.ssim_loss(reconstruction, input_image) * 2
-        return l2_loss_val + ssim_loss_val + focal_loss_val
+
+        if use_focal_loss:
+            focal_loss_val = self.focal_loss(prediction, anomaly_mask.squeeze(1).long())
+            return l2_loss_val + ssim_loss_val + focal_loss_val
+        else:
+            # Validation/Test: only reconstruction losses (no pixel-level GT available)
+            return l2_loss_val + ssim_loss_val
     

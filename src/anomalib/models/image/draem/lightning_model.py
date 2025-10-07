@@ -23,7 +23,7 @@ from torch import nn
 from torchvision.transforms.v2 import Compose, Resize
 
 from anomalib import LearningType
-from anomalib.data import Batch
+from anomalib.data import Batch, InferenceBatch
 from anomalib.data.utils import DownloadInfo, download_and_extract
 from anomalib.data.utils.generators.perlin import PerlinAnomalyGenerator
 from anomalib.metrics import AUROC, Evaluator
@@ -174,8 +174,8 @@ class Draem(AnomalibModule):
         augmented_image, anomaly_mask = self.augmenter(input_image)
         # Generate model prediction
         reconstruction, prediction = self.model(augmented_image)
-        # Compute loss
-        loss = self.loss(input_image, reconstruction, anomaly_mask, prediction)
+        # Compute loss (with focal loss - training has pixel-level GT)
+        loss = self.loss(input_image, reconstruction, anomaly_mask, prediction, use_focal_loss=True)
 
         # Compute individual loss components for detailed logging
         loss_l2 = self.loss.l2_loss(reconstruction, input_image)
@@ -217,12 +217,36 @@ class Draem(AnomalibModule):
         del args, kwargs  # These variables are not used.
 
         input_image = batch.image
-        
-        # Set model to eval mode to get InferenceBatch with pred_score
-        self.model.eval()
+
+        # Calculate validation loss on real (non-augmented) data
         with torch.no_grad():
-            inference_output = self.model(input_image)
-        
+            # Get reconstruction and prediction directly from subnetworks
+            reconstruction = self.model.reconstructive_subnetwork(input_image)
+            concatenated_inputs = torch.cat([input_image, reconstruction], axis=1)
+            prediction = self.model.discriminative_subnetwork(concatenated_inputs)
+
+            # Create dummy anomaly mask (validation has no pixel-level GT)
+            batch_size = input_image.shape[0]
+            device = input_image.device
+            anomaly_mask = torch.zeros(batch_size, 1, *input_image.shape[2:], device=device) # dummy anomaly mask, it will be ignored for loss calculation
+
+            # Compute validation loss (without focal loss - validation has no pixel-level GT)
+            val_loss = self.loss(input_image, reconstruction, anomaly_mask, prediction, use_focal_loss=False)
+
+            # Compute individual loss components for detailed logging
+            val_loss_l2 = self.loss.l2_loss(reconstruction, input_image)
+            val_loss_ssim = self.loss.ssim_loss(reconstruction, input_image) * 2
+
+            # Log validation losses
+            self.log("val_loss", val_loss, on_step=False, on_epoch=True, prog_bar=True)
+            self.log("val_loss_l2", val_loss_l2, on_step=False, on_epoch=True)
+            self.log("val_loss_ssim", val_loss_ssim, on_step=False, on_epoch=True)
+
+            # Get inference output for evaluator (compute anomaly_map and pred_score)
+            anomaly_map = torch.softmax(prediction, dim=1)[:, 1, ...]
+            pred_score = torch.amax(anomaly_map, dim=(-2, -1))
+            inference_output = InferenceBatch(pred_score=pred_score, anomaly_map=anomaly_map)
+
         # Use InferenceBatch directly - let Lightning's Evaluator handle AUROC calculation
         return batch.update(**inference_output._asdict())
 
