@@ -373,11 +373,10 @@ class BaseAnomalyTrainer:
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
             if self.model_type in ["draem", "draem_cutpaste", "draem_cutpaste_clf"]:
-                # DRAEM 계열: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
-                # val_loss는 reconstruction만 보기 때문에 discriminative network 성능 반영 안됨
-                monitor_metric = "val_image_AUROC"
-                monitor_mode = "max"
-                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+                # DRAEM 계열: val_loss 기반 EarlyStopping (낮을수록 좋음)
+                monitor_metric = "val_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
             elif self.model_type == "efficient_ad":
                 # EfficientAD: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
                 monitor_metric = "val_image_AUROC"
@@ -407,9 +406,9 @@ class BaseAnomalyTrainer:
 
             if self.model_type in ["draem", "draem_cutpaste", "draem_cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
-                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-                    monitor="val_image_AUROC",
-                    mode="max",
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
+                    monitor="val_loss",
+                    mode="min",
                     save_top_k=1,
                     verbose=True
                 )
