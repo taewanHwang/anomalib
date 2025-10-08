@@ -30,6 +30,7 @@ N_TRAINING = 1000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
 SAVE_FORMATS = ['png']  # 저장 형식 (TIFF, PNG)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명
+RANDOM_SEED = 42  # 랜덤 시드 (재현성 보장)
 
 # 정규화 방식 설정
 NORMALIZATION_MODES = [
@@ -179,11 +180,11 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
             shutil.rmtree(save_dir)
         os.makedirs(save_dir, exist_ok=True)
     
-    # 데이터 처리 매핑
+    # 데이터 처리 매핑 (data_key, save_key, max_samples, description, shuffle)
     data_mapping = [
-        ('train_normal', 'train/good', N_TRAINING, "정상 훈련"),
-        ('test_normal', 'test/good', N_TESTING, "정상 테스트"), 
-        ('test_fault', 'test/fault', N_TESTING, "고장 테스트")
+        ('train_normal', 'train/good', N_TRAINING, "정상 훈련", True),
+        ('test_normal', 'test/good', N_TESTING, "정상 테스트", False),
+        ('test_fault', 'test/fault', N_TESTING, "고장 테스트", False)
     ]
     
     # 정규화 모드에 따라 필요한 변수만 준비
@@ -200,31 +201,41 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
         user_min = domain_config['user_min']
         user_max = domain_config['user_max']
     
-    for data_key, save_key, max_samples, description in data_mapping:
+    for data_key, save_key, max_samples, description, shuffle in data_mapping:
         mat_path = domain_paths[data_key]
         save_dir = save_dirs[save_key]
-        
+
         if not os.path.exists(mat_path):
             print(f"  ⚠️ {description}: {mat_path} 파일 없음")
             continue
-        
-        print(f"  📂 {description} 데이터 처리 중...")
-        
+
+        print(f"  📂 {description} 데이터 처리 중... (shuffle={shuffle})")
+
         # mat 파일 로드
         mat_data = scipy.io.loadmat(mat_path)
         image_data = mat_data['Xdata']
-        
+
         # 샘플 수 결정
         actual_samples = image_data.shape[3] if len(image_data.shape) > 3 else 1
         num_samples = min(max_samples, actual_samples)
-        
+
+        # 인덱스 생성 (shuffle 옵션에 따라)
+        if shuffle:
+            np.random.seed(RANDOM_SEED)
+            indices = np.random.choice(actual_samples, num_samples, replace=False)
+            print(f"    🔀 랜덤 샘플링: {num_samples}개 선택 (전체 {actual_samples}개 중)")
+        else:
+            indices = np.arange(num_samples)
+            print(f"    📋 순차 샘플링: 처음 {num_samples}개 선택")
+
         # 이미지 저장
-        for i in range(num_samples):
+        for idx, i in enumerate(indices):
             img = image_data[:, :, 0, i]
 
             # 파일 확장자 결정
             file_ext = 'tiff' if save_format == 'tiff' else 'png'
-            filename = f'{i:06d}.{file_ext}'
+            # 파일명은 순차적으로 저장 (000000.png, 000001.png, ...)
+            filename = f'{idx:06d}.{file_ext}'
             save_path = os.path.join(save_dir, filename)
 
             # 정규화 방식에 따른 처리
@@ -252,8 +263,8 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
                 raise ValueError(f"Unknown save format: {save_format}")
             
             # 진행상황 출력
-            if (i + 1) % 10000 == 0:
-                print(f"    진행: {i + 1}/{num_samples}")
+            if (idx + 1) % 10000 == 0:
+                print(f"    진행: {idx + 1}/{num_samples}")
         
         print(f"  ✅ {description}: {num_samples}개 저장 완료")
 
