@@ -468,15 +468,14 @@ class EfficientAd(AnomalibModule):
         """
         from anomalib.metrics import AUROC
         
-        # EfficientAD outputs anomaly_map and anomaly_score but not pred_label/pred_mask
+        # EfficientAD outputs pred_score and anomaly_map but not pred_label/pred_mask
         # So we only use AUROC metrics, not F1Score
-        val_image_auroc = AUROC(fields=["anomaly_score", "gt_label"], prefix="val_image_")
+        val_image_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
         val_metrics = [val_image_auroc]
         
-        # Test metrics - only essential AUROC
-        image_auroc = AUROC(fields=["anomaly_score", "gt_label"], prefix="image_")
-        pixel_auroc = AUROC(fields=["anomaly_map", "gt_mask"], prefix="pixel_", strict=False)
-        test_metrics = [image_auroc, pixel_auroc]
+        # Test metrics - only image-level AUROC (no pixel-level for HDMAP data)
+        image_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="image_")
+        test_metrics = [image_auroc]
         
         return Evaluator(val_metrics=val_metrics, test_metrics=test_metrics)
 

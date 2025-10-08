@@ -35,7 +35,7 @@ from experiment_utils import (
 from anomalib.models.image.draem import Draem
 from anomalib.models.image.draem_cutpaste import DraemCutPaste
 from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
-from anomalib.models.image import Dinomaly, Patchcore
+from anomalib.models.image import Dinomaly, Patchcore, EfficientAd, Fastflow
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -85,6 +85,10 @@ class BaseAnomalyTrainer:
             return self._create_dinomaly_model()
         elif self.model_type == "patchcore":
             return self._create_patchcore_model()
+        elif self.model_type == "efficient_ad":
+            return self._create_efficient_ad_model()
+        elif self.model_type == "fastflow":
+            return self._create_fastflow_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
@@ -197,6 +201,44 @@ class BaseAnomalyTrainer:
             pre_trained=self.config["pre_trained"],
             coreset_sampling_ratio=self.config["coreset_sampling_ratio"],
             num_neighbors=self.config["num_neighbors"]
+        )
+    
+    def _create_efficient_ad_model(self):
+        """EfficientAD 모델 생성"""
+        # 절대 경로로 ImageNette와 pretrained weights 경로 설정
+        from pathlib import Path
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent.parent.parent  # anomalib/ 디렉토리
+        
+        # HDMAP 데이터는 gt_mask가 없으므로 image-level 메트릭만 사용
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+        
+        return EfficientAd(
+            teacher_out_channels=self.config.get("teacher_out_channels", 384),
+            model_size=self.config.get("model_size", "small"),
+            lr=self.config.get("learning_rate", 0.0001),
+            weight_decay=self.config.get("weight_decay", 0.00001),
+            padding=self.config.get("padding", False),
+            pad_maps=self.config.get("pad_maps", True),
+            imagenet_dir=str(project_root / "datasets" / "imagenette"),
+            evaluator=evaluator  # 커스텀 evaluator 사용
+        )
+    
+    def _create_fastflow_model(self):
+        """FastFlow 모델 생성"""
+        # FastFlow는 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+        
+        return Fastflow(
+            backbone=self.config.get("backbone", "resnet18"),
+            flow_steps=self.config.get("flow_steps", 8),
+            conv3x3_only=self.config.get("conv3x3_only", False),
+            hidden_ratio=self.config.get("hidden_ratio", 1.0),
+            evaluator=evaluator
         )
     
     
@@ -314,10 +356,10 @@ class BaseAnomalyTrainer:
         callbacks = []
         
         # 모델별 EarlyStopping 설정
-        if self.model_type == "patchcore":
-            # PatchCore는 단일 epoch 훈련이므로 EarlyStopping과 ModelCheckpoint 모두 불필요
+        if self.model_type in ["patchcore", "efficient_ad"]:
+            # PatchCore와 EfficientAD는 특별한 훈련 방식을 사용하므로 EarlyStopping과 ModelCheckpoint 모두 불필요
             # Engine에서 자동으로 ModelCheckpoint를 추가하므로 별도 추가하지 않음
-            print("   ℹ️ PatchCore: EarlyStopping 및 ModelCheckpoint 비활성화 (단일 epoch 훈련)")
+            print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 및 ModelCheckpoint 비활성화 (특별한 훈련 방식)")
             return []  # 빈 콜백 리스트 반환
             
         else:
@@ -327,6 +369,16 @@ class BaseAnomalyTrainer:
                 monitor_metric = "val_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
+            elif self.model_type == "efficient_ad":
+                # EfficientAD: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ EFFICIENT AD: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+            elif self.model_type == "fastflow":
+                # FastFlow: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ FASTFLOW: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -352,6 +404,22 @@ class BaseAnomalyTrainer:
                     save_top_k=1,
                     verbose=True
                 )
+            elif self.model_type == "efficient_ad":
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+                    monitor="val_image_AUROC",
+                    mode="max",
+                    save_top_k=1,
+                    verbose=True
+                )
+            elif self.model_type == "fastflow":
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+                    monitor="val_image_AUROC",
+                    mode="max",
+                    save_top_k=1,
+                    verbose=True
+                )
             else:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_loss:.4f}",
@@ -366,8 +434,8 @@ class BaseAnomalyTrainer:
     
     def configure_optimizer(self, model):
         """옵티마이저 설정 - 모든 모델 공통"""
-        # PatchCore는 옵티마이저가 필요하지 않음
-        if self.model_type == "patchcore":
+        # PatchCore와 EfficientAD는 옵티마이저가 필요하지 않음
+        if self.model_type in ["patchcore", "efficient_ad"]:
             return
                 
     def train_model(self, model, datamodule, logger) -> Tuple[Any, Engine, str]:
@@ -397,9 +465,14 @@ class BaseAnomalyTrainer:
             version=""
         )
         
-        # Engine 설정
-        # PatchCore의 경우 max_epochs를 1로 강제 설정
-        max_epochs = 1 if self.model_type == "patchcore" else self.config["max_epochs"]
+        # Engine 설정  
+        # PatchCore와 EfficientAD의 경우 특별한 epoch 설정
+        if self.model_type == "patchcore":
+            max_epochs = 1
+        elif self.model_type == "efficient_ad":
+            max_epochs = self.config["max_epochs"]
+        else:
+            max_epochs = self.config["max_epochs"]
         
         engine_kwargs = {
             "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
@@ -417,6 +490,8 @@ class BaseAnomalyTrainer:
         
         if self.model_type == "patchcore":
             print(f"   ℹ️ PatchCore: max_epochs 강제 설정 (1 epoch)")
+        elif self.model_type == "efficient_ad":
+            print(f"   ℹ️ EFFICIENT AD: max_epochs = {max_epochs} (특별한 훈련 방식)")
         else:
             print(f"   ℹ️ {self.model_type.upper()}: max_epochs = {max_epochs}")
         
@@ -443,8 +518,8 @@ class BaseAnomalyTrainer:
         print(f"   🏆 Best Checkpoint: {best_checkpoint}")
         logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
 
-        # Best checkpoint 로드 (PatchCore 제외)
-        if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type != "patchcore":
+        # Best checkpoint 로드 (PatchCore와 EfficientAD 제외)
+        if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type not in ["patchcore", "efficient_ad"]:
             print(f"   📂 Best checkpoint 로드 중...")
             checkpoint = torch.load(best_checkpoint, map_location='cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -453,8 +528,8 @@ class BaseAnomalyTrainer:
 
             print(f"   ✅ Best checkpoint 로드 완료!")
             logger.info(f"✅ Best checkpoint 로드 완료: {best_checkpoint}")
-        elif self.model_type == "patchcore":
-            print(f"   ℹ️ PatchCore: Best checkpoint 로드 건너뜀 (단일 epoch 모델)")
+        elif self.model_type in ["patchcore", "efficient_ad"]:
+            print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: Best checkpoint 로드 건너뜀 (특별한 훈련 방식)")
         else:
             print(f"   ⚠️ Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")
             logger.warning(f"Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")

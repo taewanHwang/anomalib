@@ -924,6 +924,9 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     torch_model = model.model
     torch_model.eval()
     
+    # 모델의 training flag를 명시적으로 False로 설정 (FastFlow 등에서 중요)
+    torch_model.training = False
+    
     # 모델을 GPU로 이동 (CUDA 사용 가능한 경우)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch_model = torch_model.to(device)
@@ -960,9 +963,22 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             image_tensor = batch.image.to(device)
             print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}, min: {image_tensor.min().item():.4f}, q1: {image_tensor.quantile(0.25).item():.4f}, q2: {image_tensor.quantile(0.5).item():.4f}, q3: {image_tensor.quantile(0.75).item():.4f}, max: {image_tensor.max().item():.4f}")
             
-            # 모델로 직접 예측 수행
-            model_output = torch_model(image_tensor)
+            # 모델로 직접 예측 수행 (inference mode에서 실행)
+            with torch.no_grad():
+                # FastFlow 등 모델의 경우 반드시 eval mode에서 호출해야 함
+                model_output = torch_model(image_tensor)
             print(f"      ✅ 모델 출력 완료: {type(model_output)}")
+            
+            # FastFlow 모델의 경우 training mode인지 확인
+            if model_type.lower() == "fastflow":
+                print(f"      🔍 FastFlow 모델 상태: training={torch_model.training}")
+                if hasattr(model_output, 'pred_score'):
+                    print(f"      📊 FastFlow pred_score shape: {model_output.pred_score.shape}")
+                    print(f"      📊 FastFlow pred_score 값: {model_output.pred_score.cpu().numpy()}")
+                if hasattr(model_output, 'anomaly_map'):
+                    print(f"      📊 FastFlow anomaly_map shape: {model_output.anomaly_map.shape}")
+                    amap_stats = model_output.anomaly_map.cpu().numpy()
+                    print(f"      📊 FastFlow anomaly_map 통계: min={amap_stats.min():.4f}, max={amap_stats.max():.4f}, mean={amap_stats.mean():.4f}")
                         
             # 모델별 출력에서 점수들 추출
             final_scores = extract_scores_from_model_output(
@@ -1185,6 +1201,32 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         else:
             raise AttributeError("Dinomaly 출력 속성 없음")
             
+    elif model_type.lower() == "fastflow":
+        # FastFlow 모델 처리
+        print(f"      🌊 FastFlow 점수 추출")
+        
+        # pred_score가 있지만 모두 0인 경우 anomaly_map을 사용
+        if hasattr(model_output, 'pred_score'):
+            pred_scores = model_output.pred_score.cpu().numpy()
+            print(f"      📊 FastFlow pred_score: min={np.min(pred_scores):.4f}, max={np.max(pred_scores):.4f}")
+            
+            # pred_score가 모두 0이면 anomaly_map으로 대체
+            if np.max(pred_scores) == 0.0 and hasattr(model_output, 'anomaly_map'):
+                print(f"      ⚠️ pred_score가 모두 0이므로 anomaly_map 사용")
+                anomaly_map = model_output.anomaly_map.cpu().numpy()
+                final_scores = np.array([float(np.mean(am)) if am.size > 0 else 0.0 for am in anomaly_map])
+                print(f"      📊 FastFlow 점수 추출 (anomaly_map mean): min={np.min(final_scores):.4f}, max={np.max(final_scores):.4f}")
+            else:
+                final_scores = pred_scores
+                
+        elif hasattr(model_output, 'anomaly_map'):
+            # anomaly_map에서 점수 계산 (fallback)
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = np.array([float(np.mean(am)) if am.size > 0 else 0.0 for am in anomaly_map])
+            print(f"      📊 FastFlow 점수 추출 (anomaly_map only): min={np.min(final_scores):.4f}, max={np.max(final_scores):.4f}")
+        else:
+            raise AttributeError("FastFlow 출력 속성 없음")
+            
     else:
         # 알 수 없는 모델 타입: 일반적인 속성으로 시도
         print(f"   ⚠️ Unknown model type: {model_type}, trying generic attributes")
@@ -1194,7 +1236,7 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
             final_scores = model_output.final_score.cpu().numpy()
         elif hasattr(model_output, 'anomaly_map'):
             anomaly_map = model_output.anomaly_map.cpu().numpy()
-            final_scores = [float(np.max(am)) for am in anomaly_map]
+            final_scores = np.array([float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map])
         else:
             raise AttributeError(f"지원되지 않는 모델 출력 형식: {type(model_output)}")
             
