@@ -29,8 +29,12 @@ OUTPUT_DIR = "/mnt/ex-disk/taewan.hwang/study/anomalib/examples/hdmap/visualize_
 # 도메인 목록
 DOMAINS = ['A', 'B', 'C', 'D']
 
-# 데이터 타입 (good/fault)
-DATA_TYPES = ['good', 'fault']
+# 데이터 타입 (train/good, test/good, test/fault)
+DATA_SOURCES = [
+    ('train', 'good', 'Train Normal'),
+    ('test', 'good', 'Test Normal'),
+    ('test', 'fault', 'Test Fault')
+]
 
 # 각 폴더에서 선택할 이미지 수
 N_SAMPLES = 18
@@ -103,13 +107,13 @@ def load_image(file_path):
 def visualize_domain_data(domain, output_path):
     """특정 도메인의 데이터 시각화"""
     print(f"\n🔍 도메인 {domain} 시각화 중...")
-    
-    # 각 데이터 타입별로 파일 수집
+
+    # 각 데이터 소스별로 파일 수집
     all_images = {}
     all_filenames = {}
-    
-    for data_type in DATA_TYPES:
-        folder_path = Path(BASE_PATH) / f"domain_{domain}" / "test" / data_type
+
+    for split, label, description in DATA_SOURCES:
+        folder_path = Path(BASE_PATH) / f"domain_{domain}" / split / label
         selected_files = get_random_image_files(folder_path, N_SAMPLES)
 
         images = []
@@ -121,94 +125,112 @@ def visualize_domain_data(domain, output_path):
                 images.append(image)
                 filenames.append(file_path.name)
 
-        all_images[data_type] = images
-        all_filenames[data_type] = filenames
-    
+        source_key = f"{split}_{label}"
+        all_images[source_key] = images
+        all_filenames[source_key] = filenames
+
     # 시각화
-    if all_images['good'] or all_images['fault']:
+    if any(all_images.values()):
         create_visualization(domain, all_images, all_filenames, output_path)
     else:
         print(f"  ❌ 도메인 {domain}: 시각화할 이미지가 없습니다.")
 
 
 def create_visualization(domain, images_dict, filenames_dict, output_path):
-    """도메인별 시각화 생성 및 저장 (정상/고장 각각 3x4 그리드)"""
+    """도메인별 시각화 생성 및 저장 (Train Normal / Test Normal / Test Fault, 각각 6x3=18개)"""
     # 전체 이미지 수 계산
-    n_good = len(images_dict['good'])
-    n_fault = len(images_dict['fault'])
-    
-    if n_good == 0 and n_fault == 0:
+    n_train_good = len(images_dict.get('train_good', []))
+    n_test_good = len(images_dict.get('test_good', []))
+    n_test_fault = len(images_dict.get('test_fault', []))
+
+    if n_train_good == 0 and n_test_good == 0 and n_test_fault == 0:
         print(f"  ❌ 도메인 {domain}: 시각화할 이미지가 없습니다.")
         return
-    
-    # Figure 생성 (6행 x 6열: 좌측 3열=정상, 우측 3열=고장)
-    fig, axes = plt.subplots(GRID_ROWS, 2*GRID_COLS, figsize=FIGSIZE)
-    fig.suptitle(f'Domain {domain} - Random Samples (Good: {n_good}, Fault: {n_fault})', 
-                 fontsize=16, fontweight='bold')
-    
+
+    # Figure 생성 (6행 x 9열: 3개 섹션 x 3열)
+    fig, axes = plt.subplots(GRID_ROWS, 3*GRID_COLS, figsize=(30, 16))
+    fig.suptitle(f'Domain {domain} - Random Samples (Train: {n_train_good}, Test Normal: {n_test_good}, Test Fault: {n_test_fault})',
+                 fontsize=18, fontweight='bold')
+
     # 열 제목 추가
-    fig.text(0.25, 0.95, 'Good Samples', ha='center', va='center', fontsize=14, fontweight='bold')
-    fig.text(0.75, 0.95, 'Fault Samples', ha='center', va='center', fontsize=14, fontweight='bold')
-    
+    fig.text(0.17, 0.96, 'Train Normal', ha='center', va='center', fontsize=14, fontweight='bold', color='blue')
+    fig.text(0.5, 0.96, 'Test Normal', ha='center', va='center', fontsize=14, fontweight='bold', color='green')
+    fig.text(0.83, 0.96, 'Test Fault', ha='center', va='center', fontsize=14, fontweight='bold', color='red')
+
     # 모든 축 비활성화
     for i in range(GRID_ROWS):
-        for j in range(2*GRID_COLS):
+        for j in range(3*GRID_COLS):
             axes[i, j].axis('off')
-    
-    # 정상 이미지 배치 (좌측 3열)
-    if n_good > 0:
-        for i in range(min(n_good, GRID_ROWS * GRID_COLS)):
+
+    # Train Normal 이미지 배치 (좌측 3열)
+    if n_train_good > 0:
+        for i in range(min(n_train_good, GRID_ROWS * GRID_COLS)):
             row = i // GRID_COLS
             col = i % GRID_COLS
-            
-            image = images_dict['good'][i]
-            filename = filenames_dict['good'][i]
-            
+
+            image = images_dict['train_good'][i]
+            filename = filenames_dict['train_good'][i]
+
             # 스케일 0~1로 고정
-            im = axes[row, col].imshow(image, cmap=COLORMAP, vmin=0, vmax=1)
+            axes[row, col].imshow(image, cmap=COLORMAP, vmin=0, vmax=1)
             axes[row, col].set_title(f'{filename}', fontsize=8)
             axes[row, col].axis('off')
-    
-    # 고장 이미지 배치 (우측 3열)
-    if n_fault > 0:
-        for i in range(min(n_fault, GRID_ROWS * GRID_COLS)):
+
+    # Test Normal 이미지 배치 (중앙 3열)
+    if n_test_good > 0:
+        for i in range(min(n_test_good, GRID_ROWS * GRID_COLS)):
             row = i // GRID_COLS
-            col = i % GRID_COLS + GRID_COLS  # 오른쪽 3열로 이동
-            
-            image = images_dict['fault'][i]
-            filename = filenames_dict['fault'][i]
-            
+            col = i % GRID_COLS + GRID_COLS  # 중앙 3열
+
+            image = images_dict['test_good'][i]
+            filename = filenames_dict['test_good'][i]
+
             # 스케일 0~1로 고정
-            im = axes[row, col].imshow(image, cmap=COLORMAP, vmin=0, vmax=1)
+            axes[row, col].imshow(image, cmap=COLORMAP, vmin=0, vmax=1)
             axes[row, col].set_title(f'{filename}', fontsize=8)
             axes[row, col].axis('off')
-    
+
+    # Test Fault 이미지 배치 (우측 3열)
+    if n_test_fault > 0:
+        for i in range(min(n_test_fault, GRID_ROWS * GRID_COLS)):
+            row = i // GRID_COLS
+            col = i % GRID_COLS + 2*GRID_COLS  # 우측 3열
+
+            image = images_dict['test_fault'][i]
+            filename = filenames_dict['test_fault'][i]
+
+            # 스케일 0~1로 고정
+            axes[row, col].imshow(image, cmap=COLORMAP, vmin=0, vmax=1)
+            axes[row, col].set_title(f'{filename}', fontsize=8)
+            axes[row, col].axis('off')
+
     # 레이아웃 조정
-    plt.tight_layout(rect=[0, 0, 1.0, 0.92])
-    
+    plt.tight_layout(rect=[0, 0, 1.0, 0.94])
+
     # 저장
     output_file = output_path / f'domain_{domain}_visualization.png'
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
-    
+
     print(f"  ✅ 저장 완료: {output_file}")
 
 
 def generate_summary_statistics(output_path):
     """전체 도메인 통계 요약 생성"""
     print(f"\n📊 데이터셋 통계 요약 생성 중...")
-    
+
     summary_data = {}
-    
+
     for domain in DOMAINS:
-        domain_stats = {'good': 0, 'fault': 0}
-        
-        for data_type in DATA_TYPES:
-            folder_path = Path(BASE_PATH) / f"domain_{domain}" / "test" / data_type
+        domain_stats = {'train_good': 0, 'test_good': 0, 'test_fault': 0}
+
+        for split, label, description in DATA_SOURCES:
+            folder_path = Path(BASE_PATH) / f"domain_{domain}" / split / label
             if folder_path.exists():
                 image_files = list(folder_path.glob("*.tiff")) + list(folder_path.glob("*.png"))
-                domain_stats[data_type] = len(image_files)
-        
+                source_key = f"{split}_{label}"
+                domain_stats[source_key] = len(image_files)
+
         summary_data[domain] = domain_stats
     
     # 요약 텍스트 파일 생성
@@ -221,19 +243,21 @@ def generate_summary_statistics(output_path):
         f.write(f"샘플링 수: {N_SAMPLES}개씩\n\n")
         
         f.write("도메인별 파일 수:\n")
-        f.write("-" * 30 + "\n")
-        
-        total_good = 0
-        total_fault = 0
-        
+        f.write("-" * 60 + "\n")
+
+        total_train_good = 0
+        total_test_good = 0
+        total_test_fault = 0
+
         for domain in DOMAINS:
             stats = summary_data[domain]
-            f.write(f"Domain {domain}: Good={stats['good']:,}, Fault={stats['fault']:,}\n")
-            total_good += stats['good']
-            total_fault += stats['fault']
-        
-        f.write("-" * 30 + "\n")
-        f.write(f"전체 합계: Good={total_good:,}, Fault={total_fault:,}\n")
+            f.write(f"Domain {domain}: Train={stats['train_good']:,}, Test Normal={stats['test_good']:,}, Test Fault={stats['test_fault']:,}\n")
+            total_train_good += stats['train_good']
+            total_test_good += stats['test_good']
+            total_test_fault += stats['test_fault']
+
+        f.write("-" * 60 + "\n")
+        f.write(f"전체 합계: Train={total_train_good:,}, Test Normal={total_test_good:,}, Test Fault={total_test_fault:,}\n")
     
     print(f"  ✅ 요약 파일 저장: {summary_file}")
     
@@ -241,7 +265,7 @@ def generate_summary_statistics(output_path):
     print(f"\n📈 데이터셋 통계:")
     for domain in DOMAINS:
         stats = summary_data[domain]
-        print(f"  Domain {domain}: Good={stats['good']:,}, Fault={stats['fault']:,}")
+        print(f"  Domain {domain}: Train={stats['train_good']:,}, Test Normal={stats['test_good']:,}, Test Fault={stats['test_fault']:,}")
 
 
 def main():
