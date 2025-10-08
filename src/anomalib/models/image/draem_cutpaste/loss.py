@@ -28,7 +28,7 @@ class DraemCutPasteLoss(nn.Module):
         super().__init__()
 
         self.l2_loss = nn.modules.loss.MSELoss()
-        self.focal_loss = FocalLoss(alpha=1, reduction="mean")
+        self.focal_loss = FocalLoss(alpha=0.9, reduction="mean")  # High weight for anomaly class
         self.ssim_loss = SSIMLoss(window_size=11)
 
     def forward(

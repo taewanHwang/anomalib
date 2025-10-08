@@ -35,9 +35,8 @@ class DraemCutPasteModel(nn.Module):
             Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head. Defaults to ``0.3``.
         severity_input_channels (str, optional): Channels to use for severity head input.
-            Options: "original", "mask", "residual", "original+mask", "original+residual",
-            "mask+residual", "original+mask+residual", etc.
-            Defaults to ``"original+mask+residual"``.
+            Options: "original", "mask", "original+mask".
+            Defaults to ``"original+mask"``.
 
         # CutPaste generator parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths. Defaults to ``(10, 80)``.
@@ -62,7 +61,7 @@ class DraemCutPasteModel(nn.Module):
         sspcab: bool = False,
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
-        severity_input_channels: str = "original+mask+residual",
+        severity_input_channels: str = "original+mask",
         # CutPaste generator parameters
         cut_w_range: tuple[int, int] = (10, 80),
         cut_h_range: tuple[int, int] = (1, 2),
@@ -135,7 +134,7 @@ class DraemCutPasteModel(nn.Module):
     def _calculate_severity_in_channels(self, severity_input_channels: str) -> int:
         """Calculate number of input channels based on configuration.
 
-        Supported channels: original, mask, residual
+        Supported channels: original, mask
 
         Args:
             severity_input_channels: Channel configuration string
@@ -147,8 +146,6 @@ class DraemCutPasteModel(nn.Module):
         if "original" in severity_input_channels:
             channel_count += 1
         if "mask" in severity_input_channels:
-            channel_count += 1
-        if "residual" in severity_input_channels:
             channel_count += 1
 
         if channel_count == 0:
@@ -171,7 +168,6 @@ class DraemCutPasteModel(nn.Module):
         Supported input channels:
         - "original": Original single channel image [0, 1] bounded
         - "mask": Anomaly probability mask from discriminative network [0, 1] bounded
-        - "residual": Reconstruction error |original - recon_raw| [unbounded → bounded]
 
         Args:
             original_single_ch: Single channel original image (already 0~1 normalized)
@@ -194,15 +190,6 @@ class DraemCutPasteModel(nn.Module):
             if self.training:
                 mask_normalized = mask_normalized.detach()
             inputs.append(mask_normalized)
-
-        if "residual" in self.severity_input_channels:
-            # Calculate residual (reconstruction error) as |original - reconstruction|
-            # Use raw reconstruction output (consistent with L2/SSIM loss calculation)
-            residual = (original_single_ch - reconstruction).abs()
-            # Detach during training to prevent CE gradients flowing to reconstructive subnet
-            if self.training:
-                residual = residual.detach()
-            inputs.append(residual)
 
         return torch.cat(inputs, dim=1)
 

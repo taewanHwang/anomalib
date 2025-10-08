@@ -89,7 +89,7 @@ class DraemCutPasteClf(AnomalibModule):
         recon_lr_multiplier: float = 1.0,  # Reconstruction network LR multiplier
 
         # Severity head input configuration
-        severity_input_channels: str = "original+mask+recon",
+        severity_input_channels: str = "original+mask",
 
         # Standard anomalib parameters
         evaluator: Evaluator | bool = True,

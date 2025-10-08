@@ -13,8 +13,9 @@ from torch import nn
 class SeverityHead(nn.Module):
     """CNN Classification head for DRAEM CutPaste model.
 
-    Takes multi-channel input (original image + predicted mask + reconstruction) and outputs binary classification.
+    Takes multi-channel input (original image + predicted mask) and outputs binary classification.
     Based on the CNN_simple architecture from the original DRAME_CutPaste implementation v4.
+    Optimized for 128x128 input resolution.
 
     Key success factors from original model:
     1. Natural feature map size preservation (no adaptive pooling)
@@ -22,24 +23,24 @@ class SeverityHead(nn.Module):
     3. Proper regularization (BatchNorm + Dropout)
 
     Args:
-        in_channels (int, optional): Number of input channels. Defaults to ``3`` (image + mask + reconstruction).
+        in_channels (int, optional): Number of input channels. Defaults to ``2`` (image + mask).
         dropout_rate (float, optional): Dropout rate for regularization. Defaults to ``0.3``.
         input_size (tuple[int, int], optional): Expected input size (H, W).
-            Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
+            Used for calculating FC layer dimensions. Defaults to ``(128, 128)``.
 
     Example:
-        >>> severity_head = SeverityHead(in_channels=3, input_size=(256, 256))
-        >>> # Input: [batch_size, 3, 256, 256] (original + mask + reconstruction)
-        >>> input_tensor = torch.randn(4, 3, 256, 256)
+        >>> severity_head = SeverityHead(in_channels=2, input_size=(128, 128))
+        >>> # Input: [batch_size, 2, 128, 128] (original + mask)
+        >>> input_tensor = torch.randn(4, 2, 128, 128)
         >>> output = severity_head(input_tensor)  # Shape: [4, 2] (logits)
         >>> probabilities = torch.softmax(output, dim=1)  # [4, 2] (probabilities)
     """
 
     def __init__(
         self,
-        in_channels: int = 3,
+        in_channels: int = 2,
         dropout_rate: float = 0.3,
-        input_size: tuple[int, int] = (256, 256)
+        input_size: tuple[int, int] = (128, 128)
     ) -> None:
         super().__init__()
 
@@ -48,24 +49,21 @@ class SeverityHead(nn.Module):
         self.input_size = input_size
 
         # Based on CNN_simple from utils_model_for_HDmap_v4.py
-        # Architecture optimized for 256x256 input
+        # Architecture optimized for 128x128 input
 
-        # 📐 Scaling ratio: 256/95 ≈ 2.7x, 256/31 ≈ 8.3x
-        # Using appropriate stride and kernel for much larger input than original (31x95)
-
-        # Convolutional layers: 256x256 -> 128x128 -> 64x64 -> 32x32 -> 16x16 -> 8x8
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=7, stride=2, padding=3)   # 256x256 -> 128x128
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=7, stride=2, padding=3)            # 128x128 -> 64x64
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2)           # 64x64 -> 32x32
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2)          # 32x32 -> 16x16
-        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)          # 16x16 -> 8x8
+        # Convolutional layers: 128x128 -> 64x64 -> 32x32 -> 16x16 -> 8x8 -> 4x4
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=7, stride=2, padding=3)   # 128x128 -> 64x64
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=7, stride=2, padding=3)            # 64x64 -> 32x32
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2)           # 32x32 -> 16x16
+        self.conv4 = nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2)          # 16x16 -> 8x8
+        self.conv5 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)          # 8x8 -> 4x4
 
         # 🚫 No adaptive_pool: Following original model's success factor
-        # After conv5: 8x8, so 512 * 8 * 8 = 32,768
+        # After conv5: 4x4, so 512 * 4 * 4 = 8,192
         # Original model approach: Use natural size directly
 
-        # 512 * 8 * 8 = 32,768 (preserving rich spatial information)
-        self.fc1 = nn.Linear(512 * 8 * 8, 1024)  # First FC
+        # 512 * 4 * 4 = 8,192 (preserving rich spatial information)
+        self.fc1 = nn.Linear(512 * 4 * 4, 1024)  # First FC
         self.fc2 = nn.Linear(1024, 256)          # Second FC
         self.fc3 = nn.Linear(256, 2)             # Output layer
 
@@ -106,7 +104,7 @@ class SeverityHead(nn.Module):
         x = self.dropout_conv(x)  # Third dropout after 5th conv
 
         # 🎯 Original model approach: Direct flatten without adaptive_pool
-        x = x.view(x.size(0), -1)  # 8x8x512 = 32,768 features directly flattened
+        x = x.view(x.size(0), -1)  # 4x4x512 = 8,192 features directly flattened
 
         # FC layers with Dropout
         x = self.dropout_fc(self.relu(self.fc1(x)))
@@ -125,12 +123,12 @@ class SeverityHead(nn.Module):
             "in_channels": self.in_channels,
             "dropout_rate": self.dropout_rate,
             "input_size": self.input_size,
-            "architecture": "CNN_simple_v4",
+            "architecture": "CNN_simple_v4_128x128",
             "num_classes": 2,
             "conv_channels": [32, 64, 128, 256, 512],
-            "fc_layers": [32768, 1024, 256, 2],
+            "fc_layers": [8192, 1024, 256, 2],
             "kernel_sizes": [7, 7, 5, 5, 3],
-            "final_feature_map": "8x8x512"
+            "final_feature_map": "4x4x512"
         }
 
 

@@ -1324,8 +1324,8 @@ def create_anomaly_heatmap_with_colorbar(
 def create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=None):
     """배치에 대한 시각화 생성
 
-    - DRAEM 계열 (DRAEM, DRAEM CutPaste Clf): original, recon, residual, original+anomaly maps (4개)
-    - 기타 모델: original, original+anomaly maps (2개)
+    - DRAEM 계열 (DRAEM, DRAEM CutPaste Clf): original, recon, disc_anomaly, overlay_auto, overlay_fixed (5개)
+    - 기타 모델: original, overlay_auto, overlay_fixed (3개)
 
     Args:
         image_tensor: 입력 이미지 텐서 [B, C, H, W] - range: [0, 1] normalized
@@ -1366,9 +1366,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 hasattr(model, 'reconstructive_subnetwork') and
                 hasattr(model, 'discriminative_subnetwork'))
 
-    # DRAEM 계열 모델인 경우 reconstruction과 residual, discriminative anomaly 계산
+    # DRAEM 계열 모델인 경우 reconstruction과 discriminative anomaly 계산
     recon_batch = None
-    residual_batch = None
     disc_anomaly_batch = None
     if is_draem:
         with torch.no_grad():
@@ -1401,9 +1400,6 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
             print(f"         - min={recon_batch.min():.4f}, max={recon_batch.max():.4f}, mean={recon_batch.mean():.4f}, std={recon_batch.std():.4f}")
             print(f"      🔍 Input stats:")
             print(f"         - min={batch_input.min():.4f}, max={batch_input.max():.4f}, mean={batch_input.mean():.4f}, std={batch_input.std():.4f}")
-
-            # Residual 계산 (첫 번째 채널만 사용하여 시각화)
-            residual_batch = (batch_input[:, :1, :, :] - recon_batch[:, :1, :, :]).abs()
 
             # Discriminative network 계산 (anomaly channel 추출)
             # Follow DRAEM convention: [original, reconstruction]
@@ -1493,8 +1489,8 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 alpha=0.5
             )
 
-            # DRAEM 계열 모델인 경우 6개 이미지 시각화
-            if is_draem and recon_batch is not None and residual_batch is not None:
+            # DRAEM 계열 모델인 경우 5개 이미지 시각화
+            if is_draem and recon_batch is not None:
                 # Reconstruction 이미지 생성
                 recon_tensor = recon_batch[i]  # [C, H, W] - C는 1 또는 3
                 # range: unbounded (raw network output)
@@ -1520,26 +1516,6 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 else:
                     recon_array = recon_array[:, :, :3]  # 3채널 초과시 앞 3개만
                 recon_img_pil = Image.fromarray(recon_array, mode='RGB')
-
-                # Residual 이미지 생성
-                residual_tensor = residual_batch[i]  # [1, H, W] - residual은 항상 1채널
-                # range: [0, ∞) (absolute difference |original - reconstruction|)
-                # meaning: 재구성 오차, 큰 값일수록 이상 가능성 높음
-
-                # Min-max normalization으로 [0, 1] 범위로 변환
-                residual_np = residual_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, 1]
-                residual_min = residual_np.min()
-                residual_max = residual_np.max()
-                if residual_max > residual_min:
-                    residual_normalized = (residual_np - residual_min) / (residual_max - residual_min)
-                else:
-                    residual_normalized = np.zeros_like(residual_np)
-                residual_array = (residual_normalized * 255).astype(np.uint8)
-
-                # print(f"      🔍 Residual normalization: [{residual_min:.4f}, {residual_max:.4f}] -> [0, 1]")
-
-                residual_array = np.repeat(residual_array, 3, axis=2)  # 1채널 → RGB
-                residual_img_pil = Image.fromarray(residual_array, mode='RGB')
 
                 # Discriminative Anomaly 이미지 생성
                 disc_anomaly_tensor = disc_anomaly_batch[i]  # [1, H, W] - softmax된 anomaly channel
@@ -1591,12 +1567,6 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                residual_with_text = add_text_to_image(
-                    residual_img_pil.copy(),
-                    "Residual",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
                 disc_anomaly_with_text = add_text_to_image(
                     disc_anomaly_img_pil.copy(),
                     "Disc Anomaly",
@@ -1615,10 +1585,10 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                # 6개 이미지를 3열 그리드로 배치 (2행 x 3열)
+                # 5개 이미지를 3열 그리드로 배치 (2행: 3개 + 2개)
                 visualization_grid = create_image_grid(
-                    [original_with_text, recon_with_text, residual_with_text,
-                     disc_anomaly_with_text, overlay_auto_with_text, overlay_fixed_with_text],
+                    [original_with_text, recon_with_text, disc_anomaly_with_text,
+                     overlay_auto_with_text, overlay_fixed_with_text],
                     nrow=3
                 )
             else:
