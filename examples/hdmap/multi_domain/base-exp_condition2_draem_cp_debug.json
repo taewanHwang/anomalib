@@ -1,0 +1,132 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "multi-exp-10.A",
+      "description": "Domain A → B,C,D DRAEM CutPaste (without severity head) 128x128",
+      "config": {
+        "model_type": "draem_cutpaste",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 20,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "cut_w_range": [13, 108],
+        "cut_h_range": [4, 8],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "multi-exp-10.B",
+      "description": "Domain B → A,C,D DRAEM CutPaste (without severity head) 128x128",
+      "config": {
+        "model_type": "draem_cutpaste",
+        "source_domain": "domain_B",
+        "target_domains": ["domain_A", "domain_C", "domain_D"],
+        "max_epochs": 20,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "cut_w_range": [13, 108],
+        "cut_h_range": [4, 8],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "multi-exp-10.C",
+      "description": "Domain C → A,B,D DRAEM CutPaste (without severity head) 128x128",
+      "config": {
+        "model_type": "draem_cutpaste",
+        "source_domain": "domain_C",
+        "target_domains": ["domain_A", "domain_B", "domain_D"],
+        "max_epochs": 20,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "cut_w_range": [13, 108],
+        "cut_h_range": [4, 8],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "multi-exp-10.D",
+      "description": "Domain D → A,B,C DRAEM CutPaste (without severity head) 128x128",
+      "config": {
+        "model_type": "draem_cutpaste",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
+        "max_epochs": 20,
+        "early_stopping_patience": 5,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "cut_w_range": [13, 108],
+        "cut_h_range": [4, 8],
+        "a_fault_start": 1.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    }
+  ]
+}

@@ -38,12 +38,15 @@ set -e  # 오류 시 즉시 종료
 # =============================================================================
 
 # 사용할 GPU 목록 (0부터 시작, 사용 가능한 GPU ID를 나열)
-AVAILABLE_GPUS=(8 9 10 11 12 13 14 15)
+AVAILABLE_GPUS=(12 13 14 15)
 
 # 실험 설정 파일 및 실행 스크립트 경로
 SCRIPT_PATH="examples/hdmap/multi_domain/base-training.py"
 # CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition1_dinomaly_debug.json"
-CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition2_draem_debug.json"
+# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition2_draem_debug.json"
+# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition3_patchcore_debug.json"
+CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition2_draem_cp_debug.json"
+# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition4_draem_cutpasteclf.json"
 # CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test3.json"
 
 # 세션 타임스탬프 (모든 실험에서 공유)

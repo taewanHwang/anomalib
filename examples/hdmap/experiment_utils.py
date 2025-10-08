@@ -1277,6 +1277,25 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
         else:
             raise AttributeError("FastFlow 출력 속성 없음")
             
+    elif model_type == "draem_cutpaste":
+        # DRAEM CutPaste: pred_score 사용
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            
+            # NaN 값 확인 및 처리
+            if np.isnan(final_scores).any():
+                print(f"      ⚠️  DRAEM CutPaste pred_score에 NaN 발견, 0.0으로 대체")
+                final_scores = np.nan_to_num(final_scores, nan=0.0)
+            
+            print(f"      📊 DRAEM CutPaste 점수 추출: pred_score={final_scores[0]:.4f}")
+        elif hasattr(model_output, 'anomaly_map'):
+            # anomaly_map에서 점수 계산
+            anomaly_map = model_output.anomaly_map.cpu().numpy()
+            final_scores = [float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map]
+            print(f"      📊 DRAEM CutPaste 점수 추출 (anomaly_map): max={final_scores[0]:.4f}")
+        else:
+            raise AttributeError("DRAEM CutPaste 출력 속성 없음")
+            
     else:
         # 알 수 없는 모델 타입: 일반적인 속성으로 시도
         print(f"   ⚠️ Unknown model type: {model_type}, trying generic attributes")
