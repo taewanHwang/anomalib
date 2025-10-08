@@ -240,6 +240,75 @@ class BaseAnomalyTrainer:
             seed=self.config["seed"]
         )
     
+    def print_data_statistics(self, datamodule, logger):
+        """데이터셋의 통계량 출력"""
+        print(f"\n📊 데이터 분포 통계량:")
+        logger.info("📊 데이터 분포 통계량:")
+
+        import torch
+
+        # Train 데이터 통계
+        try:
+            train_loader = datamodule.train_dataloader()
+            train_batch = next(iter(train_loader))
+            train_images = train_batch.image
+
+            train_min = train_images.min().item()
+            train_max = train_images.max().item()
+            train_mean = train_images.mean().item()
+            train_std = train_images.std().item()
+
+            print(f"   📈 Train 데이터:")
+            print(f"      - 범위: [{train_min:.6f}, {train_max:.6f}]")
+            print(f"      - 평균: {train_mean:.6f}")
+            print(f"      - 표준편차: {train_std:.6f}")
+            logger.info(f"Train 데이터 - 범위: [{train_min:.6f}, {train_max:.6f}], 평균: {train_mean:.6f}, 표준편차: {train_std:.6f}")
+        except Exception as e:
+            print(f"   ⚠️ Train 데이터 통계 계산 실패: {e}")
+            logger.warning(f"Train 데이터 통계 계산 실패: {e}")
+
+        # Val 데이터 통계
+        try:
+            val_loader = datamodule.val_dataloader()
+            val_batch = next(iter(val_loader))
+            val_images = val_batch.image
+
+            val_min = val_images.min().item()
+            val_max = val_images.max().item()
+            val_mean = val_images.mean().item()
+            val_std = val_images.std().item()
+
+            print(f"   📊 Val 데이터:")
+            print(f"      - 범위: [{val_min:.6f}, {val_max:.6f}]")
+            print(f"      - 평균: {val_mean:.6f}")
+            print(f"      - 표준편차: {val_std:.6f}")
+            logger.info(f"Val 데이터 - 범위: [{val_min:.6f}, {val_max:.6f}], 평균: {val_mean:.6f}, 표준편차: {val_std:.6f}")
+        except Exception as e:
+            print(f"   ⚠️ Val 데이터 통계 계산 실패: {e}")
+            logger.warning(f"Val 데이터 통계 계산 실패: {e}")
+
+        # Test 데이터 통계
+        try:
+            test_loader = datamodule.test_dataloader()
+            test_batch = next(iter(test_loader))
+            test_images = test_batch.image
+
+            test_min = test_images.min().item()
+            test_max = test_images.max().item()
+            test_mean = test_images.mean().item()
+            test_std = test_images.std().item()
+
+            print(f"   🧪 Test 데이터:")
+            print(f"      - 범위: [{test_min:.6f}, {test_max:.6f}]")
+            print(f"      - 평균: {test_mean:.6f}")
+            print(f"      - 표준편차: {test_std:.6f}")
+            logger.info(f"Test 데이터 - 범위: [{test_min:.6f}, {test_max:.6f}], 평균: {test_mean:.6f}, 표준편차: {test_std:.6f}")
+        except Exception as e:
+            print(f"   ⚠️ Test 데이터 통계 계산 실패: {e}")
+            logger.warning(f"Test 데이터 통계 계산 실패: {e}")
+
+        print()
+
     def create_callbacks(self):
         """콜백 설정 - 모델별 적절한 early stopping 메트릭 사용"""
         callbacks = []
@@ -548,7 +617,10 @@ class BaseAnomalyTrainer:
             
             # 테스트 데이터 라벨 분포 확인 (전체 데이터)
             analyze_test_data_distribution(datamodule, test_size)
-            
+
+            # 데이터 분포 통계량 출력
+            self.print_data_statistics(datamodule, logger)
+
             # 모델 훈련
             trained_model, engine, best_checkpoint = self.train_model(model, datamodule, logger)
             

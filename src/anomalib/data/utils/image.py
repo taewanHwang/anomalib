@@ -321,23 +321,35 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
         <class 'torch.Tensor'>
     """
     pil_image = Image.open(path)
-    
-    # F 모드(32-bit floating point)만 지원
+
+    # F 모드(32-bit floating point) 또는 I;16 모드(16-bit integer) 지원
     if pil_image.mode == 'F':
         # 32-bit float 이미지를 numpy로 변환
         image_array = np.array(pil_image, dtype=np.float32)
-        
+
         # 그레이스케일을 RGB로 변환 (3채널 복사)
         if len(image_array.shape) == 2:
             image_array = np.stack([image_array] * 3, axis=-1)
-        
+
+        if as_tensor:
+            return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
+        else:
+            return image_array
+    elif pil_image.mode == 'I;16':
+        # 16-bit PNG 이미지를 numpy로 변환 후 [0, 1] 정규화
+        image_array = np.array(pil_image, dtype=np.uint16).astype(np.float32) / 65535.0
+
+        # 그레이스케일을 RGB로 변환 (3채널 복사)
+        if len(image_array.shape) == 2:
+            image_array = np.stack([image_array] * 3, axis=-1)
+
         if as_tensor:
             return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
         else:
             return image_array
     else:
-        # F 모드가 아닌 경우 에러 발생
-        raise ValueError(f"Unsupported image mode: '{pil_image.mode}'. Only mode 'F' (32-bit floating point) is supported.")
+        # F 또는 I;16 모드가 아닌 경우 에러 발생
+        raise ValueError(f"Unsupported image mode: '{pil_image.mode}'. Only mode 'F' (32-bit floating point) or 'I;16' (16-bit integer) is supported.")
 
 def read_mask(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
     """Read grayscale mask from disk.

@@ -17,6 +17,7 @@ pkill -f prepare_hdmap_dataset.py
 import os
 import shutil
 
+import cv2
 import numpy as np
 import scipy.io
 import tifffile
@@ -25,9 +26,9 @@ import tifffile
 # 🚀 사용자 설정 (필요에 따라 수정)
 # =============================================================================
 # 데이터 설정
-N_TRAINING = 1000  # 훈련 샘플 수
+N_TRAINING = 5000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
-SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF만)
+SAVE_FORMATS = ['png']  # 저장 형식 (TIFF, PNG)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명
 
 # 정규화 방식 설정
@@ -119,6 +120,12 @@ def generate_folder_name(save_format, normalization_mode):
 def save_tiff_image(img_array, save_path):
     """이미지를 32비트 부동소수점 TIFF 파일로 저장"""
     tifffile.imwrite(save_path, img_array.astype(np.float32))
+
+def save_png_image(img_array, save_path):
+    """이미지를 16비트 PNG 파일로 저장"""
+    # [0, 1] 범위를 [0, 65535]로 스케일링
+    img_16bit = (img_array * 65535).astype(np.uint16)
+    cv2.imwrite(save_path, img_16bit)
 
 def compute_domain_statistics():
     """각 도메인별 전역 통계량 계산"""
@@ -214,26 +221,35 @@ def process_single_domain(domain, domain_paths, domain_stats, folder_name, save_
         # 이미지 저장
         for i in range(num_samples):
             img = image_data[:, :, 0, i]
-            filename = f'{i:06d}.tiff'
+
+            # 파일 확장자 결정
+            file_ext = 'tiff' if save_format == 'tiff' else 'png'
+            filename = f'{i:06d}.{file_ext}'
             save_path = os.path.join(save_dir, filename)
-            
+
             # 정규화 방식에 따른 처리
             if normalization_mode == 'original':
                 # 원본 데이터 그대로 저장 (스케일링 없음)
-                save_tiff_image(img, save_path)
-                
+                processed_img = img
+
             elif normalization_mode == 'zscore':
                 # Z-score 정규화 방식
-                img_normalized, _, _ = normalize_zscore(img, stats['mean'], stats['std'])
-                save_tiff_image(img_normalized, save_path)
-                    
+                processed_img, _, _ = normalize_zscore(img, stats['mean'], stats['std'])
+
             elif normalization_mode == 'minmax':
                 # Min-Max 스케일링 방식 (도메인별 설정 사용)
-                img_scaled = normalize_minmax(img, user_min, user_max)
-                save_tiff_image(img_scaled, save_path)
-            
+                processed_img = normalize_minmax(img, user_min, user_max)
+
             else:
                 raise ValueError(f"Unknown normalization mode: {normalization_mode}")
+
+            # 저장 형식에 따른 저장
+            if save_format == 'tiff':
+                save_tiff_image(processed_img, save_path)
+            elif save_format == 'png':
+                save_png_image(processed_img, save_path)
+            else:
+                raise ValueError(f"Unknown save format: {save_format}")
             
             # 진행상황 출력
             if (i + 1) % 10000 == 0:

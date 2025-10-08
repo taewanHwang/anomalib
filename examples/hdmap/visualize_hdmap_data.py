@@ -12,6 +12,7 @@ import os
 import random
 from pathlib import Path
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
@@ -20,7 +21,7 @@ import tifffile
 # 🚀 사용자 설정
 # =============================================================================
 # 기본 데이터 경로
-BASE_PATH = "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/1000_tiff_original_minmax"
+BASE_PATH = "/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/1000_png_minmax"
 
 # 출력 폴더
 OUTPUT_DIR = "/mnt/ex-disk/taewan.hwang/study/anomalib/examples/hdmap/visualize_hdmap_data"
@@ -36,7 +37,7 @@ N_SAMPLES = 18
 
 # 이미지 출력 설정
 FIGSIZE = (20, 16)  # 전체 figure 크기 (3x6 그리드용)
-COLORMAP = 'viridis'  # 컬러맵
+COLORMAP = 'gray'  # 컬러맵
 
 # 그리드 설정
 GRID_ROWS = 6  # 세로 6개
@@ -54,35 +55,45 @@ def setup_output_directory():
     return output_path
 
 
-def get_random_tiff_files(folder_path, n_samples):
-    """폴더에서 랜덤하게 TIFF 파일 선택"""
+def get_random_image_files(folder_path, n_samples):
+    """폴더에서 랜덤하게 이미지 파일 선택 (TIFF 또는 PNG)"""
     folder = Path(folder_path)
-    
+
     if not folder.exists():
         print(f"  ⚠️ 경고: 폴더가 존재하지 않습니다 - {folder_path}")
         return []
-    
-    # TIFF 파일 목록 가져오기
-    tiff_files = list(folder.glob("*.tiff"))
-    
-    if len(tiff_files) == 0:
-        print(f"  ⚠️ 경고: TIFF 파일이 없습니다 - {folder_path}")
+
+    # TIFF와 PNG 파일 모두 가져오기
+    image_files = list(folder.glob("*.tiff")) + list(folder.glob("*.png"))
+
+    if len(image_files) == 0:
+        print(f"  ⚠️ 경고: 이미지 파일이 없습니다 - {folder_path}")
         return []
-    
+
     # 랜덤 샘플링
-    n_available = len(tiff_files)
+    n_available = len(image_files)
     n_select = min(n_samples, n_available)
-    
-    selected_files = random.sample(tiff_files, n_select)
+
+    selected_files = random.sample(image_files, n_select)
     print(f"  📂 {folder.name}: {n_select}/{n_available}개 파일 선택")
-    
+
     return selected_files
 
 
-def load_tiff_image(file_path):
-    """TIFF 이미지 로드"""
+def load_image(file_path):
+    """이미지 로드 (TIFF 또는 PNG, 확장자로 자동 판별)"""
     try:
-        image = tifffile.imread(file_path)
+        file_ext = Path(file_path).suffix.lower()
+
+        if file_ext in ['.tiff', '.tif']:
+            image = tifffile.imread(file_path)
+        elif file_ext == '.png':
+            # PNG는 16비트 uint16으로 로드 후 [0, 1]로 정규화
+            image = cv2.imread(str(file_path), cv2.IMREAD_UNCHANGED)
+            if image is not None:
+                image = image.astype(np.float32) / 65535.0
+        else:
+            raise ValueError(f"지원하지 않는 이미지 포맷: {file_ext}")
         return image
     except Exception as e:
         print(f"  ❌ 이미지 로드 실패: {file_path} - {e}")
@@ -99,17 +110,17 @@ def visualize_domain_data(domain, output_path):
     
     for data_type in DATA_TYPES:
         folder_path = Path(BASE_PATH) / f"domain_{domain}" / "test" / data_type
-        selected_files = get_random_tiff_files(folder_path, N_SAMPLES)
-        
+        selected_files = get_random_image_files(folder_path, N_SAMPLES)
+
         images = []
         filenames = []
-        
+
         for file_path in selected_files:
-            image = load_tiff_image(file_path)
+            image = load_image(file_path)
             if image is not None:
                 images.append(image)
                 filenames.append(file_path.name)
-        
+
         all_images[data_type] = images
         all_filenames[data_type] = filenames
     
@@ -195,8 +206,8 @@ def generate_summary_statistics(output_path):
         for data_type in DATA_TYPES:
             folder_path = Path(BASE_PATH) / f"domain_{domain}" / "test" / data_type
             if folder_path.exists():
-                tiff_files = list(folder_path.glob("*.tiff"))
-                domain_stats[data_type] = len(tiff_files)
+                image_files = list(folder_path.glob("*.tiff")) + list(folder_path.glob("*.png"))
+                domain_stats[data_type] = len(image_files)
         
         summary_data[domain] = domain_stats
     

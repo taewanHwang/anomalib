@@ -42,7 +42,7 @@ from anomalib.data.errors import MisMatchError
 from anomalib.data.utils import LabelName, Split, validate_path
 from anomalib.utils import deprecate
 
-IMG_EXTENSIONS = (".tiff", ".tif", ".TIFF", ".TIF")
+IMG_EXTENSIONS = (".tiff", ".tif", ".TIFF", ".TIF", ".png", ".PNG")
 DOMAINS = (
     "domain_A",
     "domain_B", 
@@ -155,21 +155,30 @@ class HDMAPDataset(AnomalibDataset):
         )
 
     def load_and_resize_image(self, image_path: str) -> np.ndarray:
-        """Load and resize TIFF image from file path.
-        
-        32bit TIFF 파일을 로딩하고 지정된 방법으로 리사이즈합니다.
-        정규화는 수행하지 않습니다 (32bit TIFF는 이미 적절한 범위).
-        
+        """Load and resize image from file path.
+
+        TIFF(32bit float) 또는 PNG(16bit) 파일을 로딩하고 지정된 방법으로 리사이즈합니다.
+        PNG의 경우 [0, 1] 범위로 정규화합니다.
+
         Args:
-            image_path: Path to TIFF image file
-            
+            image_path: Path to image file
+
         Returns:
             Resized image as numpy array (C, H, W) in float32 format
         """
-        # 32bit TIFF 파일 로딩 (정규화 불필요)
+        # 이미지 파일 로딩
         with Image.open(image_path) as img:
-            img_array = np.array(img).astype(np.float32)
-                
+            # 이미지 모드에 따라 처리
+            if img.mode == 'F':
+                # 32bit TIFF (정규화 불필요)
+                img_array = np.array(img).astype(np.float32)
+            elif img.mode == 'I;16':
+                # 16bit PNG (0~65535 → 0~1 정규화)
+                img_array = np.array(img, dtype=np.uint16).astype(np.float32) / 65535.0
+            else:
+                # 기타 모드는 float32로 변환
+                img_array = np.array(img).astype(np.float32)
+
             # 그레이스케일을 RGB로 변환
             if len(img_array.shape) == 2:
                 img_array = np.stack([img_array, img_array, img_array], axis=0)  # (3, H, W)
