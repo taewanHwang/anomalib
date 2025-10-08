@@ -1438,7 +1438,7 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 original_normalized = np.zeros_like(original_np)
             original_img_array = (original_normalized * 255).astype(np.uint8)
 
-            print(f"      🔍 Original normalization: [{original_min:.4f}, {original_max:.4f}] -> [0, 1]")
+            # print(f"      🔍 Original normalization: [{original_min:.4f}, {original_max:.4f}] -> [0, 1]")
 
             # 그레이스케일인 경우 RGB로 변환
             if original_img_array.shape[2] == 1:
@@ -1463,33 +1463,33 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     mask_tensor = mask_tensor.squeeze(0)  # [H, W]
                 mask_for_boundary = mask_tensor.cpu().numpy()
 
-            # anomaly map을 matplotlib으로 시각화 (colorbar=False)
-            anomaly_map_vis = create_anomaly_heatmap_with_colorbar(
+            # Auto-range anomaly map 시각화 (colorbar=False)
+            anomaly_map_vis_auto = create_anomaly_heatmap_with_colorbar(
+                anomaly_map_tensor.cpu().numpy(),
+                cmap='jet',
+                show_colorbar=False,
+                fixed_range=False  # Auto-range
+            )
+
+            # Fixed-range (0~1) anomaly map 시각화 (colorbar=False)
+            anomaly_map_vis_fixed = create_anomaly_heatmap_with_colorbar(
                 anomaly_map_tensor.cpu().numpy(),
                 cmap='jet',
                 show_colorbar=False,
                 fixed_range=True  # 0~1 고정
             )
 
-            # anomaly map 시각화 (colorbar=True)
-            anomaly_map_vis_with_colorbar = create_anomaly_heatmap_with_colorbar(
-                anomaly_map_tensor.cpu().numpy(),
-                cmap='jet',
-                show_colorbar=True,
-                fixed_range=True  # 0~1 고정
-            )
-
-            # 오버레이 생성 (원본 + anomaly map, colorbar=False)
-            overlay_img = overlay_images(
+            # 오버레이 생성 (원본 + anomaly map, auto-range)
+            overlay_img_auto = overlay_images(
                 base=original_img_pil,
-                overlays=anomaly_map_vis,
+                overlays=anomaly_map_vis_auto,
                 alpha=0.5
             )
 
-            # 오버레이 생성 (원본 + anomaly map, colorbar=True)
-            overlay_img_with_colorbar = overlay_images(
+            # 오버레이 생성 (원본 + anomaly map, fixed-range)
+            overlay_img_fixed = overlay_images(
                 base=original_img_pil,
-                overlays=anomaly_map_vis_with_colorbar,
+                overlays=anomaly_map_vis_fixed,
                 alpha=0.5
             )
 
@@ -1536,7 +1536,7 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     residual_normalized = np.zeros_like(residual_np)
                 residual_array = (residual_normalized * 255).astype(np.uint8)
 
-                print(f"      🔍 Residual normalization: [{residual_min:.4f}, {residual_max:.4f}] -> [0, 1]")
+                # print(f"      🔍 Residual normalization: [{residual_min:.4f}, {residual_max:.4f}] -> [0, 1]")
 
                 residual_array = np.repeat(residual_array, 3, axis=2)  # 1채널 → RGB
                 residual_img_pil = Image.fromarray(residual_array, mode='RGB')
@@ -1550,6 +1550,33 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 disc_anomaly_array = (disc_anomaly_tensor.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
                 disc_anomaly_array = np.repeat(disc_anomaly_array, 3, axis=2)  # 1채널 → RGB
                 disc_anomaly_img_pil = Image.fromarray(disc_anomaly_array, mode='RGB')
+
+                # DRAEM용 오버레이 생성
+                # 5번째: Auto-range, colorbar 없음
+                anomaly_map_vis_draem_auto = create_anomaly_heatmap_with_colorbar(
+                    anomaly_map_tensor.cpu().numpy(),
+                    cmap='jet',
+                    show_colorbar=False,
+                    fixed_range=False  # Auto-range
+                )
+                overlay_img_draem_auto = overlay_images(
+                    base=original_img_pil,
+                    overlays=anomaly_map_vis_draem_auto,
+                    alpha=0.5
+                )
+
+                # 6번째: Fixed 0-1, colorbar 있음
+                anomaly_map_vis_draem_fixed = create_anomaly_heatmap_with_colorbar(
+                    anomaly_map_tensor.cpu().numpy(),
+                    cmap='jet',
+                    show_colorbar=True,
+                    fixed_range=True  # Fixed 0-1
+                )
+                overlay_img_draem_fixed = overlay_images(
+                    base=original_img_pil,
+                    overlays=anomaly_map_vis_draem_fixed,
+                    alpha=0.5
+                )
 
                 # 텍스트 추가
                 original_with_text = add_text_to_image(
@@ -1576,42 +1603,48 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                overlay_with_text = add_text_to_image(
-                    overlay_img.copy(),
-                    "Original + Anomaly Map",
+                overlay_auto_with_text = add_text_to_image(
+                    overlay_img_draem_auto.copy(),
+                    "Original + Anomaly (Auto)",
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                overlay_with_colorbar_text = add_text_to_image(
-                    overlay_img_with_colorbar.copy(),
-                    "Original + Anomaly Map (colorbar)",
+                overlay_fixed_with_text = add_text_to_image(
+                    overlay_img_draem_fixed.copy(),
+                    "Original + Anomaly (Fixed 0-1, colorbar)",
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
                 # 6개 이미지를 3열 그리드로 배치 (2행 x 3열)
                 visualization_grid = create_image_grid(
                     [original_with_text, recon_with_text, residual_with_text,
-                     disc_anomaly_with_text, overlay_with_text, overlay_with_colorbar_text],
+                     disc_anomaly_with_text, overlay_auto_with_text, overlay_fixed_with_text],
                     nrow=3
                 )
             else:
-                # 기타 모델: 2개 이미지 시각화
+                # 기타 모델: 3개 이미지 시각화
                 original_with_text = add_text_to_image(
                     original_img_pil.copy(),
                     "Original Image",
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                overlay_with_text = add_text_to_image(
-                    overlay_img.copy(),
-                    "Original + Anomaly Map",
+                overlay_auto_with_text = add_text_to_image(
+                    overlay_img_auto.copy(),
+                    "Original + Anomaly Map (Auto Range)",
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                # 2개 이미지를 가로로 배치
+                overlay_fixed_with_text = add_text_to_image(
+                    overlay_img_fixed.copy(),
+                    "Original + Anomaly Map (Fixed 0-1)",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
+                # 3개 이미지를 가로로 배치
                 visualization_grid = create_image_grid(
-                    [original_with_text, overlay_with_text],
-                    nrow=2
+                    [original_with_text, overlay_auto_with_text, overlay_fixed_with_text],
+                    nrow=3
                 )
 
             # 파일명 및 디렉터리 생성 (레이블별로 분류)

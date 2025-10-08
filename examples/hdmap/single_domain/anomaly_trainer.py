@@ -184,7 +184,7 @@ class BaseAnomalyTrainer:
     def _create_dinomaly_model(self):
         """Dinomaly 모델 생성"""
         # Dinomaly는 기본 evaluator를 사용하여 trainable 파라미터 설정 문제 회피
-        return Dinomaly(
+        model = Dinomaly(
             encoder_name=self.config["encoder_name"],
             target_layers=self.config["target_layers"],
             bottleneck_dropout=self.config["bottleneck_dropout"],
@@ -192,6 +192,14 @@ class BaseAnomalyTrainer:
             remove_class_token=self.config["remove_class_token"],
             evaluator=True  # 기본 evaluator 사용
         )
+
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'weight_decay': self.config["weight_decay"],
+        }
+
+        return model
     
     def _create_patchcore_model(self):
         """Patchcore 모델 생성"""

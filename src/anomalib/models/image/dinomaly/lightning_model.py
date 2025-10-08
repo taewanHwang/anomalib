@@ -402,16 +402,34 @@ class Dinomaly(AnomalibModule):
             # Both are set, use the minimum (training stops at whichever comes first)
             total_steps = min(max_steps, max_epochs * len(self.trainer.datamodule.train_dataloader()))
 
-        optimizer_config = TRAINING_CONFIG["optimizer"]
+        optimizer_config = TRAINING_CONFIG["optimizer"].copy()
         assert isinstance(optimizer_config, dict)
+
+        # Override with user-provided config if available (_training_config)
+        if hasattr(self, '_training_config'):
+            if 'learning_rate' in self._training_config:
+                optimizer_config['lr'] = self._training_config['learning_rate']
+            if 'weight_decay' in self._training_config:
+                optimizer_config['weight_decay'] = self._training_config['weight_decay']
+            print(f"[debug] Using user-provided lr={optimizer_config['lr']}, weight_decay={optimizer_config['weight_decay']}")
+
         optimizer = StableAdamW([{"params": self.trainable_modules.parameters()}], **optimizer_config)
+        print(f"[debug] optimizer is {optimizer}")
 
         # Create a scheduler config with dynamically determined total steps
         scheduler_config = TRAINING_CONFIG["scheduler"].copy()
         assert isinstance(scheduler_config, dict)
         scheduler_config["total_iters"] = total_steps
 
+        # Override scheduler lr if user provided learning_rate
+        if hasattr(self, '_training_config') and 'learning_rate' in self._training_config:
+            user_lr = self._training_config['learning_rate']
+            scheduler_config["base_value"] = user_lr
+            scheduler_config["final_value"] = user_lr * 0.1  # 10% of base lr
+            print(f"[debug] Using user-provided scheduler: base_lr={user_lr}, final_lr={user_lr * 0.1}")
+
         lr_scheduler = WarmCosineScheduler(optimizer, **scheduler_config)
+        print(f"[debug] lr scheduler is {lr_scheduler}")
 
         return [optimizer], [lr_scheduler]
 
