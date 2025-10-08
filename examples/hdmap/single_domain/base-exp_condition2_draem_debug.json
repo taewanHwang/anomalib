@@ -2,101 +2,101 @@
   "experiment_conditions": [
     {
       "name": "exp-9.A",
-      "description": "Domain A - DRAEM 기본 설정",
+      "description": "Domain A - DRAEM 개선 설정 (10K 샘플)",
       "config": {
         "model_type": "draem",
         "source_domain": "domain_A",
-        "max_epochs": 1,
+        "max_epochs": 20,
         "early_stopping_patience": 5,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0003,
         "batch_size": 32,
         "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/1000_png_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
         "scheduler": {
-          "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
         }
       }
     },
     {
       "name": "exp-9.B",
-      "description": "Domain B - DRAEM 기본 설정",
+      "description": "Domain B - DRAEM 개선 설정 (10K 샘플)",
       "config": {
         "model_type": "draem",
         "source_domain": "domain_B",
-        "max_epochs": 1,
+        "max_epochs": 20,
         "early_stopping_patience": 5,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0003,
         "batch_size": 32,
         "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/1000_png_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
         "scheduler": {
-          "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
         }
       }
     },
     {
       "name": "exp-9.C",
-      "description": "Domain C - DRAEM 기본 설정",
+      "description": "Domain C - DRAEM 개선 설정 (10K 샘플)",
       "config": {
         "model_type": "draem",
         "source_domain": "domain_C",
-        "max_epochs": 1,
+        "max_epochs": 20,
         "early_stopping_patience": 5,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0003,
         "batch_size": 32,
         "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/1000_png_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
         "scheduler": {
-          "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
         }
       }
     },
     {
       "name": "exp-9.D",
-      "description": "Domain D - DRAEM 기본 설정",
+      "description": "Domain D - DRAEM 개선 설정 (10K 샘플)",
       "config": {
         "model_type": "draem",
         "source_domain": "domain_D",
-        "max_epochs": 1,
+        "max_epochs": 20,
         "early_stopping_patience": 5,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0003,
         "batch_size": 32,
         "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/1000_png_minmax",
         "optimizer": "adamw",
-        "weight_decay": 0.001,
+        "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 42,
         "scheduler": {
-          "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
         }
       }
     }
