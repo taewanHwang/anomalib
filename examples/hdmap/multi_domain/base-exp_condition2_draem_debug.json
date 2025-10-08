@@ -1,0 +1,108 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "multi-exp-9.A",
+      "description": "Domain A → B,C,D Draem 128x128",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_A",
+        "target_domains": ["domain_B", "domain_C", "domain_D"],
+        "max_epochs": 2,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "scheduler": {
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
+        }
+      }
+    },
+    {
+      "name": "multi-exp-9.B",
+      "description": "Domain B → A,C,D Draem 128x128",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_B",
+        "target_domains": ["domain_A", "domain_C", "domain_D"],
+        "max_epochs": 2,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "scheduler": {
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
+        }
+      }
+    },
+    {
+      "name": "multi-exp-9.C",
+      "description": "Domain C → A,B,D Draem 128x128",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_C",
+        "target_domains": ["domain_A", "domain_B", "domain_D"],
+        "max_epochs": 2,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "scheduler": {
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
+        }
+      }
+    },
+    {
+      "name": "multi-exp-9.D",
+      "description": "Domain D → A,B,C Draem 128x128",
+      "config": {
+        "model_type": "draem",
+        "source_domain": "domain_D",
+        "target_domains": ["domain_A", "domain_B", "domain_C"],
+        "max_epochs": 2,
+        "early_stopping_patience": 10,
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_png_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "scheduler": {
+          "type": "cosine",
+          "T_max": 30,
+          "eta_min": 0.00001
+        }
+      }
+    }
+  ]
+}

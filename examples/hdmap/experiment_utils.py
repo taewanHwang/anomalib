@@ -610,11 +610,32 @@ def save_detailed_test_results(
     # 결과 데이터 수집
     results_data = []
     
-    for i, img_path in enumerate(image_paths):
+    # 안전한 데이터 접근을 위한 변수 준비
+    labels = ground_truth.get("labels", [0] * len(image_paths))
+    pred_scores = predictions.get("pred_scores", [0] * len(image_paths))
+    
+    # None 체크 및 기본값 설정
+    if labels is None:
+        labels = [0] * len(image_paths)
+    if pred_scores is None:
+        pred_scores = [0] * len(image_paths)
+    
+    # 길이 확인 및 조정
+    if len(image_paths) == 0:
+        print("⚠️ Warning: No image paths provided")
+        return
+        
+    min_len = min(len(image_paths), len(labels), len(pred_scores))
+    
+    if min_len != len(image_paths):
+        print(f"⚠️ Warning: Length mismatch - paths: {len(image_paths)}, labels: {len(labels)}, scores: {len(pred_scores)}, using min: {min_len}")
+    
+    for i in range(min_len):
+        img_path = image_paths[i]
         row = {
             "image_path": img_path,
-            "ground_truth": ground_truth.get("labels", [0] * len(image_paths))[i] if isinstance(ground_truth.get("labels"), list) else ground_truth.get("label", [0])[i],
-            "anomaly_score": predictions.get("pred_scores", [0] * len(image_paths))[i] if isinstance(predictions.get("pred_scores"), list) else 0,
+            "ground_truth": labels[i] if i < len(labels) else 0,
+            "anomaly_score": pred_scores[i] if i < len(pred_scores) else 0,
         }
         
         
@@ -630,6 +651,35 @@ def save_detailed_test_results(
     
     print(f"📊 테스트 결과 CSV 저장: {csv_path}")
 
+
+def find_optimal_threshold(ground_truth: List[int], scores: List[float]) -> float:
+    """Youden's J statistic을 사용하여 optimal threshold 찾기"""
+    from sklearn.metrics import roc_curve
+    import numpy as np
+    
+    fpr, tpr, thresholds = roc_curve(ground_truth, scores)
+    j_scores = tpr - fpr  # Youden's J statistic = Sensitivity + Specificity - 1
+    optimal_idx = np.argmax(j_scores)
+    return float(thresholds[optimal_idx])
+
+def evaluate_with_fixed_threshold(
+    scores: List[float], 
+    labels: List[int], 
+    threshold: float
+) -> Dict[str, float]:
+    """고정된 threshold로 성능 평가"""
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    import numpy as np
+    
+    predictions = (np.array(scores) > threshold).astype(int)
+    
+    return {
+        'threshold': float(threshold),
+        'accuracy': float(accuracy_score(labels, predictions)),
+        'precision': float(precision_score(labels, predictions, zero_division=0)),
+        'recall': float(recall_score(labels, predictions, zero_division=0)),
+        'f1_score': float(f1_score(labels, predictions, zero_division=0))
+    }
 
 def plot_roc_curve(
     ground_truth: List[int],
@@ -727,9 +777,9 @@ def save_metrics_report(
         "recall": float(recall),
         "f1_score": float(f1),
         "confusion_matrix": cm,
-        "total_samples": len(ground_truth),
-        "positive_samples": sum(ground_truth),
-        "negative_samples": len(ground_truth) - sum(ground_truth)
+        "total_samples": int(len(ground_truth)),
+        "positive_samples": int(sum(ground_truth)),
+        "negative_samples": int(len(ground_truth) - sum(ground_truth))
     }
     
     # JSON 파일로 저장
@@ -1759,7 +1809,8 @@ def evaluate_source_domain(
     visualization_dir: Optional[Path] = None,
     model_type: str = "unknown",
     max_visualization_batches: int = 5,
-    verbose: bool = True
+    verbose: bool = True,
+    analysis_dir: Optional[Path] = None
 ):
     """소스 도메인에서 모델 평가 (validation 역할).
 
@@ -1773,6 +1824,7 @@ def evaluate_source_domain(
         model_type: 모델 타입 (점수 추출에 사용)
         max_visualization_batches: 시각화할 최대 배치 수 (-1이면 전체 시각화)
         verbose: 상세 출력 여부
+        analysis_dir: 분석 결과 저장 디렉터리 (None이면 분석 안함)
 
     Returns:
         dict: 평가 결과
@@ -1911,7 +1963,82 @@ def evaluate_source_domain(
         print(f"   - F1-Score: {f1:.4f}")
         print(f"   - 샘플 수: {len(all_scores)}")
 
-    return {
+    # Analysis 기능 추가
+    if analysis_dir:
+        analysis_dir = Path(analysis_dir)
+        source_analysis_dir = analysis_dir / f"source_{datamodule.source_domain}"
+        source_analysis_dir.mkdir(parents=True, exist_ok=True)
+        
+        if verbose:
+            print(f"   💾 소스 도메인 분석 결과 저장 중: {source_analysis_dir}")
+        
+        # 상세 테스트 결과 CSV 저장
+        predictions_dict = {"pred_scores": all_scores}
+        ground_truth_dict = {"labels": all_labels}
+        
+        # Debug: 길이 확인
+        if verbose:
+            print(f"   🔍 Debug - scores: {len(all_scores)}, labels: {len(all_labels)}, paths: {len(all_image_paths)}")
+        
+        # 길이가 맞지 않는 경우 처리
+        min_length = min(len(all_scores), len(all_labels), len(all_image_paths))
+        if len(all_scores) != len(all_labels) or len(all_scores) != len(all_image_paths):
+            if verbose:
+                print(f"   ⚠️ 길이 불일치 발견, 최소 길이 {min_length}로 조정")
+            all_scores = all_scores[:min_length]
+            all_labels = all_labels[:min_length]
+            all_image_paths = all_image_paths[:min_length]
+            predictions_dict = {"pred_scores": all_scores}
+            ground_truth_dict = {"labels": all_labels}
+        
+        save_detailed_test_results(
+            predictions_dict, ground_truth_dict, all_image_paths, 
+            source_analysis_dir, f"{model_type}_source_{datamodule.source_domain}"
+        )
+        
+        # ROC curve 생성
+        plot_roc_curve(all_labels, all_scores, source_analysis_dir, 
+                      f"{model_type.upper()} Source {datamodule.source_domain}")
+        
+        # Optimal threshold 계산 및 저장
+        optimal_threshold = find_optimal_threshold(all_labels, all_scores)
+        optimal_threshold_data = {
+            "optimal_threshold": optimal_threshold,
+            "method": "youden_j_statistic",
+            "source_domain": datamodule.source_domain,
+            "model_type": model_type
+        }
+        
+        # Source threshold로 source domain 성능 평가 (참고용)
+        source_metrics_with_optimal = evaluate_with_fixed_threshold(all_scores, all_labels, optimal_threshold)
+        optimal_threshold_data["source_performance_with_optimal_threshold"] = source_metrics_with_optimal
+        
+        # Optimal threshold 저장
+        threshold_path = source_analysis_dir / "optimal_threshold.json"
+        with open(threshold_path, 'w', encoding='utf-8') as f:
+            import json
+            json.dump(optimal_threshold_data, f, indent=2, ensure_ascii=False)
+        
+        if verbose:
+            print(f"   🎯 Optimal threshold: {optimal_threshold:.4f}")
+            print(f"   💾 Optimal threshold 저장: {threshold_path}")
+        
+        # 메트릭 보고서 저장 (기존 0.5 threshold 기준)
+        save_metrics_report(all_labels, predictions, all_scores, source_analysis_dir, auroc, 0.5)
+        
+        # 점수 분포 히스토그램 생성
+        normal_scores = [score for gt, score in zip(all_labels, all_scores) if gt == 0]
+        anomaly_scores = [score for gt, score in zip(all_labels, all_scores) if gt == 1]
+        plot_score_distributions(normal_scores, anomaly_scores, source_analysis_dir, 
+                               f"{model_type.upper()} Source {datamodule.source_domain}")
+        
+        # 실험 요약 저장
+        source_config = {"domain": datamodule.source_domain, "model_type": model_type}
+        source_results = {"auroc": auroc, "accuracy": accuracy, "precision": precision, 
+                         "recall": recall, "f1_score": f1}
+        save_experiment_summary(source_config, source_results, source_analysis_dir)
+
+    result = {
         'domain': datamodule.source_domain,
         'auroc': float(auroc),
         'metrics': {
@@ -1921,8 +2048,16 @@ def evaluate_source_domain(
             'f1_score': float(f1)
         },
         'num_samples': len(all_scores),
-        'visualization_dir': str(visualization_dir) if visualization_dir else None
+        'visualization_dir': str(visualization_dir) if visualization_dir else None,
+        'analysis_dir': str(source_analysis_dir) if analysis_dir else None
     }
+    
+    # Analysis가 활성화된 경우 optimal threshold 추가
+    if analysis_dir:
+        result['optimal_threshold'] = float(optimal_threshold)
+        result['optimal_threshold_metrics'] = source_metrics_with_optimal
+    
+    return result
 
 
 def evaluate_target_domains(
@@ -1931,7 +2066,9 @@ def evaluate_target_domains(
     visualization_base_dir: Optional[Path] = None,
     model_type: str = "unknown",
     max_visualization_batches: int = 5,
-    verbose: bool = True
+    verbose: bool = True,
+    analysis_base_dir: Optional[Path] = None,
+    source_optimal_threshold: Optional[float] = None
 ):
     """타겟 도메인들에서 모델 평가 및 시각화.
 
@@ -1945,6 +2082,7 @@ def evaluate_target_domains(
         model_type: 모델 타입 (점수 추출에 사용)
         max_visualization_batches: 도메인별 시각화할 최대 배치 수 (-1이면 전체 시각화)
         verbose: 상세 출력 여부
+        analysis_base_dir: 분석 결과 저장 기본 디렉터리 (None이면 분석 안함)
 
     Returns:
         dict: 타겟 도메인별 평가 결과
@@ -2105,6 +2243,92 @@ def evaluate_target_domains(
             print(f"         - 샘플 수: {len(all_scores)}")
 
         # 결과 저장
+        # Analysis 기능 추가 (도메인별)
+        domain_analysis_dir = None
+        if analysis_base_dir:
+            analysis_base_dir = Path(analysis_base_dir)
+            domain_analysis_dir = analysis_base_dir / f"target_{target_domain}"
+            domain_analysis_dir.mkdir(parents=True, exist_ok=True)
+            
+            if verbose:
+                print(f"   💾 타겟 도메인 분석 결과 저장 중: {domain_analysis_dir}")
+            
+            # 상세 테스트 결과 CSV 저장
+            predictions_dict = {"pred_scores": all_scores}
+            ground_truth_dict = {"labels": all_labels}
+            
+            # Debug: 길이 확인
+            if verbose:
+                print(f"   🔍 Debug [{target_domain}] - scores: {len(all_scores)}, labels: {len(all_labels)}, paths: {len(all_image_paths)}")
+            
+            # 길이가 맞지 않는 경우 처리
+            min_length = min(len(all_scores), len(all_labels), len(all_image_paths))
+            if len(all_scores) != len(all_labels) or len(all_scores) != len(all_image_paths):
+                if verbose:
+                    print(f"   ⚠️ [{target_domain}] 길이 불일치 발견, 최소 길이 {min_length}로 조정")
+                all_scores = all_scores[:min_length]
+                all_labels = all_labels[:min_length]
+                all_image_paths = all_image_paths[:min_length]
+                predictions_dict = {"pred_scores": all_scores}
+                ground_truth_dict = {"labels": all_labels}
+            
+            save_detailed_test_results(
+                predictions_dict, ground_truth_dict, all_image_paths, 
+                domain_analysis_dir, f"{model_type}_target_{target_domain}"
+            )
+            
+            # ROC curve 생성
+            plot_roc_curve(all_labels, all_scores, domain_analysis_dir, 
+                          f"{model_type.upper()} Target {target_domain}")
+            
+            # 메트릭 보고서 저장 (기존 0.5 threshold 기준)
+            save_metrics_report(all_labels, predictions, all_scores, domain_analysis_dir, auroc, 0.5)
+            
+            # Source optimal threshold 기반 평가 (있는 경우)
+            if source_optimal_threshold is not None:
+                target_metrics_with_source_threshold = evaluate_with_fixed_threshold(
+                    all_scores, all_labels, source_optimal_threshold
+                )
+                
+                # Source threshold 기반 메트릭 저장
+                source_threshold_data = {
+                    "source_optimal_threshold": source_optimal_threshold,
+                    "target_domain": target_domain,
+                    "metrics_with_source_threshold": target_metrics_with_source_threshold,
+                    "comparison": {
+                        "default_threshold_0.5": {
+                            "accuracy": float(accuracy),
+                            "precision": float(precision),
+                            "recall": float(recall),
+                            "f1_score": float(f1)
+                        },
+                        "source_optimal_threshold": target_metrics_with_source_threshold
+                    }
+                }
+                
+                source_threshold_path = domain_analysis_dir / "metrics_with_source_threshold.json"
+                with open(source_threshold_path, 'w', encoding='utf-8') as f:
+                    import json
+                    json.dump(source_threshold_data, f, indent=2, ensure_ascii=False)
+                
+                if verbose:
+                    print(f"   🎯 Source threshold ({source_optimal_threshold:.4f}) 적용 결과:")
+                    print(f"      - Accuracy: {target_metrics_with_source_threshold['accuracy']:.4f}")
+                    print(f"      - F1-Score: {target_metrics_with_source_threshold['f1_score']:.4f}")
+                    print(f"   💾 Source threshold 분석 저장: {source_threshold_path}")
+            
+            # 점수 분포 히스토그램 생성
+            normal_scores = [score for gt, score in zip(all_labels, all_scores) if gt == 0]
+            anomaly_scores = [score for gt, score in zip(all_labels, all_scores) if gt == 1]
+            plot_score_distributions(normal_scores, anomaly_scores, domain_analysis_dir, 
+                                   f"{model_type.upper()} Target {target_domain}")
+            
+            # 실험 요약 저장
+            target_config = {"domain": target_domain, "model_type": model_type}
+            target_results_dict = {"auroc": auroc, "accuracy": accuracy, "precision": precision, 
+                                 "recall": recall, "f1_score": f1}
+            save_experiment_summary(target_config, target_results_dict, domain_analysis_dir)
+
         target_results[target_domain] = {
             'domain': target_domain,
             'auroc': float(auroc),
@@ -2115,7 +2339,8 @@ def evaluate_target_domains(
                 'f1_score': float(f1)
             },
             'num_samples': len(all_scores),
-            'visualization_dir': str(domain_viz_dir) if domain_viz_dir else None
+            'visualization_dir': str(domain_viz_dir) if domain_viz_dir else None,
+            'analysis_dir': str(domain_analysis_dir) if domain_analysis_dir else None
         }
 
     # 평균 성능 계산

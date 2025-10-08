@@ -38,16 +38,12 @@ set -e  # 오류 시 즉시 종료
 # =============================================================================
 
 # 사용할 GPU 목록 (0부터 시작, 사용 가능한 GPU ID를 나열)
-AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+AVAILABLE_GPUS=(8 9 10 11 12 13 14 15)
 
 # 실험 설정 파일 및 실행 스크립트 경로
 SCRIPT_PATH="examples/hdmap/multi_domain/base-training.py"
-# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test.json"
-# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test2_A.json"
-# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test2_B.json"
-# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test2_C.json"
-# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test2_D.json"
-CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test2_residual.json"
+# CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition1_dinomaly_debug.json"
+CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition2_draem_debug.json"
 # CONFIG_PATH="examples/hdmap/multi_domain/base-exp_condition_quick_test3.json"
 
 # 세션 타임스탬프 (모든 실험에서 공유)
@@ -260,6 +256,12 @@ run_experiments() {
         # GPU 사용 가능할 때까지 대기
         wait_for_gpu $gpu_id
         
+        # 모델 로딩 충돌 방지를 위한 추가 딜레이
+        if [[ $exp_id -gt 0 ]]; then
+            echo "   ⏳ 모델 로딩 충돌 방지 대기 (1초)..."
+            sleep 1
+        fi
+        
         # 실험 실행 (백그라운드)
         echo "   🚀 실험 실행 시작..."
         
@@ -304,7 +306,7 @@ run_experiments() {
             ((completed_experiments++))
         fi
         
-        sleep 2  # GPU 초기화 시간 확보
+        sleep 5  # 모델 로딩 충돌 방지를 위한 딜레이 확보
     done
     
     # 남은 실험들 완료 대기

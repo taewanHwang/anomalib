@@ -117,7 +117,7 @@ class MultiDomainAnomalyTrainer:
     def _create_dinomaly_model(self):
         """Dinomaly 모델 생성"""
         # Dinomaly는 기본 evaluator를 사용하여 trainable 파라미터 설정 문제 회피
-        return Dinomaly(
+        model = Dinomaly(
             encoder_name=self.config["encoder_name"],
             target_layers=self.config["target_layers"],
             bottleneck_dropout=self.config["bottleneck_dropout"],
@@ -125,6 +125,12 @@ class MultiDomainAnomalyTrainer:
             remove_class_token=self.config["remove_class_token"],
             evaluator=True  # 기본 evaluator 사용
         )
+        # 학습 설정을 _training_config에 저장 (configure_optimizers에서 사용됨)
+        model._training_config = {
+            'learning_rate': self.config["learning_rate"],
+            'weight_decay': self.config["weight_decay"],
+        }
+        return model
     
     def _create_patchcore_model(self):
         """Patchcore 모델 생성"""
@@ -367,13 +373,18 @@ class MultiDomainAnomalyTrainer:
         # 소스 도메인 시각화 경로: visualizations/source/domain_A/
         source_viz_dir = visualizations_dir / "source" / self.source_domain
 
+        # Analysis 디렉터리 설정
+        analysis_dir = visualizations_dir.parent / "analysis"
+        analysis_dir.mkdir(exist_ok=True)
+        
         source_results = evaluate_source_domain(
             model=model,
             datamodule=datamodule,
             visualization_dir=source_viz_dir,
             model_type=self.model_type,
             max_visualization_batches=self.config.get("max_visualization_batches", 5),
-            verbose=True
+            verbose=True,
+            analysis_dir=analysis_dir
         )
 
         # 2. Target Domains 평가 (test 역할)
@@ -383,13 +394,18 @@ class MultiDomainAnomalyTrainer:
         # 타겟 도메인 시각화 경로: visualizations/target/
         target_viz_base_dir = visualizations_dir / "target"
 
+        # Source optimal threshold 추출 (analysis가 활성화된 경우)
+        source_optimal_threshold = source_results.get('optimal_threshold', None)
+        
         target_results = evaluate_target_domains(
             model=model,
             datamodule=datamodule,
             visualization_base_dir=target_viz_base_dir,
             model_type=self.model_type,
             max_visualization_batches=self.config.get("max_visualization_batches", 5),
-            verbose=True
+            verbose=True,
+            analysis_base_dir=analysis_dir,
+            source_optimal_threshold=source_optimal_threshold
         )
 
         return source_results, target_results
