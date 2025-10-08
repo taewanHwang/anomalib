@@ -37,6 +37,8 @@ class DraemCutPasteClf(AnomalibModule):
             Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head.
             Defaults to ``0.3``.
+        severity_spectral_norm (bool, optional): Enable spectral normalization in severity head FC layers
+            for improved domain robustness. Defaults to ``True``.
 
         # CutPaste augmentation parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths.
@@ -74,6 +76,7 @@ class DraemCutPasteClf(AnomalibModule):
         sspcab: bool = False,
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
+        severity_spectral_norm: bool = True,
 
         # CutPaste augmentation parameters
         cut_w_range: tuple[int, int] = (10, 80),
@@ -105,6 +108,7 @@ class DraemCutPasteClf(AnomalibModule):
         self.sspcab = sspcab
         self.image_size = image_size
         self.severity_dropout = severity_dropout
+        self.severity_spectral_norm = severity_spectral_norm
         self.cut_w_range = cut_w_range
         self.cut_h_range = cut_h_range
         self.a_fault_start = a_fault_start
@@ -148,6 +152,7 @@ class DraemCutPasteClf(AnomalibModule):
             sspcab=self.sspcab,
             image_size=self.image_size,
             severity_dropout=self.severity_dropout,
+            severity_spectral_norm=self.severity_spectral_norm,
             severity_input_channels=self.severity_input_channels,
             cut_w_range=self.cut_w_range,
             cut_h_range=self.cut_h_range,

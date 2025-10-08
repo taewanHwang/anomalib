@@ -34,6 +34,8 @@ class DraemCutPasteModel(nn.Module):
         image_size (tuple[int, int], optional): Expected input size for severity head.
             Used for calculating FC layer dimensions. Defaults to ``(256, 256)``.
         severity_dropout (float, optional): Dropout rate for severity head. Defaults to ``0.3``.
+        severity_spectral_norm (bool, optional): Enable spectral normalization in severity head FC layers
+            for improved domain robustness. Defaults to ``True``.
         severity_input_channels (str, optional): Channels to use for severity head input.
             Options: "original", "mask", "original+mask".
             Defaults to ``"original+mask"``.
@@ -61,6 +63,7 @@ class DraemCutPasteModel(nn.Module):
         sspcab: bool = False,
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
+        severity_spectral_norm: bool = True,
         severity_input_channels: str = "original+mask",
         # CutPaste generator parameters
         cut_w_range: tuple[int, int] = (10, 80),
@@ -89,7 +92,8 @@ class DraemCutPasteModel(nn.Module):
         self.severity_head = SeverityHead(
             in_channels=self.severity_in_channels,
             dropout_rate=severity_dropout,
-            input_size=image_size
+            input_size=image_size,
+            use_spectral_norm=severity_spectral_norm
         )
 
         # CutPaste synthetic generator for training

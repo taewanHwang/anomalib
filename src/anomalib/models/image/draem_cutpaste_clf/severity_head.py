@@ -8,6 +8,7 @@ Based on CNN_simple from DRAME_CutPaste/utils/utils_model_for_HDmap_v4.py
 
 import torch
 from torch import nn
+from torch.nn.utils import spectral_norm
 
 
 class SeverityHead(nn.Module):
@@ -27,6 +28,8 @@ class SeverityHead(nn.Module):
         dropout_rate (float, optional): Dropout rate for regularization. Defaults to ``0.3``.
         input_size (tuple[int, int], optional): Expected input size (H, W).
             Used for calculating FC layer dimensions. Defaults to ``(128, 128)``.
+        use_spectral_norm (bool, optional): Whether to apply spectral normalization to FC layers
+            for improved domain robustness. Defaults to ``True``.
 
     Example:
         >>> severity_head = SeverityHead(in_channels=2, input_size=(128, 128))
@@ -40,13 +43,15 @@ class SeverityHead(nn.Module):
         self,
         in_channels: int = 2,
         dropout_rate: float = 0.3,
-        input_size: tuple[int, int] = (128, 128)
+        input_size: tuple[int, int] = (128, 128),
+        use_spectral_norm: bool = True
     ) -> None:
         super().__init__()
 
         self.in_channels = in_channels
         self.dropout_rate = dropout_rate
         self.input_size = input_size
+        self.use_spectral_norm = use_spectral_norm
 
         # Based on CNN_simple from utils_model_for_HDmap_v4.py
         # Architecture optimized for 128x128 input
@@ -63,9 +68,19 @@ class SeverityHead(nn.Module):
         # Original model approach: Use natural size directly
 
         # 512 * 4 * 4 = 8,192 (preserving rich spatial information)
-        self.fc1 = nn.Linear(512 * 4 * 4, 1024)  # First FC
-        self.fc2 = nn.Linear(1024, 256)          # Second FC
-        self.fc3 = nn.Linear(256, 2)             # Output layer
+        # Apply spectral normalization to FC layers for domain robustness
+        fc1 = nn.Linear(512 * 4 * 4, 1024)  # First FC
+        fc2 = nn.Linear(1024, 256)          # Second FC
+        fc3 = nn.Linear(256, 2)             # Output layer
+        
+        if self.use_spectral_norm:
+            self.fc1 = spectral_norm(fc1)
+            self.fc2 = spectral_norm(fc2)
+            self.fc3 = spectral_norm(fc3)
+        else:
+            self.fc1 = fc1
+            self.fc2 = fc2
+            self.fc3 = fc3
 
         # Batch normalization layers
         self.bn1 = nn.BatchNorm2d(32)
@@ -123,6 +138,7 @@ class SeverityHead(nn.Module):
             "in_channels": self.in_channels,
             "dropout_rate": self.dropout_rate,
             "input_size": self.input_size,
+            "use_spectral_norm": self.use_spectral_norm,
             "architecture": "CNN_simple_v4_128x128",
             "num_classes": 2,
             "conv_channels": [32, 64, 128, 256, 512],
