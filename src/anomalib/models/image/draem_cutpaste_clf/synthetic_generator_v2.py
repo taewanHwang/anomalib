@@ -264,13 +264,10 @@ class CutPasteSyntheticGenerator(nn.Module):
         # print(f"DEBUG - patch means: R={patch[0].mean():.6f}, G={patch[1].mean():.6f}, B={patch[2].mean():.6f}")
         # print(f"DEBUG - augmented means: R={augmented_patch[0].mean():.6f}, G={augmented_patch[1].mean():.6f}, B={augmented_patch[2].mean():.6f}")
 
-        # Create augmented image with CutPaste (patch with amplitude scaling on all channels)
+        # Create augmented image with CutPaste (addition instead of replacement)
         synthetic_image = image.clone()
-        synthetic_image[0, :, to_location_h:to_location_h+cut_h, to_location_w:to_location_w+cut_w] = augmented_patch
-
-        # Clamp synthetic image values to [0, 1] range if any values exceed 1
-        # This is important for normalized images to maintain valid pixel range
-        synthetic_image = torch.clamp(synthetic_image, max=1.0)
+        # 패치를 치환하는 대신 추가
+        synthetic_image[0, :, to_location_h:to_location_h+cut_h, to_location_w:to_location_w+cut_w] += augmented_patch
 
         # Create fault mask
         fault_mask = torch.zeros((batch_size, 1, height, width), device=image.device, dtype=image.dtype)

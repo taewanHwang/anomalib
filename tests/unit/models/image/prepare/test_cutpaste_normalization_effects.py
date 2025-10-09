@@ -31,12 +31,12 @@ from DRAME_CutPaste.utils.utils_data_loader_v2 import HDmapdataset_v2
 # =============================================================================
 # 🔧 테스트 설정 (사용자가 직접 수정 가능)
 # =============================================================================
-A_FAULT_RANGE_START = 1      # CutPaste 패치 증폭 시작값
-A_FAULT_RANGE_END = 5      # CutPaste 패치 증폭 끝값
+A_FAULT_RANGE_START = 0    # CutPaste 패치 증폭 시작값
+A_FAULT_RANGE_END = 0.1    # CutPaste 패치 증폭 끝값
 NUM_SAMPLES = 20             # 각 정규화 타입별 생성할 샘플 수
 DOMAIN = 'A'                 # 테스트할 도메인 (A, B, C, D)
 RANDOM_SEED = 42             # 재현 가능한 결과를 위한 시드값
-CUTPASTE_NORM = False
+CUTPASTE_NORM = True
 
 class CutPasteNormalizationTester:
     def __init__(self):
@@ -47,9 +47,9 @@ class CutPasteNormalizationTester:
         
         # 정규화 타입별 데이터 경로
         self.normalization_types = {
-            'zscore': '10000_tiff_zscore',
-            'minmax': '10000_tiff_minmax', 
-            'original': '10000_tiff_original'
+            'zscore': '1000_tiff_zscore',
+            'minmax': '1000_tiff_minmax', 
+            'original': '1000_tiff_original'
         }
         
     
