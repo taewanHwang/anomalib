@@ -528,21 +528,16 @@ class BaseAnomalyTrainer:
         print(f"   🏆 Best Checkpoint: {best_checkpoint}")
         logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
 
-        # Best checkpoint 로드 (PatchCore와 EfficientAD 제외)
+        # Best checkpoint 정보만 기록하고 로드하지 않음 (마지막 epoch 모델 사용)
         if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type not in ["patchcore", "efficient_ad"]:
-            print(f"   📂 Best checkpoint 로드 중...")
-            checkpoint = torch.load(best_checkpoint, map_location='cuda' if torch.cuda.is_available() else 'cpu')
-
-            # state_dict 로드
-            model.load_state_dict(checkpoint['state_dict'])
-
-            print(f"   ✅ Best checkpoint 로드 완료!")
-            logger.info(f"✅ Best checkpoint 로드 완료: {best_checkpoint}")
+            print(f"   📂 Best checkpoint 저장됨: {best_checkpoint}")
+            print(f"   ℹ️ 평가는 마지막 epoch 모델로 수행됩니다.")
+            logger.info(f"Best checkpoint 저장됨 (사용하지 않음): {best_checkpoint}")
         elif self.model_type in ["patchcore", "efficient_ad"]:
             print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: Best checkpoint 로드 건너뜀 (특별한 훈련 방식)")
-        else:
-            print(f"   ⚠️ Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")
-            logger.warning(f"Best checkpoint 파일을 찾을 수 없음: {best_checkpoint}")
+        elif not best_checkpoint:
+            print(f"   ⚠️ Best checkpoint 없음 - 마지막 epoch 모델 사용")
+            logger.warning(f"Best checkpoint 없음 - 마지막 epoch 모델 사용")
 
         print(f"   ✅ 모델 훈련 완료!")
         logger.info("✅ 모델 훈련 완료!")
