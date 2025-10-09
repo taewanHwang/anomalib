@@ -51,6 +51,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         a_fault_start: float = 1.0,
         a_fault_range_end: float = 10.0,
         probability: float = 0.5,
+        norm: bool = True,
         validation_enabled: bool = True,
     ) -> None:
         super().__init__()
@@ -60,6 +61,7 @@ class CutPasteSyntheticGenerator(nn.Module):
         self.a_fault_start = a_fault_start
         self.a_fault_range_end = a_fault_range_end
         self.probability = probability
+        self.norm = norm
         self.validation_enabled = validation_enabled
 
         # Validate input parameters
@@ -252,6 +254,14 @@ class CutPasteSyntheticGenerator(nn.Module):
 
         # Extract patch from source location (all channels)
         patch = image[0, :, from_location_h:from_location_h + cut_h, from_location_w:from_location_w + cut_w].clone()
+
+        # Apply normalization if enabled (similar to utils_data_loader_v2.py)
+        if self.norm:
+            # NaN 방지를 위한 안전한 정규화
+            max_val = torch.max(torch.abs(patch))
+            if max_val > 0:
+                patch = patch / max_val
+            # else: 모든 값이 0인 경우 그대로 유지
 
         # Sample fault amplitude and apply to patch (all channels equally)
         a_fault = random.uniform(self.a_fault_start, self.a_fault_range_end)
