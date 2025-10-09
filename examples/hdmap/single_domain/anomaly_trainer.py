@@ -129,6 +129,7 @@ class BaseAnomalyTrainer:
             'a_fault_start': self.config["a_fault_start"],
             'a_fault_range_end': self.config["a_fault_range_end"],
             'augment_probability': self.config["augment_probability"],
+            'focal_alpha': self.config.get("focal_alpha", 0.9),
         }
 
         # DraemCutPaste 모델 생성
@@ -165,6 +166,7 @@ class BaseAnomalyTrainer:
             'a_fault_range_end': self.config["a_fault_range_end"],
             'augment_probability': self.config["augment_probability"],
             'clf_weight': self.config["clf_weight"],
+            'focal_alpha': self.config.get("focal_alpha", 0.9),
         }
 
         # DraemCutPasteClf 모델 생성

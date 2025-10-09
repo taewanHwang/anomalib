@@ -22,6 +22,8 @@ class DraemCutPasteLoss(nn.Module):
 
     Args:
         clf_weight (float, optional): Weight for classification loss. Defaults to ``1.0``.
+        focal_alpha (float, optional): Alpha parameter for focal loss.
+            Higher values give more weight to the anomaly class. Defaults to ``0.9``.
 
     Example:
         >>> loss_fn = DraemCutPasteLoss(
@@ -38,6 +40,7 @@ class DraemCutPasteLoss(nn.Module):
     def __init__(
         self,
         clf_weight: float = 1.0,
+        focal_alpha: float = 0.9,
     ):
         super().__init__()
 
@@ -45,9 +48,10 @@ class DraemCutPasteLoss(nn.Module):
 
         # All loss components managed directly (no inheritance confusion)
         self.l2_loss = nn.MSELoss()
-        self.focal_loss = FocalLoss(alpha=0.9, reduction="mean")  # High weight for anomaly class
+        self.focal_loss = FocalLoss(alpha=focal_alpha, reduction="mean")  # Configurable weight for anomaly class
         self.ssim_loss = SSIMLoss(window_size=11)
         self.clf_loss = nn.CrossEntropyLoss()
+        print(f"DraemCutPasteLoss initialized with clf_weight={clf_weight}, focal_alpha={focal_alpha}")
 
     def forward(
         self,

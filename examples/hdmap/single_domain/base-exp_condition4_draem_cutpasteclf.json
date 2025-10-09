@@ -39,6 +39,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original",
         "scheduler": {
           "type": "steplr",
@@ -86,6 +87,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "mask",
         "scheduler": {
           "type": "steplr",
@@ -133,6 +135,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original+mask",
         "scheduler": {
           "type": "steplr",
@@ -180,6 +183,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original",
         "scheduler": {
           "type": "steplr",
@@ -227,6 +231,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "mask",
         "scheduler": {
           "type": "steplr",
@@ -274,6 +279,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original+mask",
         "scheduler": {
           "type": "steplr",
@@ -321,6 +327,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original",
         "scheduler": {
           "type": "steplr",
@@ -368,6 +375,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "mask",
         "scheduler": {
           "type": "steplr",
@@ -415,6 +423,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original+mask",
         "scheduler": {
           "type": "steplr",
@@ -462,6 +471,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original",
         "scheduler": {
           "type": "steplr",
@@ -509,6 +519,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "mask",
         "scheduler": {
           "type": "steplr",
@@ -556,6 +567,7 @@
         "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 1,
+        "focal_alpha": 0.9,
         "severity_input_channels": "original+mask",
         "scheduler": {
           "type": "steplr",

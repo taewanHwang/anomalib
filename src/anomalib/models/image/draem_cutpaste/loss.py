@@ -23,13 +23,19 @@ class DraemCutPasteLoss(nn.Module):
         >>> loss = criterion(input_image, reconstruction, anomaly_mask, prediction)
     """
 
-    def __init__(self) -> None:
-        """Initialize loss components with default parameters."""
+    def __init__(self, focal_alpha: float = 0.9) -> None:
+        """Initialize loss components with configurable parameters.
+        
+        Args:
+            focal_alpha (float, optional): Alpha parameter for focal loss.
+                Higher values give more weight to the anomaly class. Defaults to 0.9.
+        """
         super().__init__()
 
         self.l2_loss = nn.modules.loss.MSELoss()
-        self.focal_loss = FocalLoss(alpha=0.9, reduction="mean")  # High weight for anomaly class
+        self.focal_loss = FocalLoss(alpha=focal_alpha, reduction="mean")  # Configurable weight for anomaly class
         self.ssim_loss = SSIMLoss(window_size=11)
+        print(f"DraemCutPasteLoss initialized with focal_alpha={focal_alpha}")
 
     def forward(
         self,

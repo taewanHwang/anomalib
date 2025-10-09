@@ -53,6 +53,8 @@ class DraemCutPasteClf(AnomalibModule):
         # Loss function parameters
         clf_weight (float, optional): Weight for classification loss.
             Defaults to ``1.0``. (L2, SSIM, Focal weights use DRAEM defaults)
+        focal_alpha (float, optional): Alpha parameter for focal loss.
+            Higher values give more weight to the anomaly class. Defaults to ``0.9``.
             
         # Standard anomalib parameters
         evaluator (Evaluator | bool, optional): Evaluator instance.
@@ -84,6 +86,7 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Loss function parameters
         clf_weight: float = 1.0,
+        focal_alpha: float = 0.9,
 
         # Learning rate parameters
         recon_lr_multiplier: float = 1.0,  # Reconstruction network LR multiplier
@@ -113,6 +116,7 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Loss weights
         self.clf_weight = clf_weight
+        self.focal_alpha = focal_alpha
 
         # Learning rate parameters
         self.recon_lr_multiplier = recon_lr_multiplier
@@ -158,6 +162,7 @@ class DraemCutPasteClf(AnomalibModule):
 
         self.loss = DraemCutPasteLoss(
             clf_weight=self.clf_weight,
+            focal_alpha=self.focal_alpha,
         )
 
     def configure_optimizers(self) -> dict[str, Any] | torch.optim.Optimizer:

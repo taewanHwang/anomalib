@@ -49,30 +49,11 @@ if [ ! -f "$PYTHON_CMD" ]; then
 fi
 
 # 사용 가능한 GPU 리스트
-AVAILABLE_GPUS=(14 15)
+AVAILABLE_GPUS=(12 13 14 15)
 
 # 기본 설정
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition1_dinomaly_debug.json"
-CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_debug_vis.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_debug.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition3_patchcore_debug.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf_A.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf_B.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition4_draem_cutpasteclf_C.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_A.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_B.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_C.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_D.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition6_draem_cutpasteclf_A.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition6_draem_cutpasteclf_B.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition6_draem_cutpasteclf_C.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition6_draem_cutpasteclf_D.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug1.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_draem_cutpaste_clf_debug2.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_A_vis_debug.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_B_vis_debug.json"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition5_draem_cutpasteclf_vis_debug.json"
+CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_cp_debug.json"
 
 
 

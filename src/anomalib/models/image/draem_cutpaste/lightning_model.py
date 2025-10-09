@@ -39,6 +39,8 @@ class DraemCutPaste(AnomalibModule):
             Defaults to ``10.0``.
         augment_probability (float, optional): Probability of applying augmentation.
             Defaults to ``0.5``.
+        focal_alpha (float, optional): Alpha parameter for focal loss.
+            Higher values give more weight to the anomaly class. Defaults to ``0.9``.
 
         evaluator (Evaluator | bool, optional): Evaluator instance or flag to use default.
             Defaults to ``True``.
@@ -53,6 +55,8 @@ class DraemCutPaste(AnomalibModule):
         a_fault_start: float = 1.0,
         a_fault_range_end: float = 10.0,
         augment_probability: float = 0.5,
+        # Loss parameters
+        focal_alpha: float = 0.9,
         # Standard anomalib parameters
         evaluator: Evaluator | bool = True,
     ) -> None:
@@ -76,6 +80,7 @@ class DraemCutPaste(AnomalibModule):
         self.a_fault_start = a_fault_start
         self.a_fault_range_end = a_fault_range_end
         self.augment_probability = augment_probability
+        self.focal_alpha = focal_alpha
 
         # Model and loss will be created in setup()
         self.model: DraemCutPasteModel
@@ -117,7 +122,7 @@ class DraemCutPaste(AnomalibModule):
             augment_probability=self.augment_probability,
         )
 
-        self.loss = DraemCutPasteLoss()
+        self.loss = DraemCutPasteLoss(focal_alpha=self.focal_alpha)
 
     def configure_optimizers(self) -> dict[str, Any] | torch.optim.Optimizer:
         """Configure the optimizer and learning rate scheduler.

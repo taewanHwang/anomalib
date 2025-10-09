@@ -1393,7 +1393,7 @@ def create_anomaly_heatmap_with_colorbar(
 def create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=None):
     """배치에 대한 시각화 생성
 
-    - DRAEM 계열 (DRAEM, DRAEM CutPaste Clf): original, recon, disc_anomaly, overlay_auto, overlay_fixed (5개)
+    - DRAEM 계열 (DRAEM, DRAEM CutPaste Clf): original, recon, disc_anomaly, residual, overlay_auto, overlay_fixed (6개)
     - 기타 모델: original, overlay_auto, overlay_fixed (3개)
 
     Args:
@@ -1596,6 +1596,40 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                 disc_anomaly_array = np.repeat(disc_anomaly_array, 3, axis=2)  # 1채널 → RGB
                 disc_anomaly_img_pil = Image.fromarray(disc_anomaly_array, mode='RGB')
 
+                # Residual 이미지 생성 (원본 - 재구성)
+                # 원본과 재구성 이미지를 같은 정규화 범위로 맞춤
+                original_for_residual = original_img_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, C]
+                recon_for_residual = recon_tensor.permute(1, 2, 0).cpu().numpy()  # [H, W, C]
+                
+                # 채널 수 맞춤 (원본이 3채널, 재구성이 1채널인 경우)
+                if original_for_residual.shape[2] == 3 and recon_for_residual.shape[2] == 1:
+                    # 원본의 첫 번째 채널만 사용
+                    original_for_residual = original_for_residual[:, :, :1]
+                elif original_for_residual.shape[2] == 1 and recon_for_residual.shape[2] == 3:
+                    # 재구성의 첫 번째 채널만 사용
+                    recon_for_residual = recon_for_residual[:, :, :1]
+                
+                # Residual 계산 (차이의 절댓값)
+                residual_np = np.abs(original_for_residual - recon_for_residual)
+                
+                # Min-max normalization
+                residual_min = residual_np.min()
+                residual_max = residual_np.max()
+                if residual_max > residual_min:
+                    residual_normalized = (residual_np - residual_min) / (residual_max - residual_min)
+                else:
+                    residual_normalized = np.zeros_like(residual_np)
+                
+                residual_array = (residual_normalized * 255).astype(np.uint8)
+                
+                # 1채널을 RGB로 변환
+                if residual_array.shape[2] == 1:
+                    residual_array = np.repeat(residual_array, 3, axis=2)
+                    
+                residual_img_pil = Image.fromarray(residual_array, mode='RGB')
+                
+                print(f"      🔍 Residual stats: min={residual_min:.4f}, max={residual_max:.4f}")
+
                 # DRAEM용 오버레이 생성
                 # 5번째: Auto-range, colorbar 없음
                 anomaly_map_vis_draem_auto = create_anomaly_heatmap_with_colorbar(
@@ -1642,6 +1676,12 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
+                residual_with_text = add_text_to_image(
+                    residual_img_pil.copy(),
+                    "Residual (|Orig-Recon|)",
+                    font=None, size=10, color="white", background=(0, 0, 0, 128)
+                )
+
                 overlay_auto_with_text = add_text_to_image(
                     overlay_img_draem_auto.copy(),
                     "Original + Anomaly (Auto)",
@@ -1654,10 +1694,10 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     font=None, size=10, color="white", background=(0, 0, 0, 128)
                 )
 
-                # 5개 이미지를 3열 그리드로 배치 (2행: 3개 + 2개)
+                # 6개 이미지를 3열 그리드로 배치 (2행: 3개 + 3개)
                 visualization_grid = create_image_grid(
                     [original_with_text, recon_with_text, disc_anomaly_with_text,
-                     overlay_auto_with_text, overlay_fixed_with_text],
+                     residual_with_text, overlay_auto_with_text, overlay_fixed_with_text],
                     nrow=3
                 )
             else:

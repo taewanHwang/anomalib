@@ -1,13 +1,13 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-10.v5.A",
+      "name": "exp-10.param3.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_A",
         "max_epochs": 20,
-        "early_stopping_patience": 20,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 64,
         "target_size": [128, 128],
@@ -22,9 +22,8 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 1.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 1.2,
         "augment_probability": 0.5,
-        "focal_alpha": 0.95,
         "scheduler": {
           "type": "steplr",
           "step_size": 10,
@@ -33,13 +32,13 @@
       }
     },
     {
-      "name": "exp-10.v5.B",
+      "name": "exp-10.param3.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_B",
         "max_epochs": 20,
-        "early_stopping_patience": 20,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 64,
         "target_size": [128, 128],
@@ -54,9 +53,8 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 1.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 1.2,
         "augment_probability": 0.5,
-        "focal_alpha": 0.95,
         "scheduler": {
           "type": "steplr",
           "step_size": 10,
@@ -65,13 +63,13 @@
       }
     },
     {
-      "name": "exp-10.v5.C",
+      "name": "exp-10.param3.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_C",
         "max_epochs": 20,
-        "early_stopping_patience": 20,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 64,
         "target_size": [128, 128],
@@ -86,9 +84,8 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 1.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 1.2,
         "augment_probability": 0.5,
-        "focal_alpha": 0.95,
         "scheduler": {
           "type": "steplr",
           "step_size": 10,
@@ -97,13 +94,13 @@
       }
     },
     {
-      "name": "exp-10.v5.D",
+      "name": "exp-10.param3.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_D",
         "max_epochs": 20,
-        "early_stopping_patience": 20,
+        "early_stopping_patience": 5,
         "learning_rate": 0.0001,
         "batch_size": 64,
         "target_size": [128, 128],
@@ -118,9 +115,8 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 1.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 1.2,
         "augment_probability": 0.5,
-        "focal_alpha": 0.95,
         "scheduler": {
           "type": "steplr",
           "step_size": 10,
