@@ -1,0 +1,88 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-23.A",
+      "description": "Domain A - PatchCore Configuration 1 ",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "batch_size": 8,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer1","layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.03,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "exp-23.B",
+      "description": "Domain B - PatchCore Configuration 1 ",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_B",
+        "max_epochs": 1,
+        "batch_size": 8,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer1","layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.03,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "exp-23.C",
+      "description": "Domain C - PatchCore Configuration 1 ",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_C",
+        "max_epochs": 1,
+        "batch_size": 8,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer1","layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.03,
+        "num_neighbors": 9
+      }
+    },
+    {
+      "name": "exp-23.D",
+      "description": "Domain D - PatchCore Configuration 1 ",
+      "config": {
+        "model_type": "patchcore",
+        "source_domain": "domain_D",
+        "max_epochs": 1,
+        "batch_size": 8,
+        "target_size": [128, 128],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_ratio": 0.1,
+        "num_workers": 4,
+        "seed": 42,
+        "backbone": "resnet34",
+        "layers": ["layer1","layer2","layer3"],
+        "pre_trained": true,
+        "coreset_sampling_ratio": 0.03,
+        "num_neighbors": 9
+      }
+    }
+  ]
+}
