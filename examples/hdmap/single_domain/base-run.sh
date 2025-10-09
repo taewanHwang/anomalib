@@ -60,10 +60,16 @@ PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
 # CONFIG_FILE="$SCRIPT_DIR/exp_41_draem_cp.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_42_draem_cp.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_43_draem_cp.json"
-CONFIG_FILE="$SCRIPT_DIR/exp_44_draem_cp.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_44_draem_cp.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_45_draem_cp.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_46_draem_cp.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_47_draem_cp.json"
+CONFIG_FILE="$SCRIPT_DIR/exp_71_73_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_74_76_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_77_79_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_80_82_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_83_85_draem_cp_clf.json"
+
 
 
 

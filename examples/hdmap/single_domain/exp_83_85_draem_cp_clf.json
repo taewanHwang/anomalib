@@ -1,0 +1,508 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-83.A",
+      "description": "Domain A - Severity Input: Original Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-84.A",
+      "description": "Domain A - Severity Input: Mask Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-85.A",
+      "description": "Domain A - Severity Input: Original + Mask",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_A",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original+mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-83.B",
+      "description": "Domain B - Severity Input: Original Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_B",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-84.B",
+      "description": "Domain B - Severity Input: Mask Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_B",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-85.B",
+      "description": "Domain B - Severity Input: Original + Mask",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_B",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original+mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-83.C",
+      "description": "Domain C - Severity Input: Original Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_C",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-84.C",
+      "description": "Domain C - Severity Input: Mask Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_C",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-85.C",
+      "description": "Domain C - Severity Input: Original + Mask",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_C",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original+mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-83.D",
+      "description": "Domain D - Severity Input: Original Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_D",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-84.D",
+      "description": "Domain D - Severity Input: Mask Only",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_D",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    },
+    {
+      "name": "exp-85.D",
+      "description": "Domain D - Severity Input: Original + Mask",
+      "config": {
+        "model_type": "draem_cutpaste_clf",
+        "source_domain": "domain_D",
+        "max_epochs": 20,
+        "early_stopping_patience": 20,
+        "learning_rate": 0.0001,
+        "batch_size": 64,
+        "target_size": [
+          128,
+          128
+        ],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "optimizer": "adamw",
+        "weight_decay": 0.01,
+        "val_split_ratio": 0.1,
+        "num_workers": 16,
+        "seed": 42,
+        "sspcab": false,
+        "image_size": [
+          128,
+          128
+        ],
+        "severity_dropout": 0.3,
+        "cut_w_range": [3, 27],
+        "cut_h_range": [16, 32],
+        "a_fault_start": 0.0,
+        "a_fault_range_end": 2.0,
+        "augment_probability": 0.5,
+        "clf_weight": 1,
+        "focal_alpha": 0.5,
+        "severity_input_channels": "original+mask",
+        "scheduler": {
+          "type": "steplr",
+          "step_size": 10,
+          "gamma": 0.8
+        }
+      }
+    }
+  ]
+}
