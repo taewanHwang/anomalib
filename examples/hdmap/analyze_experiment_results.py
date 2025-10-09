@@ -122,6 +122,22 @@ def analyze_all_models(results_base_dir: str, output: str = None):
         # 실험 루트 디렉토리에서 result_*.json 파일 찾기 (통합된 저장 방식)
         json_files = list(exp_dir.glob("result_*.json"))
         
+        # analysis/metrics_report.json 파일도 확인
+        metrics_report_path = exp_dir / "analysis" / "metrics_report.json"
+        additional_metrics = {}
+        if metrics_report_path.exists():
+            try:
+                with open(metrics_report_path, 'r', encoding='utf-8') as f:
+                    metrics_data = json.load(f)
+                    additional_metrics = {
+                        'f1_score': metrics_data.get('f1_score'),
+                        'precision': metrics_data.get('precision'),
+                        'recall': metrics_data.get('recall'),
+                        'optimal_threshold': metrics_data.get('optimal_threshold')
+                    }
+            except Exception as e:
+                print(f"   ⚠️ metrics_report.json 로드 실패 ({exp_dir.name}): {e}")
+        
         if json_files:
             try:
                 with open(json_files[0], 'r', encoding='utf-8') as f:
@@ -174,7 +190,8 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                                 'target_domain': domain_name,
                                 'session_id': session_id,
                                 'type': 'Multi-domain',
-                                'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
+                                'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A'),
+                                **additional_metrics
                             })
 
                     # 평균 target AUROC 계산 및 추가
@@ -188,7 +205,8 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                             'target_domain': 'Average',
                             'session_id': session_id,
                             'type': 'Multi-domain',
-                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
+                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A'),
+                            **additional_metrics
                         })
                 
                 else:
@@ -218,7 +236,8 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                             'target_domain': 'N/A',
                             'session_id': exp_dir.parent.name,
                             'type': 'Single-domain',
-                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A')
+                            'severity_input_channels': data.get('config', {}).get('severity_input_channels', 'N/A'),
+                            **additional_metrics
                         })
                     else:
                         print(f"   ⚠️ {exp_dir.name}에서 AUROC 값을 찾을 수 없습니다.")
@@ -248,7 +267,24 @@ def analyze_all_models(results_base_dir: str, output: str = None):
     display_df = display_df.sort_values(['sort_target', 'source_AUROC'], ascending=[False, False]).drop('sort_target', axis=1)
     
     print(f"\n📈 전체 실험 결과:")
-    print(display_df.to_string(index=False))
+    
+    # F1, Precision, Recall이 있는 컬럼만 표시
+    display_columns = ['experiment_name', 'source_domain', 'source_AUROC', 'target_AUROC', 'target_domain', 'type']
+    
+    # 추가 메트릭이 있으면 포함
+    if 'f1_score' in display_df.columns and display_df['f1_score'].notna().any():
+        display_columns.extend(['f1_score', 'precision', 'recall'])
+    
+    display_metrics_df = display_df[display_columns].copy()
+    
+    # 소수점 형식 통일
+    for col in ['source_AUROC', 'target_AUROC', 'f1_score', 'precision', 'recall']:
+        if col in display_metrics_df.columns:
+            display_metrics_df[col] = display_metrics_df[col].apply(
+                lambda x: f"{x:.4f}" if isinstance(x, (int, float)) and x != 'N/A' else x
+            )
+    
+    print(display_metrics_df.to_string(index=False))
 
     # Multi-domain 실험 전용 분석 추가
     multi_domain_df = combined_df[combined_df['type'] == 'Multi-domain'].copy()
@@ -507,16 +543,21 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                 line += f" {row['Overall_Avg']:<10.6f}"
                 print(line)
             
-            # 실험 번호별 그룹핑 분석 추가 (exp-15.x.1 -> 15.1로 그룹핑)
-            # 실험 조건에서 실험 번호 추출 (exp-15.A.1 -> 15.1)
+            # 실험 번호별 그룹핑 분석 추가 (exp-21.A -> 21로 그룹핑)
+            # 실험 조건에서 실험 번호 추출 (exp-21.A -> 21, exp-15.A.1 -> 15.1)
             def extract_experiment_number(condition):
                 if '.' in condition and condition.startswith('exp-'):
                     parts = condition.split('.')
-                    if len(parts) >= 3:
-                        # exp-15.A.1 -> 15.1
+                    if len(parts) >= 2:
+                        # exp-21.A -> 21 (도메인 제거)
                         exp_prefix = parts[0].replace('exp-', '')
-                        exp_number = parts[2]
-                        return f"{exp_prefix}.{exp_number}"
+                        if len(parts) >= 3:
+                            # exp-15.A.1 -> 15.1 (기존 형태 지원)
+                            exp_number = parts[2]
+                            return f"{exp_prefix}.{exp_number}"
+                        else:
+                            # exp-21.A -> 21 (새로운 형태)
+                            return exp_prefix
                 return None
             
             valid_df['experiment_number'] = valid_df['condition'].apply(extract_experiment_number)
@@ -525,27 +566,77 @@ def analyze_all_models(results_base_dir: str, output: str = None):
             exp_number_df = valid_df[valid_df['experiment_number'].notna()].copy()
             
             if not exp_number_df.empty:
-                print(f"\n🔬 실험 번호별 도메인 간 성능 분석 (예: 15.1 = A,B,C,D 도메인 평균):")
+                print(f"\n🔬 실험 번호별 도메인 간 성능 분석 (예: 21 = exp-21.A,B,C,D 도메인 평균):")
                 print("-" * 80)
                 
                 # 실험 번호별 평균 계산
-                exp_number_avg = exp_number_df.groupby('experiment_number')['source_AUROC'].agg(['mean', 'std', 'count']).reset_index()
-                exp_number_avg.columns = ['experiment_number', 'avg_AUROC', 'std_AUROC', 'experiment_count']
-                exp_number_avg = exp_number_avg.sort_values('avg_AUROC', ascending=False)
+                agg_metrics = {'source_AUROC': ['mean', 'std', 'count']}
                 
-                print(f"{'실험 번호':<15} {'평균 AUROC':<12} {'표준편차':<12} {'실험 수':<8} {'포함 도메인':<20}")
-                print("-" * 80)
+                # F1 score가 있으면 추가
+                if 'f1_score' in exp_number_df.columns and exp_number_df['f1_score'].notna().any():
+                    agg_metrics['f1_score'] = ['mean', 'std']
+                    agg_metrics['precision'] = ['mean', 'std']
+                    agg_metrics['recall'] = ['mean', 'std']
+                
+                exp_number_avg = exp_number_df.groupby('experiment_number').agg(agg_metrics).reset_index()
+                
+                # 컬럼명 단순화
+                exp_number_avg.columns = ['experiment_number'] + [f"{col[0]}_{col[1]}" for col in exp_number_avg.columns[1:]]
+                exp_number_avg = exp_number_avg.sort_values('source_AUROC_mean', ascending=False)
+                
+                # 헤더 출력
+                header = f"{'실험 번호':<12} {'평균 AUROC':<12} {'AUROC_Std':<12}"
+                if 'f1_score_mean' in exp_number_avg.columns:
+                    header += f" {'평균 F1':<10} {'F1_Std':<10} {'평균 Prec':<10} {'평균 Rec':<10}"
+                header += f" {'실험 수':<8} {'포함 도메인':<20}"
+                print(header)
+                print("-" * len(header))
                 
                 for _, row in exp_number_avg.iterrows():
                     # 해당 실험 번호에 포함된 도메인들 찾기
                     domains_in_exp = exp_number_df[exp_number_df['experiment_number'] == row['experiment_number']]['domain'].unique()
                     domains_str = ', '.join([d.replace('domain_', '') for d in sorted(domains_in_exp)])
                     
-                    std_str = f"±{row['std_AUROC']:.6f}" if pd.notna(row['std_AUROC']) and row['std_AUROC'] > 0 else "±0.000000"
-                    print(f"{row['experiment_number']:<15} {row['avg_AUROC']:.6f}     {std_str:<12} {int(row['experiment_count']):<8} {domains_str:<20}")
+                    # 기본 AUROC 정보
+                    auroc_mean = f"{row['source_AUROC_mean']:.4f}"
+                    auroc_std = f"±{row['source_AUROC_std']:.4f}" if pd.notna(row['source_AUROC_std']) and row['source_AUROC_std'] > 0 else "±0.0000"
+                    exp_count = int(row['source_AUROC_count'])
+                    
+                    line = f"{row['experiment_number']:<12} {auroc_mean:<12} {auroc_std:<12}"
+                    
+                    # F1 score 정보 추가 (있으면)
+                    if 'f1_score_mean' in row.index:
+                        f1_mean = f"{row['f1_score_mean']:.4f}" if pd.notna(row['f1_score_mean']) else "N/A"
+                        f1_std = f"±{row['f1_score_std']:.4f}" if pd.notna(row['f1_score_std']) and row['f1_score_std'] > 0 else "±0.0000"
+                        prec_mean = f"{row['precision_mean']:.4f}" if pd.notna(row['precision_mean']) else "N/A"
+                        rec_mean = f"{row['recall_mean']:.4f}" if pd.notna(row['recall_mean']) else "N/A"
+                        line += f" {f1_mean:<10} {f1_std:<10} {prec_mean:<10} {rec_mean:<10}"
+                    
+                    line += f" {exp_count:<8} {domains_str:<20}"
+                    print(line)
                 
-                # 실험 번호별, 도메인별 상세 매트릭스
-                exp_number_domain_pivot = exp_number_df.pivot_table(
+                # 실험 번호별, 도메인별 상세 매트릭스 - F1 Score
+                if 'f1_score' in exp_number_df.columns and exp_number_df['f1_score'].notna().any():
+                    f1_pivot = exp_number_df.pivot_table(
+                        values='f1_score',
+                        index='experiment_number',
+                        columns='domain',
+                        aggfunc='mean',
+                        fill_value=None
+                    )
+                    
+                    print(f"\n📊 실험 번호별 도메인 성능 매트릭스 (F1 Score):")
+                    print("=" * 100)
+                    
+                    # 각 실험 번호의 평균 추가
+                    f1_pivot['평균'] = f1_pivot.mean(axis=1)
+                    f1_pivot = f1_pivot.sort_values('평균', ascending=False)
+                    
+                    # F1 Score 매트릭스 출력
+                    print_pivot_matrix(f1_pivot)
+                
+                # 실험 번호별, 도메인별 상세 매트릭스 - AUROC
+                auroc_pivot = exp_number_df.pivot_table(
                     values='source_AUROC',
                     index='experiment_number',
                     columns='domain',
@@ -553,36 +644,19 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                     fill_value=None
                 )
                 
-                print(f"\n📊 실험 번호별 도메인 성능 매트릭스:")
+                print(f"\n📊 실험 번호별 도메인 성능 매트릭스 (AUROC):")
                 print("=" * 100)
                 
                 # 각 실험 번호의 평균 추가
-                exp_number_domain_pivot['Average'] = exp_number_domain_pivot.mean(axis=1)
-                exp_number_domain_pivot = exp_number_domain_pivot.sort_values('Average', ascending=False)
+                auroc_pivot['평균'] = auroc_pivot.mean(axis=1)
+                auroc_pivot = auroc_pivot.sort_values('평균', ascending=False)
                 
-                # 헤더 출력
-                header = f"{'실험 번호':<15}"
-                domains = [col for col in exp_number_domain_pivot.columns if col.startswith('domain_')]
-                for domain in sorted(domains):
-                    header += f" {domain.replace('domain_', 'Dom_'):<12}"
-                header += f" {'평균':<12}"
-                print(header)
-                print("-" * len(header))
+                # AUROC 매트릭스 출력
+                print_pivot_matrix(auroc_pivot)
                 
-                # 각 행 출력
-                for exp_num, row in exp_number_domain_pivot.iterrows():
-                    line = f"{exp_num:<15}"
-                    for domain in sorted(domains):
-                        if domain in row and pd.notna(row[domain]):
-                            line += f" {row[domain]:<12.6f}"
-                        else:
-                            line += f" {'N/A':<12}"
-                    line += f" {row['Average']:<12.6f}"
-                    print(line)
-                
-                # 실험 번호별 요약 CSV 저장
+                # 실험 번호별 요약 CSV 저장 (AUROC 기준)
                 exp_number_summary_path = Path(output).parent / "experiment_number_summary.csv" if output else results_base_path / "experiment_number_summary.csv"
-                exp_number_domain_pivot.to_csv(exp_number_summary_path, encoding='utf-8-sig')
+                auroc_pivot.to_csv(exp_number_summary_path, encoding='utf-8-sig')
                 print(f"\n💾 실험 번호별 요약 저장됨: {exp_number_summary_path}")
             
             # CSV로도 저장
@@ -601,6 +675,29 @@ def analyze_all_models(results_base_dir: str, output: str = None):
     
     combined_df.to_csv(output, index=False, encoding='utf-8-sig')
     print(f"\n💾 결과 저장됨: {output}")
+
+
+def print_pivot_matrix(pivot_df):
+    """피벗 매트릭스를 포맷팅해서 출력하는 함수"""
+    # 헤더 출력
+    header = f"{'실험 번호':<15}"
+    domains = [col for col in pivot_df.columns if col.startswith('domain_')]
+    for domain in sorted(domains):
+        header += f" {domain.replace('domain_', 'Dom_'):<12}"
+    header += f" {'평균':<12}"
+    print(header)
+    print("-" * len(header))
+    
+    # 각 행 출력
+    for exp_num, row in pivot_df.iterrows():
+        line = f"{exp_num:<15}"
+        for domain in sorted(domains):
+            if domain in row and pd.notna(row[domain]):
+                line += f" {row[domain]:<12.6f}"
+            else:
+                line += f" {'N/A':<12}"
+        line += f" {row['평균']:<12.6f}"
+        print(line)
 
 
 def main():
