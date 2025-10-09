@@ -28,7 +28,7 @@ import tifffile
 # 데이터 설정
 N_TRAINING = 1000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
-SAVE_FORMATS = ['png']  # 저장 형식 (TIFF, PNG)
+SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF, PNG)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명
 RANDOM_SEED = 42  # 랜덤 시드 (재현성 보장)
 
@@ -85,10 +85,8 @@ def normalize_zscore(X, X_mean=None, X_std=None):
 
 def normalize_minmax(X, user_min, user_max):
     """사용자 제공 min-max 값으로 [0, 1] 범위로 스케일링"""
-    # 사용자 제공 범위로 클리핑
-    X_clipped = np.clip(X, user_min, user_max)
     # [user_min, user_max] → [0, 1] 매핑
-    X_scaled = (X_clipped - user_min) / (user_max - user_min)
+    X_scaled = (X - user_min) / (user_max - user_min)
     return X_scaled
 
 def generate_paths():
