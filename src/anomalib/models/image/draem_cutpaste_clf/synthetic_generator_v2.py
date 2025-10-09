@@ -63,6 +63,8 @@ class CutPasteSyntheticGenerator(nn.Module):
         self.probability = probability
         self.norm = norm
         self.validation_enabled = validation_enabled
+        
+        print(f"CutPasteSyntheticGenerator initialized with parameters: norm={self.norm}")
 
         # Validate input parameters
         self._validate_parameters()
