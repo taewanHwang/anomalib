@@ -129,10 +129,21 @@ def analyze_all_models(results_base_dir: str, output: str = None):
             try:
                 with open(metrics_report_path, 'r', encoding='utf-8') as f:
                     metrics_data = json.load(f)
+                    
+                    # Confusion matrix에서 accuracy 계산
+                    accuracy = None
+                    if 'confusion_matrix' in metrics_data:
+                        cm = metrics_data['confusion_matrix']
+                        # [[TN, FP], [FN, TP]]
+                        tn, fp = cm[0][0], cm[0][1]
+                        fn, tp = cm[1][0], cm[1][1]
+                        accuracy = (tp + tn) / (tp + tn + fp + fn)
+                    
                     additional_metrics = {
                         'f1_score': metrics_data.get('f1_score'),
                         'precision': metrics_data.get('precision'),
                         'recall': metrics_data.get('recall'),
+                        'accuracy': accuracy,
                         'optimal_threshold': metrics_data.get('optimal_threshold')
                     }
             except Exception as e:
@@ -273,12 +284,12 @@ def analyze_all_models(results_base_dir: str, output: str = None):
     
     # 추가 메트릭이 있으면 포함
     if 'f1_score' in display_df.columns and display_df['f1_score'].notna().any():
-        display_columns.extend(['f1_score', 'precision', 'recall'])
+        display_columns.extend(['f1_score', 'accuracy', 'precision', 'recall'])
     
     display_metrics_df = display_df[display_columns].copy()
     
     # 소수점 형식 통일
-    for col in ['source_AUROC', 'target_AUROC', 'f1_score', 'precision', 'recall']:
+    for col in ['source_AUROC', 'target_AUROC', 'f1_score', 'accuracy', 'precision', 'recall']:
         if col in display_metrics_df.columns:
             display_metrics_df[col] = display_metrics_df[col].apply(
                 lambda x: f"{x:.4f}" if isinstance(x, (int, float)) and x != 'N/A' else x
@@ -575,6 +586,7 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                 # F1 score가 있으면 추가
                 if 'f1_score' in exp_number_df.columns and exp_number_df['f1_score'].notna().any():
                     agg_metrics['f1_score'] = ['mean', 'std']
+                    agg_metrics['accuracy'] = ['mean', 'std']
                     agg_metrics['precision'] = ['mean', 'std']
                     agg_metrics['recall'] = ['mean', 'std']
                 
@@ -587,7 +599,7 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                 # 헤더 출력
                 header = f"{'실험 번호':<12} {'평균 AUROC':<12} {'AUROC_Std':<12}"
                 if 'f1_score_mean' in exp_number_avg.columns:
-                    header += f" {'평균 F1':<10} {'F1_Std':<10} {'평균 Prec':<10} {'평균 Rec':<10}"
+                    header += f" {'평균 F1':<10} {'평균 Acc':<10} {'평균 Prec':<10} {'평균 Rec':<10}"
                 header += f" {'실험 수':<8} {'포함 도메인':<20}"
                 print(header)
                 print("-" * len(header))
@@ -607,10 +619,10 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                     # F1 score 정보 추가 (있으면)
                     if 'f1_score_mean' in row.index:
                         f1_mean = f"{row['f1_score_mean']:.4f}" if pd.notna(row['f1_score_mean']) else "N/A"
-                        f1_std = f"±{row['f1_score_std']:.4f}" if pd.notna(row['f1_score_std']) and row['f1_score_std'] > 0 else "±0.0000"
+                        acc_mean = f"{row['accuracy_mean']:.4f}" if pd.notna(row['accuracy_mean']) else "N/A"
                         prec_mean = f"{row['precision_mean']:.4f}" if pd.notna(row['precision_mean']) else "N/A"
                         rec_mean = f"{row['recall_mean']:.4f}" if pd.notna(row['recall_mean']) else "N/A"
-                        line += f" {f1_mean:<10} {f1_std:<10} {prec_mean:<10} {rec_mean:<10}"
+                        line += f" {f1_mean:<10} {acc_mean:<10} {prec_mean:<10} {rec_mean:<10}"
                     
                     line += f" {exp_count:<8} {domains_str:<20}"
                     print(line)
@@ -634,6 +646,26 @@ def analyze_all_models(results_base_dir: str, output: str = None):
                     
                     # F1 Score 매트릭스 출력
                     print_pivot_matrix(f1_pivot)
+                
+                # 실험 번호별, 도메인별 상세 매트릭스 - Accuracy
+                if 'accuracy' in exp_number_df.columns and exp_number_df['accuracy'].notna().any():
+                    acc_pivot = exp_number_df.pivot_table(
+                        values='accuracy',
+                        index='experiment_number',
+                        columns='domain',
+                        aggfunc='mean',
+                        fill_value=None
+                    )
+                    
+                    print(f"\n📊 실험 번호별 도메인 성능 매트릭스 (Accuracy):")
+                    print("=" * 100)
+                    
+                    # 각 실험 번호의 평균 추가
+                    acc_pivot['평균'] = acc_pivot.mean(axis=1)
+                    acc_pivot = acc_pivot.sort_values('평균', ascending=False)
+                    
+                    # Accuracy 매트릭스 출력
+                    print_pivot_matrix(acc_pivot)
                 
                 # 실험 번호별, 도메인별 상세 매트릭스 - AUROC
                 auroc_pivot = exp_number_df.pivot_table(
