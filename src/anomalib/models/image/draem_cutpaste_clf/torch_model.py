@@ -103,7 +103,7 @@ class DraemCutPasteModel(nn.Module):
         )
 
         # Initialize weights for better training stability
-        self._initialize_weights()
+        # self._initialize_weights()
 
     def _initialize_weights(self):
         """Initialize network weights using Kaiming initialization for ReLU networks.
