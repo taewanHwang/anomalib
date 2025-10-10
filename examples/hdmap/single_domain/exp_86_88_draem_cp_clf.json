@@ -1,7 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-74.A",
+      "name": "exp-86.A",
       "description": "Domain A - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -27,10 +27,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -43,7 +43,7 @@
       }
     },
     {
-      "name": "exp-75.A",
+      "name": "exp-87.A",
       "description": "Domain A - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -69,10 +69,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -85,7 +85,7 @@
       }
     },
     {
-      "name": "exp-76.A",
+      "name": "exp-88.A",
       "description": "Domain A - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -111,10 +111,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -127,7 +127,7 @@
       }
     },
     {
-      "name": "exp-74.B",
+      "name": "exp-86.B",
       "description": "Domain B - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -153,10 +153,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -169,7 +169,7 @@
       }
     },
     {
-      "name": "exp-75.B",
+      "name": "exp-87.B",
       "description": "Domain B - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -195,10 +195,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -211,7 +211,7 @@
       }
     },
     {
-      "name": "exp-76.B",
+      "name": "exp-88.B",
       "description": "Domain B - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -237,10 +237,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -253,7 +253,7 @@
       }
     },
     {
-      "name": "exp-74.C",
+      "name": "exp-86.C",
       "description": "Domain C - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -279,10 +279,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -295,7 +295,7 @@
       }
     },
     {
-      "name": "exp-75.C",
+      "name": "exp-87.C",
       "description": "Domain C - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -321,10 +321,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -337,7 +337,7 @@
       }
     },
     {
-      "name": "exp-76.C",
+      "name": "exp-88.C",
       "description": "Domain C - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -363,10 +363,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -379,7 +379,7 @@
       }
     },
     {
-      "name": "exp-74.D",
+      "name": "exp-86.D",
       "description": "Domain D - Severity Input: Original Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -405,10 +405,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -421,7 +421,7 @@
       }
     },
     {
-      "name": "exp-75.D",
+      "name": "exp-87.D",
       "description": "Domain D - Severity Input: Mask Only",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -447,10 +447,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,
@@ -463,7 +463,7 @@
       }
     },
     {
-      "name": "exp-76.D",
+      "name": "exp-88.D",
       "description": "Domain D - Severity Input: Original + Mask",
       "config": {
         "model_type": "draem_cutpaste_clf",
@@ -489,10 +489,10 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [6, 54],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 2.0,
         "augment_probability": 0.5,
         "clf_weight": 0.3,
         "focal_alpha": 0.5,

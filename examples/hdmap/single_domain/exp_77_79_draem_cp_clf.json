@@ -32,7 +32,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original",
         "scheduler": {
@@ -74,7 +74,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "mask",
         "scheduler": {
@@ -116,7 +116,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original+mask",
         "scheduler": {
@@ -158,7 +158,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original",
         "scheduler": {
@@ -200,7 +200,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "mask",
         "scheduler": {
@@ -242,7 +242,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original+mask",
         "scheduler": {
@@ -284,7 +284,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original",
         "scheduler": {
@@ -326,7 +326,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "mask",
         "scheduler": {
@@ -368,7 +368,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original+mask",
         "scheduler": {
@@ -410,7 +410,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original",
         "scheduler": {
@@ -452,7 +452,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "mask",
         "scheduler": {
@@ -494,7 +494,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "clf_weight": 1,
+        "clf_weight": 0.3,
         "focal_alpha": 0.5,
         "severity_input_channels": "original+mask",
         "scheduler": {
