@@ -62,6 +62,7 @@ GPU_IDLE_THRESHOLD=10             # GPU 사용률 임계값 (% 이하면 유휴)
 MEMORY_IDLE_THRESHOLD=2000        # 메모리 사용량 임계값 (MB 이하면 유휴)
 MAX_WAIT_TIME=18000                # 최대 대기 시간 (초, 5시간)
 SAFETY_WAIT=60                    # 실험 사이 안전 대기 시간 (초)
+MONITOR_GPUS="12,13,14,15"                   # 모니터링할 GPU 목록 (예: "12,13,14,15" 또는 빈 문자열이면 전체)
 
 # 로그 설정
 LOG_PREFIX="auto_experiment"
@@ -106,6 +107,7 @@ show_help() {
     -t, --threshold PERCENT     GPU 유휴 임계값 (기본: ${GPU_IDLE_THRESHOLD}%)
     -w, --wait SEC              최대 대기 시간 (기본: ${MAX_WAIT_TIME}초)
     -safety, --safety-wait SEC  실험 사이 안전 대기 시간 (기본: ${SAFETY_WAIT}초)
+    -g, --gpus GPUS             모니터링할 GPU 목록 (예: "12,13,14,15", 기본: 전체)
     -c, --check-only            GPU 상태만 확인하고 종료
     -h, --help                  이 도움말 출력
 
@@ -142,8 +144,15 @@ check_gpu_status() {
     
     # GPU 정보 조회
     local gpu_info
-    gpu_info=$(nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu \
-               --format=csv,noheader,nounits 2>/dev/null)
+    if [[ -n "$MONITOR_GPUS" ]]; then
+        # 특정 GPU만 모니터링
+        gpu_info=$(nvidia-smi -i "$MONITOR_GPUS" --query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu \
+                   --format=csv,noheader,nounits 2>/dev/null)
+    else
+        # 전체 GPU 모니터링
+        gpu_info=$(nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total,temperature.gpu \
+                   --format=csv,noheader,nounits 2>/dev/null)
+    fi
     
     if [[ $? -ne 0 ]] || [[ -z "$gpu_info" ]]; then
         log "ERROR" "GPU 정보 조회에 실패했습니다."
@@ -325,6 +334,10 @@ while [[ $# -gt 0 ]]; do
             SAFETY_WAIT="$2"
             shift 2
             ;;
+        -g|--gpus)
+            MONITOR_GPUS="$2"
+            shift 2
+            ;;
         -c|--check-only)
             CHECK_ONLY=true
             shift
@@ -400,6 +413,11 @@ log "INFO" "   결과 디렉토리: $RESULTS_BASE_DIR (base-run.sh가 타임스�
 log "INFO" "   GPU 확인 간격: ${GPU_CHECK_INTERVAL}초"
 log "INFO" "   GPU 유휴 임계값: ${GPU_IDLE_THRESHOLD}%"
 log "INFO" "   메모리 임계값: ${MEMORY_IDLE_THRESHOLD}MB"
+if [[ -n "$MONITOR_GPUS" ]]; then
+    log "INFO" "   모니터링 GPU: $MONITOR_GPUS"
+else
+    log "INFO" "   모니터링 GPU: 전체"
+fi
 log "INFO" "   최대 대기 시간: ${MAX_WAIT_TIME}초"
 log "INFO" "   안전 대기 시간: ${SAFETY_WAIT}초"
 log "INFO" "   로그 파일: $LOG_FILE"
