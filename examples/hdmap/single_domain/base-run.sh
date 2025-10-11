@@ -73,7 +73,8 @@ PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
 # CONFIG_FILE="$SCRIPT_DIR/exp_77_79_draem_cp_clf.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_80_82_draem_cp_clf.json"
 # CONFIG_FILE="$SCRIPT_DIR/exp_83_85_draem_cp_clf.json"
-CONFIG_FILE="$SCRIPT_DIR/exp_86_88_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_86_88_draem_cp_clf.json"
+# CONFIG_FILE="$SCRIPT_DIR/exp_89_91_draem_cp_clf.json"
 
 
 
