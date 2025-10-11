@@ -946,7 +946,7 @@ def analyze_test_data_distribution(datamodule, test_size: int) -> Tuple[int, int
     
     return fault_count, good_count
 
-def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name, model_type, logger):
+def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name, model_type, logger, visualization_interval=3):
     """통합된 모델 평가 함수
     
     Args:
@@ -956,6 +956,7 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
         experiment_name: 실험 이름
         model_type: 모델 타입 (소문자)
         logger: 로거 객체
+        visualization_interval: 시각화 간격 (0: 모든 배치, 1: 1배치 skip, 2: 2배치 skip, ...) 기본값 3
                 
     Returns:
         dict: AUROC, threshold, precision, recall, f1 score, confusion matrix 등 평가 메트릭
@@ -1035,8 +1036,13 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
                 model_output, image_tensor.shape[0], batch_idx, model_type
             )
 
-            # 시각화 생성 (전체 배치)
-            create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=torch_model)
+            # 시각화 생성 (interval에 따라 선택적으로 생성)
+            # interval=0: 모든 배치 시각화
+            # interval=1: 0번, 2번, 4번... (1배치 skip)
+            # interval=2: 0번, 3번, 6번... (2배치 skip)
+            # interval=3: 0번, 4번, 8번... (3배치 skip) - 기본값
+            if visualization_interval == 0 or batch_idx % (visualization_interval + 1) == 0:
+                create_batch_visualizations(image_tensor, model_output, image_paths, visualization_dir, batch_idx, model=torch_model)
 
             # Ground truth 추출 (이미지 경로에서)
             gt_labels = []
@@ -1644,11 +1650,11 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     alpha=0.5
                 )
 
-                # 6번째: Fixed 0-1, colorbar 있음
+                # 6번째: Fixed 0-1, colorbar 없음 (수정됨)
                 anomaly_map_vis_draem_fixed = create_anomaly_heatmap_with_colorbar(
                     anomaly_map_tensor.cpu().numpy(),
                     cmap='jet',
-                    show_colorbar=True,
+                    show_colorbar=False,  # colorbar 제거
                     fixed_range=True  # Fixed 0-1
                 )
                 overlay_img_draem_fixed = overlay_images(
@@ -1657,72 +1663,48 @@ def create_batch_visualizations(image_tensor, model_output, image_paths, visuali
                     alpha=0.5
                 )
 
-                # 텍스트 추가
-                original_with_text = add_text_to_image(
-                    original_img_pil.copy(),
-                    "Original",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
+                # 텍스트 오버레이 제거 - 이미지를 그대로 사용
+                # White margin 추가를 위한 패딩
+                def add_white_padding(img, padding=5):
+                    """이미지 주변에 흰색 패딩 추가"""
+                    width, height = img.size
+                    new_img = Image.new('RGB', (width + 2*padding, height + 2*padding), 'white')
+                    new_img.paste(img, (padding, padding))
+                    return new_img
+                
+                # 각 이미지에 흰색 패딩 추가
+                original_padded = add_white_padding(original_img_pil)
+                recon_padded = add_white_padding(recon_img_pil)
+                disc_anomaly_padded = add_white_padding(disc_anomaly_img_pil)
+                residual_padded = add_white_padding(residual_img_pil)
+                overlay_auto_padded = add_white_padding(overlay_img_draem_auto)
+                overlay_fixed_padded = add_white_padding(overlay_img_draem_fixed)
 
-                recon_with_text = add_text_to_image(
-                    recon_img_pil.copy(),
-                    "Reconstruction",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                disc_anomaly_with_text = add_text_to_image(
-                    disc_anomaly_img_pil.copy(),
-                    "Disc Anomaly",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                residual_with_text = add_text_to_image(
-                    residual_img_pil.copy(),
-                    "Residual (|Orig-Recon|)",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                overlay_auto_with_text = add_text_to_image(
-                    overlay_img_draem_auto.copy(),
-                    "Original + Anomaly (Auto)",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                overlay_fixed_with_text = add_text_to_image(
-                    overlay_img_draem_fixed.copy(),
-                    "Original + Anomaly (Fixed 0-1, colorbar)",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                # 6개 이미지를 3열 그리드로 배치 (2행: 3개 + 3개)
+                # 6개 이미지를 3열 그리드로 배치 (2행: 3개 + 3개) - 패딩된 이미지 사용
                 visualization_grid = create_image_grid(
-                    [original_with_text, recon_with_text, disc_anomaly_with_text,
-                     residual_with_text, overlay_auto_with_text, overlay_fixed_with_text],
+                    [original_padded, recon_padded, disc_anomaly_padded,
+                     residual_padded, overlay_auto_padded, overlay_fixed_padded],
                     nrow=3
                 )
             else:
                 # 기타 모델: 3개 이미지 시각화
-                original_with_text = add_text_to_image(
-                    original_img_pil.copy(),
-                    "Original Image",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
+                # 텍스트 오버레이 제거 - 이미지를 그대로 사용
+                # White margin 추가를 위한 패딩
+                def add_white_padding(img, padding=5):
+                    """이미지 주변에 흰색 패딩 추가"""
+                    width, height = img.size
+                    new_img = Image.new('RGB', (width + 2*padding, height + 2*padding), 'white')
+                    new_img.paste(img, (padding, padding))
+                    return new_img
+                
+                # 각 이미지에 흰색 패딩 추가
+                original_padded = add_white_padding(original_img_pil)
+                overlay_auto_padded = add_white_padding(overlay_img_auto)
+                overlay_fixed_padded = add_white_padding(overlay_img_fixed)
 
-                overlay_auto_with_text = add_text_to_image(
-                    overlay_img_auto.copy(),
-                    "Original + Anomaly Map (Auto Range)",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                overlay_fixed_with_text = add_text_to_image(
-                    overlay_img_fixed.copy(),
-                    "Original + Anomaly Map (Fixed 0-1)",
-                    font=None, size=10, color="white", background=(0, 0, 0, 128)
-                )
-
-                # 3개 이미지를 가로로 배치
+                # 3개 이미지를 가로로 배치 - 패딩된 이미지 사용
                 visualization_grid = create_image_grid(
-                    [original_with_text, overlay_auto_with_text, overlay_fixed_with_text],
+                    [original_padded, overlay_auto_padded, overlay_fixed_padded],
                     nrow=3
                 )
 

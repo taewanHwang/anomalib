@@ -554,7 +554,7 @@ class BaseAnomalyTrainer:
         try:
             # 통합된 성능 평가 수행
             evaluation_metrics = unified_model_evaluation(
-                model, datamodule, self.experiment_dir, self.experiment_name, self.model_type, logger
+                model, datamodule, self.experiment_dir, self.experiment_name, self.model_type, logger, visualization_interval=3
             )
             
             if evaluation_metrics:
