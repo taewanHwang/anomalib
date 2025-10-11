@@ -1,12 +1,45 @@
 #!/bin/bash
-# 
+#
 # 🚀 GPU 모니터링 기반 자동 실험 반복 실행 스크립트 (v2.0)
 #
-# 사용 예시:
+# ============================================================================
+# 📘 exp_51_draem_cp.json 실험을 GPU 12,13,14,15로 3회 반복하는 방법
+# ============================================================================
+#
+# 1️⃣ 사전 준비: base-run.sh 설정 확인
+#    examples/hdmap/single_domain/base-run.sh 파일에서:
+#    - AVAILABLE_GPUS=(12 13 14 15)  ✅ 이미 설정됨
+#    - CONFIG_FILE="$SCRIPT_DIR/exp_51_draem_cp.json"  ✅ 이미 설정됨
+#
+# 2️⃣ 실행 명령어:
+#    examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a all 3
+#
+# 3️⃣ 백그라운드에서 실행 (추천):
+#    nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a all 3 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+#
+# 4️⃣ 실행 원리:
+#    - base-run.sh가 exp_51_draem_cp.json의 모든 실험을 GPU 12,13,14,15에 병렬 할당
+#    - 모든 실험이 완료되면 GPU가 유휴 상태가 될 때까지 대기
+#    - 다시 동일한 실험을 반복 (총 3회)
+#    - 각 반복마다 새로운 타임스탬프 폴더 생성 (results/YYYYMMDD_HHMMSS/)
+#
+# 5️⃣ 주요 옵션:
+#    -s : 실험 스크립트 경로 (base-run.sh)
+#    -a : 실험 인자 (all=전체, 0=특정 실험, 0,1,2=여러 실험)
+#    3  : 반복 횟수
+#
+# 6️⃣ 실행 상태 확인:
+#    tail -f auto_experiment_*.log           # 전체 진행 상황
+#    nvidia-smi                               # GPU 사용 현황
+#    ps aux | grep base-training              # 실행 중인 실험
+#
+# ============================================================================
+# 기타 사용 예시:
+# ============================================================================
 #   nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a all 3 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 #   nohup examples/hdmap/auto_experiment_runner.sh -s examples/hdmap/single_domain/base-run.sh -a 0,1,2 5 > auto_experiment_$(date +%Y%m%d_%H%M%S).log 2>&1 &
 #
-# 주요 변경사항:
+# 주요 기능:
 #   - single_domain/base-run.sh 새로운 구조 지원
 #   - 실험 인자(-a) 옵션 추가 (all, 특정 ID, ID 범위 등)
 #   - 더 정확한 GPU 모니터링
@@ -27,7 +60,7 @@ DEFAULT_EXPERIMENTS=3
 GPU_CHECK_INTERVAL=30             # GPU 상태 확인 간격 (초)
 GPU_IDLE_THRESHOLD=10             # GPU 사용률 임계값 (% 이하면 유휴)
 MEMORY_IDLE_THRESHOLD=2000        # 메모리 사용량 임계값 (MB 이하면 유휴)
-MAX_WAIT_TIME=7200                # 최대 대기 시간 (초, 2시간)
+MAX_WAIT_TIME=18000                # 최대 대기 시간 (초, 5시간)
 SAFETY_WAIT=60                    # 실험 사이 안전 대기 시간 (초)
 
 # 로그 설정
