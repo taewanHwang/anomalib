@@ -6,7 +6,7 @@
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_A",
-        "max_epochs": 1,
+        "max_epochs": 3,
         "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 64,
@@ -39,7 +39,7 @@
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_B",
-        "max_epochs": 1,
+        "max_epochs": 3,
         "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 64,
@@ -72,7 +72,7 @@
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_C",
-        "max_epochs": 1,
+        "max_epochs": 3,
         "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 64,
@@ -105,7 +105,7 @@
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_D",
-        "max_epochs": 1,
+        "max_epochs": 3,
         "early_stopping_patience": 20,
         "learning_rate": 0.0001,
         "batch_size": 64,
