@@ -1,7 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-44.A",
+      "name": "exp-43.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -22,9 +22,9 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.5,
+        "focal_alpha": 1.0,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -34,7 +34,7 @@
       }
     },
     {
-      "name": "exp-44.B",
+      "name": "exp-43.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -55,9 +55,9 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.5,
+        "focal_alpha": 1.0,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -67,7 +67,7 @@
       }
     },
     {
-      "name": "exp-44.C",
+      "name": "exp-43.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -88,9 +88,9 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.5,
+        "focal_alpha": 1.0,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -100,7 +100,7 @@
       }
     },
     {
-      "name": "exp-44.D",
+      "name": "exp-43.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -121,9 +121,9 @@
         "cut_w_range": [13, 108],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 5.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.5,
+        "focal_alpha": 1.0,
         "norm": true,
         "scheduler": {
           "type": "steplr",

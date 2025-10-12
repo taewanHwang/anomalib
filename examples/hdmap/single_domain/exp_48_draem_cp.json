@@ -1,7 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-50.A",
+      "name": "exp-48.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -19,10 +19,10 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "cut_w_range": [13, 108],
-        "cut_h_range": [8, 16],
+        "cut_w_range": [6, 54],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -34,7 +34,7 @@
       }
     },
     {
-      "name": "exp-50.B",
+      "name": "exp-48.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -52,10 +52,10 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "cut_w_range": [13, 108],
-        "cut_h_range": [8, 16],
+        "cut_w_range": [6, 54],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -67,7 +67,7 @@
       }
     },
     {
-      "name": "exp-50.C",
+      "name": "exp-48.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -85,10 +85,10 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "cut_w_range": [13, 108],
-        "cut_h_range": [8, 16],
+        "cut_w_range": [6, 54],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -100,7 +100,7 @@
       }
     },
     {
-      "name": "exp-50.D",
+      "name": "exp-48.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -118,10 +118,10 @@
         "num_workers": 16,
         "seed": 42,
         "sspcab": false,
-        "cut_w_range": [13, 108],
-        "cut_h_range": [8, 16],
+        "cut_w_range": [6, 54],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 2.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
