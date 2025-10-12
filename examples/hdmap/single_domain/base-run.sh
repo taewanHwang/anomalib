@@ -48,32 +48,53 @@ if [ ! -f "$PYTHON_CMD" ]; then
     exit 1
 fi
 
-# 사용 가능한 GPU 리스트
-AVAILABLE_GPUS=(4 5 6 7 8 9 10 11 12 13 14 15)
+# 사용 가능한 GPU 리스트 (환경변수 GPUS로 오버라이드 가능)
+# 사용법: GPUS="0 1 2 3" ./base-run.sh all
+if [ -n "$GPUS" ]; then
+    IFS=' ' read -r -a AVAILABLE_GPUS <<< "$GPUS"
+    echo "🖥️ 환경변수로 GPU 설정: ${AVAILABLE_GPUS[*]}"
+else
+    AVAILABLE_GPUS=(0 1 2 3 4 5 6 7 8 9 10 11)
+fi
 
 # 기본 설정
 PYTHON_SCRIPT="$SCRIPT_DIR/base-training.py"
-# CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_cp_debug.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_21_draem.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_22_dinomaly.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_23_patchcore.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_41_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_42_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_43_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_44_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_45_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_46_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_47_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_48_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_49_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_50_draem_cp.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_71_73_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_74_76_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_77_79_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_80_82_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_83_85_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_86_88_draem_cp_clf.json"
-# CONFIG_FILE="$SCRIPT_DIR/exp_89_91_draem_cp_clf.json"
+
+# CONFIG 파일 설정 (환경변수 CONFIG로 오버라이드 가능)
+# 사용법: CONFIG="exp_41_draem_cp.json" ./base-run.sh all
+if [ -n "$CONFIG" ]; then
+    if [[ "$CONFIG" == /* ]] || [[ "$CONFIG" == ./* ]]; then
+        # 절대 경로 또는 상대 경로인 경우 그대로 사용
+        CONFIG_FILE="$CONFIG"
+    else
+        # 파일명만 있는 경우 SCRIPT_DIR 붙이기
+        CONFIG_FILE="$SCRIPT_DIR/$CONFIG"
+    fi
+    echo "🎯 환경변수로 CONFIG 설정: $CONFIG_FILE"
+else
+    # 기본 CONFIG 파일
+    # CONFIG_FILE="$SCRIPT_DIR/base-exp_condition2_draem_cp_debug.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_21_draem.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_22_dinomaly.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_23_patchcore.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_41_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_42_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_43_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_44_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_45_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_46_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_47_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_48_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_49_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_50_draem_cp.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_71_73_draem_cp_clf.json"
+    CONFIG_FILE="$SCRIPT_DIR/exp_74_76_draem_cp_clf.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_77_79_draem_cp_clf.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_80_82_draem_cp_clf.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_83_85_draem_cp_clf.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_86_88_draem_cp_clf.json"
+    # CONFIG_FILE="$SCRIPT_DIR/exp_89_91_draem_cp_clf.json"
+fi
 
 
 
