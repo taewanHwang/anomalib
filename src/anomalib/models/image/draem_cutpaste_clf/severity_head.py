@@ -78,7 +78,7 @@ class SeverityHead(nn.Module):
         self.relu = nn.ReLU()
 
         # Original model style regularization
-        self.dropout_conv = nn.Dropout2d(dropout_rate * 0.5)  # For conv layers
+        self.dropout_conv = nn.Dropout2d(dropout_rate / 3)  # For conv layers
         self.dropout_fc = nn.Dropout(dropout_rate)            # For FC layers
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

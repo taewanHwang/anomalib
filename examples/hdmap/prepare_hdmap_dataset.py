@@ -47,25 +47,25 @@ DOMAIN_CONFIG = {
         'sensor': 'Class1/1',
         'data_type': '3_TSA_DIF',
         'user_min': 0.0,
-        'user_max': 0.32
+        'user_max': 0.324670
     },
     'B': {
         'sensor': 'Class1/1',
         'data_type': '1_TSA_DIF',
         'user_min': 0.0,
-        'user_max': 1.2
+        'user_max': 1.324418
     },
     'C': {
         'sensor': 'Class3/1',
         'data_type': '3_TSA_DIF',
         'user_min': 0.0,
-        'user_max': 0.09
+        'user_max': 0.087341
     },
     'D': {
         'sensor': 'Class3/1', 
         'data_type': '1_TSA_DIF',
         'user_min': 0.0,
-        'user_max': 0.41
+        'user_max': 0.418999
     },
 }
 

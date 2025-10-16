@@ -666,17 +666,39 @@ class BaseAnomalyTrainer:
     def run_experiment(self) -> dict:
         """전체 실험 실행"""
         domain = self.config.get("source_domain") or self.config.get("domain")
-        
+
         print(f"🔬 {self.model_type.upper()} Single Domain 실험: {self.experiment_name}")
-        
+
         try:
-            # GPU 메모리 정리 
+            # GPU 메모리 정리
             cleanup_gpu_memory()
-            
+
+            # 완전한 재현성 설정 (모델 초기화, augmentation, dataloader shuffle 제어)
+            seed = self.config.get("seed", 42)
+            print(f"🎲 완전한 재현성 설정 (Seed: {seed})")
+
+            import random
+            import numpy as np
+            import lightning.pytorch as pl
+
+            # PyTorch Lightning의 seed_everything으로 모든 랜덤 상태 제어
+            pl.seed_everything(seed, workers=True)
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+            # GPU deterministic mode (재현성 보장, 약간의 성능 저하 있을 수 있음)
+            if torch.cuda.is_available():
+                torch.backends.cudnn.deterministic = True
+                torch.backends.cudnn.benchmark = False
+
+            print(f"   ✅ PyTorch, NumPy, Random 시드 설정 완료")
+            print(f"   ✅ CUDA deterministic mode 활성화")
+
             # 로깅 설정
             log_file_path = self.experiment_dir / f"{domain}_single.log"
             logger = setup_experiment_logging(str(log_file_path), self.experiment_name)
-            logger.info(f"🚀 {self.model_type.upper()} Single Domain 실험 시작")
+            logger.info(f"🚀 {self.model_type.upper()} Single Domain 실험 시작 (Seed: {seed})")
             
             # 모델 생성
             model = self.create_model()

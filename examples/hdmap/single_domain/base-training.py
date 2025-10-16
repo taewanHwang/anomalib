@@ -43,17 +43,21 @@ def main():
     parser.add_argument("--experiment-id", type=int, default=None, help="특정 실험 조건 인덱스 (없으면 모든 실험 실행)")
     parser.add_argument("--log-dir", type=str, default=None, help="로그 저장 디렉토리")
     parser.add_argument("--experiment-dir", type=str, default=None, help="실험 디렉터리 (bash 스크립트에서 전달)")
-    
+
     args = parser.parse_args()
-    
+
+    # 반복 횟수를 환경변수에서 읽기 (auto_experiment_runner.sh에서 전달)
+    iteration = int(os.environ.get("ITERATION", 0))
+    print(f"🎲 반복 횟수 (Iteration): {iteration}")
+
     # GPU 설정
     if torch.cuda.is_available():
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
         print(f"🖥️ GPU {args.gpu_id} 사용")
-    
+
     # 경고 필터 설정
     setup_warnings_filter()
-    
+
     # 실험 조건 로드
     conditions = load_experiment_conditions(args.config)
     
@@ -67,15 +71,26 @@ def main():
         if args.experiment_id >= len(conditions):
             print(f"❌ 잘못된 실험 ID: {args.experiment_id} (최대: {len(conditions)-1})")
             return
-        
+
         condition = conditions[args.experiment_id]
-        
+
+        # 동적 시드 생성: base_seed + experiment_id * 1000 + iteration * 10
+        base_seed = condition["config"].get("seed", 42)
+        dynamic_seed = base_seed + args.experiment_id * 1000 + iteration * 10
+        condition["config"]["seed"] = dynamic_seed
+
+        print(f"🎲 동적 시드 (Dynamic Seed): {dynamic_seed}")
+        print(f"   - Base Seed: {base_seed}")
+        print(f"   - Experiment ID: {args.experiment_id}")
+        print(f"   - Iteration: {iteration}")
+        print(f"   - Formula: {base_seed} + {args.experiment_id} * 1000 + {iteration} * 10 = {dynamic_seed}")
+
         # bash 스크립트에서 실험 디렉터리가 전달된 경우 사용
         if args.experiment_dir:
             trainer = BaseAnomalyTrainer(condition["config"], condition["name"], session_timestamp, experiment_dir=args.experiment_dir)
         else:
             trainer = BaseAnomalyTrainer(condition["config"], condition["name"], session_timestamp)
-        
+
         result = trainer.run_experiment()
         
         if "error" not in result:

@@ -243,11 +243,12 @@ run_single_experiment() {
     log "INFO" "🚀 실험 ${experiment_num}/${total_experiments} 시작"
     log "INFO" "   스크립트: $EXPERIMENT_SCRIPT"
     log "INFO" "   인자: $EXPERIMENT_ARGS"
+    log "INFO" "   🎲 반복 횟수 (Iteration): $experiment_num"
 
     local start_time=$(date +%s)
 
     # 실험 스크립트를 직접 실행 (base-run.sh가 자체적으로 results/timestamp 폴더 생성)
-    # 환경변수를 통해 GPU와 CONFIG 전달
+    # 환경변수를 통해 GPU, CONFIG, ITERATION 전달
     local exit_code=0
     if [[ -n "$USE_GPUS" ]] || [[ -n "$USE_CONFIG" ]]; then
         # 환경변수 설정 후 실행
@@ -258,10 +259,13 @@ run_single_experiment() {
         if [[ -n "$USE_CONFIG" ]]; then
             env_vars="$env_vars CONFIG=\"$USE_CONFIG\""
         fi
+        # 반복 횟수를 환경변수로 전달 (랜덤 시드 동적 생성에 사용)
+        env_vars="$env_vars ITERATION=\"$experiment_num\""
         eval "$env_vars bash \"$EXPERIMENT_SCRIPT\" $EXPERIMENT_ARGS"
         exit_code=$?
     else
-        bash "$EXPERIMENT_SCRIPT" $EXPERIMENT_ARGS
+        # 반복 횟수를 환경변수로 전달
+        ITERATION="$experiment_num" bash "$EXPERIMENT_SCRIPT" $EXPERIMENT_ARGS
         exit_code=$?
     fi
 
