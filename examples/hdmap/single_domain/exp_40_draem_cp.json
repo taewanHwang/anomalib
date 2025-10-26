@@ -1,14 +1,14 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-51.A",
+      "name": "exp-40.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_A",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 64,
         "target_size": [128, 128],
         "resize_method": "resize",
@@ -17,31 +17,31 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "sspcab": false,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [4, 16],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "step_size": 1,
+          "gamma": 0.1
         }
       }
     },
     {
-      "name": "exp-51.B",
+      "name": "exp-40.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_B",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 64,
         "target_size": [128, 128],
         "resize_method": "resize",
@@ -50,31 +50,31 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "sspcab": false,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [4, 16],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "step_size": 1,
+          "gamma": 0.1
         }
       }
     },
     {
-      "name": "exp-51.C",
+      "name": "exp-40.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_C",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 64,
         "target_size": [128, 128],
         "resize_method": "resize",
@@ -83,31 +83,31 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "sspcab": false,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [4, 16],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "step_size": 1,
+          "gamma": 0.1
         }
       }
     },
     {
-      "name": "exp-51.D",
+      "name": "exp-40.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
         "source_domain": "domain_D",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 64,
         "target_size": [128, 128],
         "resize_method": "resize",
@@ -116,19 +116,19 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "sspcab": false,
-        "cut_w_range": [13, 108],
+        "cut_w_range": [4, 16],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
-          "step_size": 10,
-          "gamma": 0.8
+          "step_size": 1,
+          "gamma": 0.1
         }
       }
     }

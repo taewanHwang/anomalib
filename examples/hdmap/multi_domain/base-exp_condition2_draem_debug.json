@@ -18,7 +18,7 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "scheduler": {
           "type": "cosine",
           "T_max": 30,
@@ -44,7 +44,7 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "scheduler": {
           "type": "cosine",
           "T_max": 30,
@@ -70,7 +70,7 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "scheduler": {
           "type": "cosine",
           "T_max": 30,
@@ -96,7 +96,7 @@
         "weight_decay": 0.01,
         "val_split_ratio": 0.1,
         "num_workers": 16,
-        "seed": 42,
+        "seed": 52,
         "scheduler": {
           "type": "cosine",
           "T_max": 30,
