@@ -37,6 +37,9 @@ class DraemCutPasteModel(nn.Module):
         severity_input_channels (str, optional): Channels to use for severity head input.
             Options: "original", "mask", "original+mask".
             Defaults to ``"original+mask"``.
+        detach_mask (bool, optional): Whether to detach mask gradient during training.
+            If True, prevents CE loss gradients from flowing to discriminative network.
+            Defaults to ``True``.
 
         # CutPaste generator parameters
         cut_w_range (tuple[int, int], optional): Range of patch widths. Defaults to ``(10, 80)``.
@@ -62,6 +65,7 @@ class DraemCutPasteModel(nn.Module):
         image_size: tuple[int, int] = (256, 256),
         severity_dropout: float = 0.3,
         severity_input_channels: str = "original+mask",
+        detach_mask: bool = True,
         # CutPaste generator parameters
         cut_w_range: tuple[int, int] = (10, 80),
         cut_h_range: tuple[int, int] = (1, 2),
@@ -73,6 +77,7 @@ class DraemCutPasteModel(nn.Module):
 
         # Store severity input configuration
         self.severity_input_channels = severity_input_channels
+        self.detach_mask = detach_mask
         
         # Calculate number of input channels for severity head
         self.severity_in_channels = self._calculate_severity_in_channels(severity_input_channels)
@@ -187,7 +192,7 @@ class DraemCutPasteModel(nn.Module):
             # Convert logit prediction to probability using softmax (0~1 range)
             mask_normalized = torch.softmax(prediction, dim=1)[:, 1:2, :, :]
             # Detach during training to prevent CE gradients flowing to discriminative subnet
-            if self.training:
+            if self.training and self.detach_mask:
                 mask_normalized = mask_normalized.detach()
             inputs.append(mask_normalized)
 

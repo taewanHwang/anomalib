@@ -55,7 +55,14 @@ class DraemCutPasteClf(AnomalibModule):
             Defaults to ``1.0``. (L2, SSIM, Focal weights use DRAEM defaults)
         focal_alpha (float, optional): Alpha parameter for focal loss.
             Higher values give more weight to the anomaly class. Defaults to ``0.9``.
-            
+
+        # Severity head configuration
+        severity_input_channels (str, optional): Channels to use for severity head input.
+            Options: "original", "mask", "original+mask". Defaults to ``"original+mask"``.
+        detach_mask (bool, optional): Whether to detach mask gradient during training.
+            If True, prevents CE loss gradients from flowing to discriminative network.
+            Defaults to ``True``.
+
         # Standard anomalib parameters
         evaluator (Evaluator | bool, optional): Evaluator instance.
             Defaults to ``True``.
@@ -93,6 +100,7 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Severity head input configuration
         severity_input_channels: str = "original+mask",
+        detach_mask: bool = True,
 
         # Standard anomalib parameters
         evaluator: Evaluator | bool = True,
@@ -123,6 +131,7 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Severity head configuration
         self.severity_input_channels = severity_input_channels
+        self.detach_mask = detach_mask
 
         # Model and loss will be created in setup()
         self.model: DraemCutPasteModel
@@ -153,6 +162,7 @@ class DraemCutPasteClf(AnomalibModule):
             image_size=self.image_size,
             severity_dropout=self.severity_dropout,
             severity_input_channels=self.severity_input_channels,
+            detach_mask=self.detach_mask,
             cut_w_range=self.cut_w_range,
             cut_h_range=self.cut_h_range,
             a_fault_start=self.a_fault_start,
@@ -345,7 +355,7 @@ class DraemCutPasteClf(AnomalibModule):
         self.log("train_loss", total_loss, on_step=True, on_epoch=True, prog_bar=True)
         for loss_name, loss_value in loss_dict.items():
             if loss_name != "total_loss":  # Avoid duplicate logging
-                self.log(f"train_{loss_name}", loss_value, on_step=False, on_epoch=True)
+                self.log(f"train_{loss_name}", loss_value, on_step=True, on_epoch=True)
 
         # Log learning rates for each parameter group
         optimizer = self.trainer.optimizers[0]
@@ -477,6 +487,10 @@ class DraemCutPasteClf(AnomalibModule):
             # Loss parameters
             "clf_weight": self.clf_weight,
             "focal_alpha": self.focal_alpha,
+
+            # Severity head configuration
+            "severity_input_channels": self.severity_input_channels,
+            "detach_mask": self.detach_mask,
         }
 
 
