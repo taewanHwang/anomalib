@@ -27,7 +27,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -70,7 +70,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -113,7 +113,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -156,7 +156,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -199,7 +199,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -242,7 +242,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -285,7 +285,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -328,7 +328,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -371,7 +371,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -414,7 +414,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -457,7 +457,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
@@ -500,7 +500,7 @@
           128
         ],
         "severity_dropout": 0.3,
-        "cut_w_range": [32, 127],
+        "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
