@@ -288,7 +288,7 @@ class OneClassPostProcessor(PostProcessor):
         """
         if preds is None or threshold.isnan():
             return preds
-        return preds > threshold
+        return preds >= threshold  # Changed from > to >= to include boundary values
 
     @staticmethod
     def _normalize(
