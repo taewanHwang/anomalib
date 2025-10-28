@@ -24,7 +24,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -57,7 +57,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -90,7 +90,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -123,7 +123,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -156,7 +156,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -189,7 +189,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -222,7 +222,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -255,7 +255,7 @@
         "a_fault_start": 0.0,
         "a_fault_range_end": 0.5,
         "augment_probability": 0.5,
-        "focal_alpha": 0.9,
+        "focal_alpha": 0.1,
         "norm": true,
         "scheduler": {
           "type": "steplr",
