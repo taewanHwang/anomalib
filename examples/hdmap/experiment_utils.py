@@ -709,31 +709,33 @@ def plot_roc_curve(
     rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
     rcParams['mathtext.fontset'] = 'cm'
     rcParams['axes.formatter.use_mathtext'] = True
+    rcParams['font.size'] = 15  # 기본 폰트 크기 150% (10pt -> 15pt)
 
     # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
     analysis_dir = Path(result_dir)
-    
+
     # ROC curve 계산
     fpr, tpr, thresholds = roc_curve(ground_truth, scores)
     auroc = auc(fpr, tpr)
-    
+
     # 최적 threshold 계산 (Youden's index)
     optimal_idx = np.argmax(tpr - fpr)
     optimal_threshold = thresholds[optimal_idx]
-    
+
     # 플롯 생성
     plt.figure(figsize=(8, 6))
     plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUROC = {auroc:.3f})')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', alpha=0.6)
-    plt.scatter(fpr[optimal_idx], tpr[optimal_idx], color='red', s=100, 
+    plt.scatter(fpr[optimal_idx], tpr[optimal_idx], color='red', s=100,
                 label=f'Optimal threshold = {optimal_threshold:.3f}')
-    
+
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title(f'ROC Curve - {experiment_name}')
-    plt.legend(loc="lower right")
+    plt.xlabel('False Positive Rate', fontsize=18)
+    plt.ylabel('True Positive Rate', fontsize=18)
+    plt.title(f'ROC Curve - {experiment_name}', fontsize=20)
+    plt.legend(loc="lower right", fontsize=15)
+    plt.tick_params(axis='both', which='major', labelsize=15)
     plt.grid(True, alpha=0.3)
     
     # 저장
@@ -821,6 +823,7 @@ def plot_score_distributions(
     rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
     rcParams['mathtext.fontset'] = 'cm'
     rcParams['axes.formatter.use_mathtext'] = True
+    rcParams['font.size'] = 15  # 기본 폰트 크기 150% (10pt -> 15pt)
 
     # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
     analysis_dir = Path(result_dir)
@@ -829,17 +832,18 @@ def plot_score_distributions(
     plt.figure(figsize=(10, 6))
 
     # 정상 샘플 분포
-    plt.hist(normal_scores, bins=50, alpha=0.6, label=f'Normal (n={len(normal_scores)})',
+    plt.hist(normal_scores, bins=50, alpha=0.6, label='Normal',
              color='blue', density=True)
 
     # 이상 샘플 분포
-    plt.hist(anomaly_scores, bins=50, alpha=0.6, label=f'Anomaly (n={len(anomaly_scores)})',
+    plt.hist(anomaly_scores, bins=50, alpha=0.6, label='Anomaly',
              color='red', density=True)
 
-    plt.xlabel('Anomaly Score')
-    plt.ylabel('Density')
-    plt.title(f'Score Distributions - {experiment_name}')
-    plt.legend(loc='upper left')  # 범례 위치를 좌상단으로 명시
+    plt.xlabel('Anomaly Score', fontsize=18)
+    plt.ylabel('Density', fontsize=18)
+    plt.title(f'Score Distributions - {experiment_name}', fontsize=20)
+    plt.legend(loc='upper left', fontsize=15)  # 범례 위치를 좌상단으로 명시
+    plt.tick_params(axis='both', which='major', labelsize=15)  # 축 눈금 폰트 크기
     plt.grid(True, alpha=0.3)
 
     # 통계 정보 텍스트 박스 제거 (사용자 요청)
