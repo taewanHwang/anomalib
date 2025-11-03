@@ -35,7 +35,8 @@ from experiment_utils import (
 from anomalib.models.image.draem import Draem
 from anomalib.models.image.draem_cutpaste import DraemCutPaste
 from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
-from anomalib.models.image import Dinomaly, Patchcore, EfficientAd, Fastflow
+from anomalib.models.image import Dinomaly, Patchcore, EfficientAd, Fastflow, Padim, Supersimplenet, ReverseDistillation, CutPasteClassifier
+from anomalib.models.image.reverse_distillation.anomaly_map import AnomalyMapGenerationMode
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -81,6 +82,8 @@ class BaseAnomalyTrainer:
             return self._create_draem_cutpaste_model()
         elif self.model_type == "draem_cutpaste_clf":
             return self._create_draem_cutpaste_clf_model()
+        elif self.model_type == "cutpaste_clf":
+            return self._create_cutpaste_clf_model()
         elif self.model_type == "dinomaly":
             return self._create_dinomaly_model()
         elif self.model_type == "patchcore":
@@ -89,6 +92,12 @@ class BaseAnomalyTrainer:
             return self._create_efficient_ad_model()
         elif self.model_type == "fastflow":
             return self._create_fastflow_model()
+        elif self.model_type == "padim":
+            return self._create_padim_model()
+        elif self.model_type == "supersimplenet":
+            return self._create_supersimplenet_model()
+        elif self.model_type == "reverse_distillation":
+            return self._create_reverse_distillation_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
@@ -242,16 +251,120 @@ class BaseAnomalyTrainer:
         val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
-        
-        return Fastflow(
+
+        model = Fastflow(
             backbone=self.config.get("backbone", "resnet18"),
             flow_steps=self.config.get("flow_steps", 8),
             conv3x3_only=self.config.get("conv3x3_only", False),
             hidden_ratio=self.config.get("hidden_ratio", 1.0),
             evaluator=evaluator
         )
-    
-    
+
+        # 학습 설정을 _training_config에 저장
+        model._training_config = {
+            'learning_rate': self.config.get("learning_rate", 0.001),
+            'weight_decay': self.config.get("weight_decay", 0.00001),
+            'max_epochs': self.config["max_epochs"],
+        }
+
+        return model
+
+    def _create_padim_model(self):
+        """PaDiM 모델 생성 (Training-free, Memory Bank)"""
+        # PaDiM은 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        layers = self.config.get("layers", ["layer1", "layer2", "layer3"])
+        print(f"   🔍 PaDiM 모델 생성 - 요청된 layers: {layers}")
+
+        model = Padim(
+            backbone=self.config.get("backbone", "resnet18"),
+            layers=layers,
+            pre_trained=self.config.get("pre_trained", True),
+            n_features=self.config.get("n_features", None),  # None = use default (100 for resnet18)
+            evaluator=evaluator
+        )
+
+        # 모델 생성 후 실제 사용되는 layers 확인
+        if hasattr(model.model, 'layers'):
+            print(f"   🔍 PaDiM 모델 생성 완료 - 실제 layers: {model.model.layers}")
+        if hasattr(model.model, 'feature_extractor') and hasattr(model.model.feature_extractor, 'layers'):
+            print(f"   🔍 PaDiM feature_extractor layers: {model.model.feature_extractor.layers}")
+
+        return model
+
+    def _create_supersimplenet_model(self):
+        """SuperSimpleNet 모델 생성"""
+        # SuperSimpleNet은 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        model = Supersimplenet(
+            perlin_threshold=self.config.get("perlin_threshold", 0.2),
+            backbone=self.config.get("backbone", "wide_resnet50_2.tv_in1k"),
+            layers=self.config.get("layers", ["layer2", "layer3"]),
+            supervised=self.config.get("supervised", False),
+            evaluator=evaluator
+        )
+
+        # SuperSimpleNet은 내부에서 optimizer를 configure하므로 별도 설정 불필요
+        # (AdamW with MultiStepLR scheduler)
+
+        return model
+
+    def _create_reverse_distillation_model(self):
+        """Reverse Distillation 모델 생성"""
+        # Reverse Distillation은 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        model = ReverseDistillation(
+            backbone=self.config.get("backbone", "wide_resnet50_2"),
+            layers=self.config.get("layers", ["layer1", "layer2", "layer3"]),
+            anomaly_map_mode=AnomalyMapGenerationMode.ADD,  # 기본값
+            pre_trained=self.config.get("pre_trained", True),
+            evaluator=evaluator
+        )
+
+        # Reverse Distillation은 내부에서 optimizer를 configure하므로 별도 설정 불필요
+        # (Adam with lr=0.005, betas=(0.5, 0.99))
+
+        return model
+
+    def _create_cutpaste_clf_model(self):
+        """CutPaste + Simple CNN Classifier 모델 생성 (Baseline)"""
+        # CutPaste Classifier는 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        model = CutPasteClassifier(
+            image_size=tuple(self.config["image_size"]),
+            cut_w_range=tuple(self.config["cut_w_range"]),
+            cut_h_range=tuple(self.config["cut_h_range"]),
+            a_fault_start=self.config["a_fault_start"],
+            a_fault_range_end=self.config["a_fault_range_end"],
+            augment_probability=self.config["augment_probability"],
+            evaluator=evaluator,
+            pre_processor=False  # HDMAPDataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
+        )
+
+        # 학습 설정을 _training_config에 저장
+        model._training_config = {
+            'learning_rate': self.config['learning_rate'],
+            'optimizer': self.config['optimizer'],
+            'weight_decay': self.config['weight_decay'],
+            'max_epochs': self.config['max_epochs'],
+            'scheduler': self.config.get('scheduler', None),
+        }
+
+        return model
+
+
     def create_datamodule(self):
         """모든 모델에 공통으로 사용할 데이터 모듈 생성"""
         # 도메인 설정 - 모델별로 다른 필드명 처리
@@ -276,11 +389,15 @@ class BaseAnomalyTrainer:
         
         # target_size 설정 (list -> tuple 변환)
         target_size = self.config.get("target_size")
+        print(f"\n🔍 DEBUG create_datamodule:")
+        print(f"   config.target_size = {self.config.get('target_size')}")
+        print(f"   target_size variable = {target_size}")
         if target_size and isinstance(target_size, list) and len(target_size) == 2:
             target_size = tuple(target_size)
+            print(f"   target_size after tuple conversion = {target_size}")
         elif target_size:
             raise ValueError("target_size는 [height, width] 형태의 리스트여야 합니다")
-            
+
         return create_single_domain_datamodule(
             domain=domain,
             dataset_root=dataset_root,
@@ -364,14 +481,13 @@ class BaseAnomalyTrainer:
     def create_callbacks(self):
         """콜백 설정 - 모델별 적절한 early stopping 메트릭 사용"""
         callbacks = []
-        
+
         # 모델별 EarlyStopping 설정
-        if self.model_type in ["patchcore", "efficient_ad"]:
-            # PatchCore와 EfficientAD는 특별한 훈련 방식을 사용하므로 EarlyStopping과 ModelCheckpoint 모두 불필요
-            # Engine에서 자동으로 ModelCheckpoint를 추가하므로 별도 추가하지 않음
-            print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 및 ModelCheckpoint 비활성화 (특별한 훈련 방식)")
+        if self.model_type in ["patchcore", "padim"]:
+            # PatchCore와 PaDiM은 training-free 방식이므로 EarlyStopping과 ModelCheckpoint 불필요
+            print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 및 ModelCheckpoint 비활성화 (Training-free 방식)")
             return []  # 빈 콜백 리스트 반환
-            
+
         else:
             # 모델별로 다른 EarlyStopping monitor 설정
             if self.model_type in ["draem", "draem_cutpaste", "draem_cutpaste_clf"]:
@@ -379,16 +495,16 @@ class BaseAnomalyTrainer:
                 monitor_metric = "val_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
-            elif self.model_type == "efficient_ad":
-                # EfficientAD: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
+            elif self.model_type in ["supersimplenet", "reverse_distillation"]:
+                # SuperSimpleNet, Reverse Distillation: train_loss 기반 EarlyStopping
+                monitor_metric = "train_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 활성화 (train_loss 모니터링)")
+            elif self.model_type in ["efficient_ad", "fastflow", "cutpaste_clf"]:
+                # EfficientAD, FastFlow, CutPaste Classifier: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
                 monitor_metric = "val_image_AUROC"
                 monitor_mode = "max"
-                print(f"   ℹ️ EFFICIENT AD: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
-            elif self.model_type == "fastflow":
-                # FastFlow: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
-                monitor_metric = "val_image_AUROC"
-                monitor_mode = "max"
-                print(f"   ℹ️ FASTFLOW: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
+                print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
             else:
                 # Dinomaly: val_loss 기반 EarlyStopping
                 monitor_metric = "val_loss"
@@ -414,15 +530,15 @@ class BaseAnomalyTrainer:
                     save_top_k=1,
                     verbose=True
                 )
-            elif self.model_type == "efficient_ad":
+            elif self.model_type in ["supersimplenet", "reverse_distillation"]:
                 checkpoint = ModelCheckpoint(
-                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
-                    monitor="val_image_AUROC",
-                    mode="max",
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{train_loss:.4f}",
+                    monitor="train_loss",
+                    mode="min",
                     save_top_k=1,
                     verbose=True
                 )
-            elif self.model_type == "fastflow":
+            elif self.model_type in ["efficient_ad", "fastflow", "cutpaste_clf"]:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
                     monitor="val_image_AUROC",
@@ -444,8 +560,8 @@ class BaseAnomalyTrainer:
     
     def configure_optimizer(self, model):
         """옵티마이저 설정 - 모든 모델 공통"""
-        # PatchCore와 EfficientAD는 옵티마이저가 필요하지 않음
-        if self.model_type in ["patchcore", "efficient_ad"]:
+        # Training-free 모델들은 옵티마이저가 필요하지 않음
+        if self.model_type in ["patchcore", "padim", "efficient_ad"]:
             return
                 
     def train_model(self, model, datamodule, logger) -> Tuple[Any, Engine, str]:
@@ -456,10 +572,24 @@ class BaseAnomalyTrainer:
         # Config 설정 출력
         print(f"   🔧 Config 설정:")
         print(f"      Model Type: {self.model_type}")
-        if self.model_type != "patchcore":
+
+        # Training-free 모델들
+        if self.model_type in ["patchcore", "padim"]:
+            print(f"      Max Epochs: 1 (Training-free)")
+        # 내부에서 optimizer를 configure하는 모델들 (learning_rate가 config에 없을 수 있음)
+        elif self.model_type in ["supersimplenet", "reverse_distillation"]:
+            print(f"      Max Epochs: {self.config['max_epochs']}")
+            print(f"      Early Stopping Patience: {self.config['early_stopping_patience']}")
+            if self.model_type == "supersimplenet":
+                print(f"      Learning Rate: AdamW with MultiStepLR (internal)")
+            elif self.model_type == "reverse_distillation":
+                print(f"      Learning Rate: 0.005 (internal, Adam)")
+        # 일반적인 모델들 (config에서 learning_rate 사용)
+        else:
             print(f"      Max Epochs: {self.config['max_epochs']}")
             print(f"      Learning Rate: {self.config['learning_rate']}")
             print(f"      Early Stopping Patience: {self.config['early_stopping_patience']}")
+
         print(f"      Batch Size: {self.config['batch_size']}")
         
         # 옵티마이저 설정
@@ -475,9 +605,9 @@ class BaseAnomalyTrainer:
             version=""
         )
         
-        # Engine 설정  
-        # PatchCore와 EfficientAD의 경우 특별한 epoch 설정
-        if self.model_type == "patchcore":
+        # Engine 설정
+        # Training-free 모델들은 1 epoch만 필요
+        if self.model_type in ["patchcore", "padim"]:
             max_epochs = 1
         elif self.model_type == "efficient_ad":
             max_epochs = self.config["max_epochs"]
@@ -498,12 +628,12 @@ class BaseAnomalyTrainer:
             "num_sanity_val_steps": 0
         }
         
-        if self.model_type == "patchcore":
-            print(f"   ℹ️ PatchCore: max_epochs 강제 설정 (1 epoch)")
+        if self.model_type in ["patchcore", "padim"]:
+            print(f"   ℹ️ {self.model_type.upper()}: max_epochs 강제 설정 (1 epoch - Training-free)")
         elif self.model_type == "efficient_ad":
             print(f"   ℹ️ EFFICIENT AD: max_epochs = {max_epochs} (특별한 훈련 방식)")
         else:
-            print(f"   ℹ️ {self.model_type.upper()}: max_epochs = {max_epochs}")
+            print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: max_epochs = {max_epochs}")
         
         engine = Engine(**engine_kwargs)
         
@@ -529,11 +659,11 @@ class BaseAnomalyTrainer:
         logger.info(f"🏆 Best Checkpoint: {best_checkpoint}")
 
         # Best checkpoint 정보만 기록하고 로드하지 않음 (마지막 epoch 모델 사용)
-        if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type not in ["patchcore", "efficient_ad"]:
+        if best_checkpoint and os.path.exists(best_checkpoint) and self.model_type not in ["patchcore", "padim", "efficient_ad"]:
             print(f"   📂 Best checkpoint 저장됨: {best_checkpoint}")
             print(f"   ℹ️ 평가는 마지막 epoch 모델로 수행됩니다.")
             logger.info(f"Best checkpoint 저장됨 (사용하지 않음): {best_checkpoint}")
-        elif self.model_type in ["patchcore", "efficient_ad"]:
+        elif self.model_type in ["patchcore", "padim", "efficient_ad"]:
             print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: Best checkpoint 로드 건너뜀 (특별한 훈련 방식)")
         elif not best_checkpoint:
             print(f"   ⚠️ Best checkpoint 없음 - 마지막 epoch 모델 사용")

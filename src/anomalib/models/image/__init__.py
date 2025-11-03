@@ -26,6 +26,7 @@ Available Models:
     - :class:`Cfa`: Contrastive Feature Aggregation
     - :class:`Cflow`: Conditional Normalizing Flow
     - :class:`Csflow`: Conditional Split Flow
+    - :class:`CutPasteClassifier`: CutPaste + Simple CNN Classifier
     - :class:`Dfkde`: Deep Feature Kernel Density Estimation
     - :class:`Dfm`: Deep Feature Modeling
     - :class:`Draem`: Dual Reconstruction by Adversarial Masking
@@ -47,6 +48,7 @@ Available Models:
 from .cfa import Cfa
 from .cflow import Cflow
 from .csflow import Csflow
+from .cutpaste_clf import CutPasteClassifier
 from .dfkde import Dfkde
 from .dfm import Dfm
 from .dinomaly import Dinomaly
@@ -70,6 +72,7 @@ __all__ = [
     "Cfa",
     "Cflow",
     "Csflow",
+    "CutPasteClassifier",
     "Dfkde",
     "Dfm",
     "Draem",

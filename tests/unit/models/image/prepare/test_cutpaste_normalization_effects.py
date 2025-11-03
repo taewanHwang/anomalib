@@ -33,6 +33,8 @@ from DRAME_CutPaste.utils.utils_data_loader_v2 import HDmapdataset_v2
 # =============================================================================
 A_FAULT_RANGE_START = 0    # CutPaste 패치 증폭 시작값
 A_FAULT_RANGE_END = 0.1    # CutPaste 패치 증폭 끝값
+CUT_W_RANGE = (2, 127)     # CutPaste 패치 너비 범위
+CUT_H_RANGE = (4, 8)       # CutPaste 패치 높이 범위
 NUM_SAMPLES = 20             # 각 정규화 타입별 생성할 샘플 수
 DOMAIN = 'A'                 # 테스트할 도메인 (A, B, C, D)
 RANDOM_SEED = 42             # 재현 가능한 결과를 위한 시드값
@@ -47,9 +49,9 @@ class CutPasteNormalizationTester:
         
         # 정규화 타입별 데이터 경로
         self.normalization_types = {
-            'zscore': '1000_tiff_zscore',
-            'minmax': '1000_tiff_minmax', 
-            'original': '1000_tiff_original'
+            # 'zscore': '1000_tiff_zscore',
+            'minmax': '100000_tiff_minmax', 
+            # 'original': '1000_tiff_original'
         }
         
     
@@ -82,19 +84,21 @@ class CutPasteNormalizationTester:
         """단일 이미지로 HDmapdataset_v2 생성"""
         # 이미지를 (N, C, H, W) 형태로 변환
         data = np.expand_dims(img_array, axis=0)  # (1, 1, H, W)
-        
+
         # HDmapdataset_v2 생성
         dataset = HDmapdataset_v2(
             data=data,
             a_fault_start=A_FAULT_RANGE_START,
             a_fault_range_end=A_FAULT_RANGE_END,
+            cut_w_range=CUT_W_RANGE,  # 패치 너비 범위
+            cut_h_range=CUT_H_RANGE,  # 패치 높이 범위
             norm=CUTPASTE_NORM,  # 정규화 활성화
             resize=(31, 95),
             method='resize',
             enable_augment=True,
             category=None  # 훈련 모드
         )
-        
+
         return dataset
     
     def extract_augmentation_results(self, dataset, num_samples=NUM_SAMPLES):
@@ -331,6 +335,8 @@ class CutPasteNormalizationTester:
             f.write(f"테스트 설정:\n")
             f.write(f"- a_fault_range_start: {A_FAULT_RANGE_START}\n")
             f.write(f"- a_fault_range_end: {A_FAULT_RANGE_END}\n")
+            f.write(f"- cut_w_range: {CUT_W_RANGE}\n")
+            f.write(f"- cut_h_range: {CUT_H_RANGE}\n")
             f.write(f"- 샘플 수: {NUM_SAMPLES}개 (각 정규화 타입별)\n")
             f.write(f"- 도메인: {DOMAIN}\n\n")
             
@@ -378,6 +384,8 @@ if __name__ == "__main__":
     print("🔧 테스트 설정:")
     print(f"   - A_FAULT_RANGE_START: {A_FAULT_RANGE_START}")
     print(f"   - A_FAULT_RANGE_END: {A_FAULT_RANGE_END}")
+    print(f"   - CUT_W_RANGE: {CUT_W_RANGE}")
+    print(f"   - CUT_H_RANGE: {CUT_H_RANGE}")
     print(f"   - NUM_SAMPLES: {NUM_SAMPLES}")
     print(f"   - DOMAIN: {DOMAIN}")
     print(f"   - RANDOM_SEED: {RANDOM_SEED}")

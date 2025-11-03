@@ -700,9 +700,16 @@ def plot_roc_curve(
         AUROC 값
     """
     import matplotlib.pyplot as plt
+    from matplotlib import rcParams
     from sklearn.metrics import roc_curve, auc
     import numpy as np
-    
+
+    # Set font to Computer Modern (LaTeX 기본 폰트)
+    rcParams['font.family'] = 'serif'
+    rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
+    rcParams['mathtext.fontset'] = 'cm'
+    rcParams['axes.formatter.use_mathtext'] = True
+
     # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
     analysis_dir = Path(result_dir)
     
@@ -806,35 +813,41 @@ def plot_score_distributions(
         experiment_name: 실험 이름
     """
     import matplotlib.pyplot as plt
+    from matplotlib import rcParams
     import numpy as np
-    
+
+    # Set font to Computer Modern (LaTeX 기본 폰트)
+    rcParams['font.family'] = 'serif'
+    rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
+    rcParams['mathtext.fontset'] = 'cm'
+    rcParams['axes.formatter.use_mathtext'] = True
+
     # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
     analysis_dir = Path(result_dir)
-    
+
     # 히스토그램 생성
     plt.figure(figsize=(10, 6))
-    
+
     # 정상 샘플 분포
-    plt.hist(normal_scores, bins=50, alpha=0.6, label=f'Normal (n={len(normal_scores)})', 
+    plt.hist(normal_scores, bins=50, alpha=0.6, label=f'Normal (n={len(normal_scores)})',
              color='blue', density=True)
-    
-    # 이상 샘플 분포  
-    plt.hist(anomaly_scores, bins=50, alpha=0.6, label=f'Anomaly (n={len(anomaly_scores)})', 
+
+    # 이상 샘플 분포
+    plt.hist(anomaly_scores, bins=50, alpha=0.6, label=f'Anomaly (n={len(anomaly_scores)})',
              color='red', density=True)
-    
+
     plt.xlabel('Anomaly Score')
     plt.ylabel('Density')
     plt.title(f'Score Distributions - {experiment_name}')
-    plt.legend()
+    plt.legend(loc='upper left')  # 범례 위치를 좌상단으로 명시
     plt.grid(True, alpha=0.3)
-    
-    # 통계 정보 텍스트 추가
-    normal_mean, normal_std = np.mean(normal_scores), np.std(normal_scores)
-    anomaly_mean, anomaly_std = np.mean(anomaly_scores), np.std(anomaly_scores)
-    
-    stats_text = f'Normal: μ={normal_mean:.3f}, σ={normal_std:.3f}\\nAnomaly: μ={anomaly_mean:.3f}, σ={anomaly_std:.3f}'
-    plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes, 
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    # 통계 정보 텍스트 박스 제거 (사용자 요청)
+    # normal_mean, normal_std = np.mean(normal_scores), np.std(normal_scores)
+    # anomaly_mean, anomaly_std = np.mean(anomaly_scores), np.std(anomaly_scores)
+    # stats_text = f'Normal: μ={normal_mean:.3f}, σ={normal_std:.3f}\\nAnomaly: μ={anomaly_mean:.3f}, σ={anomaly_std:.3f}'
+    # plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
+    #          verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
     
     # 저장
     dist_path = analysis_dir / "score_distributions.png"
@@ -982,7 +995,16 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch_model = torch_model.to(device)
     print(f"   🖥️ 모델을 {device}로 이동 완료")
-    
+
+    # PaDiM 모델의 경우 layers 설정 확인
+    if model_type.lower() == "padim":
+        if hasattr(torch_model, 'layers'):
+            print(f"   🔍 PaDiM layers 설정: {torch_model.layers}")
+        if hasattr(torch_model, 'feature_extractor') and hasattr(torch_model.feature_extractor, 'layers'):
+            print(f"   🔍 PaDiM feature_extractor layers: {torch_model.feature_extractor.layers}")
+        if hasattr(torch_model, 'memory_bank'):
+            print(f"   🔍 PaDiM memory_bank shape: {torch_model.memory_bank.shape}")
+
     # 시각화 디렉터리 생성
     visualization_dir = Path(experiment_dir) / "visualizations"
     visualization_dir.mkdir(exist_ok=True)
@@ -1096,15 +1118,22 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
         print(f"   ❌ 평가 실패: {e}")
         return None
     
-    # 임계값 계산 (Youden's J statistic)
+    # 임계값을 0.5로 고정 (test set label 사용하지 않음)
+    # NOTE: Anomaly detection task에서 test set으로 optimal threshold를 계산하는 것은
+    #       label leakage이므로, 0.5를 기본 threshold로 사용합니다.
+    fixed_threshold = 0.5
+
+    # (참고용) Optimal threshold 계산 - 리포트에만 기록
     fpr, tpr, thresholds = roc_curve(all_ground_truth, all_scores)
     optimal_idx = np.argmax(tpr - fpr)
-    optimal_threshold = thresholds[optimal_idx]
-    
-    print(f"   📈 AUROC: {auroc:.4f}, 최적 임계값: {optimal_threshold:.4f}")
-    
-    # 예측 라벨 생성
-    predictions = (np.array(all_scores) > optimal_threshold).astype(int)
+    reference_optimal_threshold = thresholds[optimal_idx]
+
+    print(f"   📈 AUROC: {auroc:.4f}")
+    print(f"   🎯 사용 임계값: {fixed_threshold:.4f} (고정)")
+    print(f"   📊 참고 - Optimal threshold (Youden's J): {reference_optimal_threshold:.4f}")
+
+    # 예측 라벨 생성 (threshold 0.5 사용)
+    predictions = (np.array(all_scores) > fixed_threshold).astype(int)
     
     # Confusion Matrix 계산
     cm = confusion_matrix(all_ground_truth, predictions)
@@ -1129,17 +1158,18 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     print(f"      Precision: {precision:.4f}")
     print(f"      Recall: {recall:.4f}")
     print(f"      F1-Score: {f1:.4f}")
-    print(f"      Threshold: {optimal_threshold:.4f}")
-    
+    print(f"      Threshold: {fixed_threshold:.4f}")
+
     # 기본 메트릭 딕셔너리
     unified_metrics = {
         "auroc": float(auroc),
-        "accuracy": float(accuracy), 
+        "accuracy": float(accuracy),
         "precision": float(precision),
         "recall": float(recall),
         "f1_score": float(f1),
         "confusion_matrix": cm.tolist(),
-        "optimal_threshold": float(optimal_threshold),
+        "threshold": float(fixed_threshold),  # 사용된 threshold
+        "reference_optimal_threshold": float(reference_optimal_threshold),  # 참고용
         "total_samples": len(all_ground_truth),
         "positive_samples": int(np.sum(all_ground_truth)),
         "negative_samples": int(len(all_ground_truth) - np.sum(all_ground_truth))
@@ -1164,9 +1194,9 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     
     # ROC curve 생성
     plot_roc_curve(all_ground_truth, all_scores, analysis_dir, experiment_name)
-    
-    # 메트릭 보고서 저장
-    save_metrics_report(all_ground_truth, predictions, all_scores, analysis_dir, auroc, optimal_threshold)
+
+    # 메트릭 보고서 저장 (threshold 0.5 사용)
+    save_metrics_report(all_ground_truth, predictions, all_scores, analysis_dir, auroc, fixed_threshold)
     
     # 점수 분포 히스토그램 생성
     normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
@@ -1230,6 +1260,32 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
             print(f"      📊 DRAEM CutPaste Clf 점수 추출: first pred_score={final_scores[0]:.4f}")
         except AttributeError:
             raise AttributeError("DRAEM CutPaste Clf 출력 속성 없음")
+
+    elif model_type == "cutpaste_clf":
+        # cutpaste_clf의 경우 torch_model이 logits [B, 2]를 반환
+        # logits를 확률로 변환해서 anomaly 점수 추출
+        if isinstance(model_output, torch.Tensor):
+            # Raw logits인 경우: [B, 2] -> softmax -> anomaly probability [B]
+            logits = model_output
+            probs = torch.softmax(logits, dim=1)  # [B, 2]
+            final_scores = probs[:, 1].cpu().numpy()  # [B] - Anomaly probability
+
+            # NaN 값 확인 및 처리
+            if np.isnan(final_scores).any():
+                raise ValueError(f"      ❌ CutPaste Clf pred_score에 NaN이 포함되어 있습니다. (배치 {batch_idx})")
+
+            print(f"      📊 CutPaste Clf 점수 추출 (from logits): first pred_score={final_scores[0]:.4f}")
+        elif hasattr(model_output, 'pred_score'):
+            # InferenceBatch인 경우 (validation_step에서 생성)
+            final_scores = model_output.pred_score.cpu().numpy()
+
+            # NaN 값 확인 및 처리
+            if np.isnan(final_scores).any():
+                raise ValueError(f"      ❌ CutPaste Clf pred_score에 NaN이 포함되어 있습니다. (배치 {batch_idx})")
+
+            print(f"      📊 CutPaste Clf 점수 추출: first pred_score={final_scores[0]:.4f}")
+        else:
+            raise AttributeError("CutPaste Clf 출력 속성 없음")
 
     elif model_type == "patchcore":
         # PatchCore: pred_score만 있음
@@ -1349,9 +1405,16 @@ def create_anomaly_heatmap_with_colorbar(
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     from matplotlib.colors import Normalize
+    from matplotlib import rcParams
     import io
     from PIL import Image
     import numpy as np
+
+    # Set font to Computer Modern (LaTeX 기본 폰트)
+    rcParams['font.family'] = 'serif'
+    rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
+    rcParams['mathtext.fontset'] = 'cm'
+    rcParams['axes.formatter.use_mathtext'] = True
 
     # 값 범위 설정
     if fixed_range:
@@ -1361,16 +1424,17 @@ def create_anomaly_heatmap_with_colorbar(
         vmax = anomaly_map_array.max()
 
     # Figure 크기 및 레이아웃 설정
+    # 이미지 크기를 줄여서 상대적으로 폰트가 크게 보이도록 함
     if show_colorbar:
         # Colorbar 포함 레이아웃
-        fig_width = 6
-        fig_height = 4
+        fig_width = 4
+        fig_height = 3
         fig, (ax_img, ax_cbar) = plt.subplots(1, 2, figsize=(fig_width, fig_height),
                                               gridspec_kw={'width_ratios': [4, 0.3]})
     else:
         # Colorbar 없는 레이아웃
-        fig_width = 4
-        fig_height = 4
+        fig_width = 2.5
+        fig_height = 2.5
         fig, ax_img = plt.subplots(1, 1, figsize=(fig_width, fig_height))
 
     # Heatmap 생성
@@ -1381,14 +1445,15 @@ def create_anomaly_heatmap_with_colorbar(
     # Colorbar 생성 (옵션에 따라)
     if show_colorbar:
         cbar = plt.colorbar(im, cax=ax_cbar)
-        cbar.set_label('Anomaly Score', rotation=270, labelpad=15, fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
+        cbar.set_label('Anomaly Score', rotation=270, labelpad=15, fontsize=12)
+        cbar.ax.tick_params(labelsize=10)
 
     plt.tight_layout()
 
     # PIL 이미지로 변환
+    # 이미지 크기를 줄였으므로 DPI를 높여서 해상도 유지
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', pad_inches=0.05)
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', pad_inches=0.05)
     buf.seek(0)
     heatmap_pil = Image.open(buf).convert('RGB')
     plt.close()
@@ -2041,28 +2106,33 @@ def evaluate_source_domain(
         plot_roc_curve(all_labels, all_scores, source_analysis_dir, 
                       f"{model_type.upper()} Source {datamodule.source_domain}")
         
-        # Optimal threshold 계산 및 저장
-        optimal_threshold = find_optimal_threshold(all_labels, all_scores)
-        optimal_threshold_data = {
-            "optimal_threshold": optimal_threshold,
-            "method": "youden_j_statistic",
+        # (참고용) Optimal threshold 계산 - 실제로는 0.5 사용
+        # NOTE: Test set으로 optimal threshold 계산하는 것은 label leakage
+        reference_optimal_threshold = find_optimal_threshold(all_labels, all_scores)
+
+        threshold_info = {
+            "used_threshold": 0.5,
+            "reference_optimal_threshold": reference_optimal_threshold,
+            "method": "fixed_0.5_to_avoid_label_leakage",
+            "note": "Optimal threshold는 참고용으로만 기록. 실제 평가는 threshold 0.5 사용",
             "source_domain": datamodule.source_domain,
             "model_type": model_type
         }
-        
-        # Source threshold로 source domain 성능 평가 (참고용)
-        source_metrics_with_optimal = evaluate_with_fixed_threshold(all_scores, all_labels, optimal_threshold)
-        optimal_threshold_data["source_performance_with_optimal_threshold"] = source_metrics_with_optimal
-        
-        # Optimal threshold 저장
-        threshold_path = source_analysis_dir / "optimal_threshold.json"
+
+        # Reference optimal threshold로 성능 비교 (참고용)
+        reference_metrics = evaluate_with_fixed_threshold(all_scores, all_labels, reference_optimal_threshold)
+        threshold_info["reference_performance_with_optimal_threshold"] = reference_metrics
+
+        # Threshold 정보 저장
+        threshold_path = source_analysis_dir / "threshold_info.json"
         with open(threshold_path, 'w', encoding='utf-8') as f:
             import json
-            json.dump(optimal_threshold_data, f, indent=2, ensure_ascii=False)
-        
+            json.dump(threshold_info, f, indent=2, ensure_ascii=False)
+
         if verbose:
-            print(f"   🎯 Optimal threshold: {optimal_threshold:.4f}")
-            print(f"   💾 Optimal threshold 저장: {threshold_path}")
+            print(f"   🎯 사용 threshold: 0.5 (고정)")
+            print(f"   📊 참고 - Optimal threshold (Youden's J): {reference_optimal_threshold:.4f}")
+            print(f"   💾 Threshold 정보 저장: {threshold_path}")
         
         # 메트릭 보고서 저장 (기존 0.5 threshold 기준)
         save_metrics_report(all_labels, predictions, all_scores, source_analysis_dir, auroc, 0.5)
@@ -2093,10 +2163,11 @@ def evaluate_source_domain(
         'analysis_dir': str(source_analysis_dir) if analysis_dir else None
     }
     
-    # Analysis가 활성화된 경우 optimal threshold 추가
+    # Analysis가 활성화된 경우 threshold 정보 추가
     if analysis_dir:
-        result['optimal_threshold'] = float(optimal_threshold)
-        result['optimal_threshold_metrics'] = source_metrics_with_optimal
+        result['threshold'] = 0.5  # Used threshold
+        result['reference_optimal_threshold'] = float(reference_optimal_threshold)
+        result['reference_threshold_metrics'] = reference_metrics
     
     return result
 
