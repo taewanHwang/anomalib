@@ -1,23 +1,17 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-108.A",
-      "description": "Domain A - CutPaste Clf (LR 1e-4)",
+      "name": "exp-112.A",
+      "description": "Domain A - CutPaste Clf (Severity 200%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -25,16 +19,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 4.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -44,23 +32,17 @@
       }
     },
     {
-      "name": "exp-108.B",
-      "description": "Domain B - CutPaste Clf (LR 1e-4)",
+      "name": "exp-112.B",
+      "description": "Domain B - CutPaste Clf (Severity 200%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_B",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -68,16 +50,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 4.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -87,23 +63,17 @@
       }
     },
     {
-      "name": "exp-108.C",
-      "description": "Domain C - CutPaste Clf (LR 1e-4)",
+      "name": "exp-112.C",
+      "description": "Domain C - CutPaste Clf (Severity 200%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -111,16 +81,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 4.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -130,23 +94,17 @@
       }
     },
     {
-      "name": "exp-108.D",
-      "description": "Domain D - CutPaste Clf (LR 1e-4)",
+      "name": "exp-112.D",
+      "description": "Domain D - CutPaste Clf (Severity 200%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_D",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.0001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -154,16 +112,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 4.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -173,23 +125,17 @@
       }
     },
     {
-      "name": "exp-109.A",
-      "description": "Domain A - CutPaste Clf (LR 1e-3)",
+      "name": "exp-113.A",
+      "description": "Domain A - CutPaste Clf (Severity 300%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_A",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -197,16 +143,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 5.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -216,23 +156,17 @@
       }
     },
     {
-      "name": "exp-109.B",
-      "description": "Domain B - CutPaste Clf (LR 1e-3)",
+      "name": "exp-113.B",
+      "description": "Domain B - CutPaste Clf (Severity 300%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_B",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -240,16 +174,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 5.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -259,23 +187,17 @@
       }
     },
     {
-      "name": "exp-109.C",
-      "description": "Domain C - CutPaste Clf (LR 1e-3)",
+      "name": "exp-113.C",
+      "description": "Domain C - CutPaste Clf (Severity 300%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_C",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -283,16 +205,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 5.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",
@@ -302,23 +218,17 @@
       }
     },
     {
-      "name": "exp-109.D",
-      "description": "Domain D - CutPaste Clf (LR 1e-3)",
+      "name": "exp-113.D",
+      "description": "Domain D - CutPaste Clf (Severity 300%)",
       "config": {
         "model_type": "cutpaste_clf",
         "source_domain": "domain_D",
         "max_epochs": 3,
         "early_stopping_patience": 20,
-        "learning_rate": 0.001,
+        "learning_rate": 0.0005,
         "batch_size": 128,
-        "image_size": [
-          128,
-          128
-        ],
-        "target_size": [
-          128,
-          128
-        ],
+        "image_size": [128, 128],
+        "target_size": [128, 128],
         "resize_method": "resize",
         "dataset_root": "datasets/HDMAP/100000_tiff_minmax",
         "optimizer": "adamw",
@@ -326,16 +236,10 @@
         "val_split_ratio": 0.1,
         "num_workers": 16,
         "seed": 52,
-        "cut_w_range": [
-          2,
-          127
-        ],
-        "cut_h_range": [
-          4,
-          8
-        ],
+        "cut_w_range": [2, 127],
+        "cut_h_range": [4, 8],
         "a_fault_start": 0,
-        "a_fault_range_end": 1.0,
+        "a_fault_range_end": 5.0,
         "augment_probability": 0.5,
         "scheduler": {
           "type": "steplr",

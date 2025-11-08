@@ -8,29 +8,51 @@ rcParams['font.serif'] = ['cmr10', 'DejaVu Serif']
 rcParams['mathtext.fontset'] = 'cm'
 rcParams['axes.formatter.use_mathtext'] = True
 
+# IEEE/Nature journal style
+colors = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b']
+linestyles = ['-', '--', '-.', ':']
+markers = ['o', 's', '^', 'D']
+markersizes = [6, 6, 7, 6]
+
 # Focal alpha values
 alphas = np.array([0.1, 0.5, 0.9, 1.0])
 
 # Domain Average (mean ± std) for Proposed
-avg_means = np.array([99.858, 99.339, 99.717, 88.153])
-avg_stds  = np.array([0.057, 1.017, 0.158, 8.253])
+avg_means = np.array([99.6, 98.1, 95.9, 50])
+avg_stds  = np.array([0.4, 2.1, 2.4, 0])
+
+# Domain B (mean ± std) for Proposed
+b_means = np.array([99.5, 95.1, 93.9, 50 ])
+b_stds  = np.array([0.5, 6.4, 1.6, 0])
+
 
 # Domain C (mean ± std) for Proposed
-c_means = np.array([99.600, 97.522, 99.222, 80.700])
-c_stds  = np.array([0.227, 4.067, 0.239, 17.286])
+c_means = np.array([99.1, 99.2, 98.1, 50 ])
+c_stds  = np.array([0.6, 0.2, 0.7, 0])
 
 plt.figure(figsize=(10,6))
 
-plt.errorbar(alphas, avg_means, yerr=avg_stds, marker='o', linewidth=2, capsize=5, label="Domain Average")
-plt.errorbar(alphas, c_means, yerr=c_stds, marker='s', linewidth=2, capsize=5, label="Domain C")
+plt.errorbar(alphas, avg_means, yerr=avg_stds, marker=markers[0], linewidth=2,
+             linestyle='-', color=colors[0], markersize=markersizes[0],
+             capsize=4, capthick=1.5, elinewidth=1.5, alpha=0.8, label="Domain Average")
 
-plt.title("Effect of Focal Loss Weight")
-plt.xlabel("Focal alpha")
-plt.ylabel("Accuracy (%)")
+# Domain B - error bar를 대시선으로
+b_line = plt.errorbar(alphas, b_means, yerr=b_stds, marker=markers[1], linewidth=2,
+                      linestyle=(0, (5, 5)), color=colors[1], markersize=markersizes[1],
+                      capsize=4, capthick=1.5, elinewidth=1.5, alpha=0.8, label="Domain B")
+# error bar 선도 대시선으로 설정
+b_line[-1][0].set_linestyle((0, (5, 5)))
+# plt.errorbar(alphas, c_means, yerr=c_stds, marker=markers[2], linewidth=2,
+#              linestyle=':', color=colors[2], markersize=markersizes[2],
+#              capsize=4, capthick=1.5, elinewidth=1.5, alpha=0.8, label="Domain C")
+
+plt.title("Effect of Focal Loss Weight", fontsize=16)
+plt.xlabel("Focal alpha", fontsize=14)
+plt.ylabel("Accuracy (%)", fontsize=14)
 plt.xticks(alphas, [str(a) for a in alphas])
-plt.ylim(75, 100.5)
-plt.grid(axis='y', linestyle='--', alpha=0.5)
-plt.legend()
+plt.ylim(50, 100.5)
+plt.grid(axis='y', linestyle='--', alpha=0.3, linewidth=0.5, color='gray')
+plt.legend(fontsize=12, labelspacing=1.0)
 
 # Save figure for download
 plt.savefig("accuracy_over_focal.png", dpi=300, bbox_inches="tight")
