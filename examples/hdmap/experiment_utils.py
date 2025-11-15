@@ -776,7 +776,9 @@ def save_metrics_report(
     precision = precision_score(ground_truth, predictions, zero_division=0)
     recall = recall_score(ground_truth, predictions, zero_division=0)
     f1 = f1_score(ground_truth, predictions, zero_division=0)
-    cm = confusion_matrix(ground_truth, predictions).tolist()
+    cm_raw = confusion_matrix(ground_truth, predictions)
+    cm = cm_raw.tolist()
+    accuracy = ((cm_raw[0, 0] + cm_raw[1, 1]) / cm_raw.sum()) if cm_raw.sum() else 0.0
     
     # 메트릭 보고서 생성
     metrics_report = {
@@ -785,11 +787,21 @@ def save_metrics_report(
         "precision": float(precision),
         "recall": float(recall),
         "f1_score": float(f1),
+        "accuracy": float(accuracy),
         "confusion_matrix": cm,
         "total_samples": int(len(ground_truth)),
         "positive_samples": int(sum(ground_truth)),
         "negative_samples": int(len(ground_truth) - sum(ground_truth))
     }
+
+    val_metrics_path = analysis_dir / "val_metrics_report.json"
+    if val_metrics_path.exists():
+        try:
+            with open(val_metrics_path, 'r', encoding='utf-8') as vf:
+                val_metrics = json.load(vf)
+            metrics_report["validation_metrics"] = val_metrics
+        except Exception as exc:
+            print(f"⚠️ Validation metrics 로드 실패: {exc}")
     
     # JSON 파일로 저장
     metrics_path = analysis_dir / "metrics_report.json"
@@ -803,7 +815,8 @@ def plot_score_distributions(
     normal_scores: List[float],
     anomaly_scores: List[float], 
     result_dir: Path,
-    experiment_name: str = "Experiment"
+    experiment_name: str = "Experiment",
+    filename_suffix: str | None = None,
 ) -> None:
     """
     정상/이상 샘플의 점수 분포를 히스토그램으로 시각화합니다.
@@ -854,7 +867,10 @@ def plot_score_distributions(
     #          verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
     
     # 저장
-    dist_path = analysis_dir / "score_distributions.png"
+    if filename_suffix:
+        dist_path = analysis_dir / f"score_distributions_{filename_suffix}.png"
+    else:
+        dist_path = analysis_dir / "score_distributions.png"
     plt.savefig(dist_path, dpi=150, bbox_inches='tight')
     plt.close()
     
@@ -1206,6 +1222,44 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
     anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
     plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, experiment_name)
+
+    # Validation score distributions (synthetic CutPaste) if available
+    if getattr(datamodule, "val_data", None):
+        try:
+            val_dataloader = datamodule.val_dataloader()
+        except Exception:
+            val_dataloader = None
+
+        if val_dataloader:
+            val_scores = []
+            val_labels = []
+            print(f"   🔁 Validation 데이터 점수 수집 시작... (총 {len(val_dataloader)}개 배치)")
+            with torch.no_grad():
+                for batch_idx, batch in enumerate(val_dataloader):
+                    if hasattr(model, "_apply_validation_cutpaste"):
+                        batch, _ = model._apply_validation_cutpaste(batch)
+
+                    image_tensor = batch.image.to(device)
+                    model_output = torch_model(image_tensor)
+                    final_scores = extract_scores_from_model_output(
+                        model_output, image_tensor.shape[0], batch_idx, model_type
+                    )
+                    if isinstance(final_scores, np.ndarray):
+                        val_scores.extend(final_scores.tolist())
+                    else:
+                        val_scores.extend(list(final_scores))
+                    val_labels.extend(batch.gt_label.detach().cpu().tolist())
+
+            if val_scores:
+                val_normal_scores = [score for gt, score in zip(val_labels, val_scores) if gt == 0]
+                val_anomaly_scores = [score for gt, score in zip(val_labels, val_scores) if gt == 1]
+                plot_score_distributions(
+                    val_normal_scores,
+                    val_anomaly_scores,
+                    analysis_dir,
+                    f"{experiment_name} (Validation)",
+                    filename_suffix="val",
+                )
         
     # 실험 요약 저장
     save_experiment_summary({}, {"auroc": auroc}, analysis_dir)

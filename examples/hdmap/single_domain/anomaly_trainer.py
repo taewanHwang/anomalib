@@ -140,7 +140,7 @@ class BaseAnomalyTrainer:
             'augment_probability': self.config["augment_probability"],
             'focal_alpha': self.config.get("focal_alpha", 0.9),
         }
-
+        
         # DraemCutPaste 모델 생성
         model = DraemCutPaste(**model_params)
 
@@ -398,6 +398,8 @@ class BaseAnomalyTrainer:
         elif target_size:
             raise ValueError("target_size는 [height, width] 형태의 리스트여야 합니다")
 
+        val_split_mode = self.config.get("val_split_mode", "FROM_TEST")
+
         return create_single_domain_datamodule(
             domain=domain,
             dataset_root=dataset_root,
@@ -405,6 +407,7 @@ class BaseAnomalyTrainer:
             target_size=target_size,
             resize_method=self.config.get("resize_method", "resize"),
             val_split_ratio=self.config["val_split_ratio"],
+            val_split_mode=val_split_mode,
             num_workers=self.config["num_workers"],
             seed=self.config["seed"]
         )
@@ -598,7 +601,12 @@ class BaseAnomalyTrainer:
         # 콜백 설정
         callbacks = self.create_callbacks()
         
-        # TensorBoard 로거 설정
+        analysis_dir = Path(self.experiment_dir) / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+
+        if hasattr(model, "validation_analysis_dir"):
+            model.validation_analysis_dir = analysis_dir
+
         self.tb_logger = TensorBoardLogger(
             save_dir=str(self.experiment_dir),
             name="tensorboard_logs",

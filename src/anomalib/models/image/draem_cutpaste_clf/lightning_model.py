@@ -6,9 +6,13 @@ providing training, validation, and testing logic with integrated loss functions
 Based on the original DRAEM lightning model with extensions for CutPaste and classification.
 """
 
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Any
 
 import torch
+from lightning.pytorch.utilities import rank_zero_info
 from lightning.pytorch.utilities.types import STEP_OUTPUT
 
 from anomalib import LearningType
@@ -136,6 +140,10 @@ class DraemCutPasteClf(AnomalibModule):
         # Model and loss will be created in setup()
         self.model: DraemCutPasteModel
         self.loss: DraemCutPasteLoss
+        self.validation_cutpaste_probability: float = augment_probability
+        self.validation_analysis_dir: Path | None = None
+        self._val_scores: list[float] = []
+        self._val_labels: list[int] = []
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
@@ -174,6 +182,32 @@ class DraemCutPasteClf(AnomalibModule):
             clf_weight=self.clf_weight,
             focal_alpha=self.focal_alpha,
         )
+
+    def _apply_validation_cutpaste(self, batch: Batch) -> tuple[Batch, torch.Tensor]:
+        """Optionally augment validation data with CutPaste anomalies."""
+        images = batch.image
+        device = images.device
+        mask_shape = (images.size(0), 1, images.size(2), images.size(3))
+
+        if self.validation_cutpaste_probability <= 0:
+            return batch, torch.zeros(mask_shape, device=device, dtype=images.dtype)
+
+        generator = self.model.synthetic_generator
+        original_prob = getattr(generator, "probability", 1.0)
+        generator.probability = self.validation_cutpaste_probability
+        with torch.no_grad():
+            augmented, fault_mask, severity = generator(images)
+        generator.probability = original_prob
+
+        anomaly_labels = (severity > 0).long().to(device)
+        converted = int(anomaly_labels.sum().item())
+        rank_zero_info(
+            f"✂️ Validation CutPaste 적용: {converted}/{images.size(0)} anomalies "
+            f"(prob={self.validation_cutpaste_probability:.2f})"
+        )
+
+        batch = batch.update(image=augmented, gt_label=anomaly_labels)
+        return batch, fault_mask.to(device, dtype=images.dtype)
 
     def configure_optimizers(self) -> dict[str, Any] | torch.optim.Optimizer:
         """Configure the optimizer and learning rate scheduler.
@@ -382,39 +416,28 @@ class DraemCutPasteClf(AnomalibModule):
         Returns:
             STEP_OUTPUT: Predictions for evaluation
         """
-        # Get inference predictions (no augmentation)
+        batch, anomaly_mask = self._apply_validation_cutpaste(batch)
         predictions = self.model(batch.image, training_phase=False)
 
-        # Calculate validation loss on real (non-augmented) data
+        # Calculate validation loss on potentially augmented data
         images = batch.image
         images_single_ch = images[:, :1, :, :]
+        anomaly_labels = batch.gt_label.long()
         
-        # Get model components for real data (eval mode)
         with torch.no_grad():
-            # Get reconstruction
             reconstruction = self.model.reconstructive_subnetwork(images_single_ch)
-            
-            # Get discriminative prediction
             joined_input = torch.cat([images_single_ch, reconstruction], dim=1)
             prediction_logits = self.model.discriminative_subnetwork(joined_input)
-            
-            # Get classification (severity head)
             severity_input = self.model._create_severity_input(
                 images_single_ch, prediction_logits, reconstruction
             )
             classification = self.model.severity_head(severity_input)
-
-            # Use actual ground truth labels from validation set
-            # Validation set contains both normal and anomalous samples from test set
-            anomaly_labels = batch.gt_label.long()  # Real labels: 0=normal, 1=anomaly
-
-            # No pixel-level ground truth mask available
-            # Create dummy mask (not used for classification loss, only for pixel-level losses)
+        
+        if self.validation_cutpaste_probability <= 0:
             batch_size = images.shape[0]
             device = images.device
             anomaly_mask = torch.zeros(batch_size, 1, *images.shape[2:], device=device)
-        
-        # Compute validation loss (without focal loss - no pixel-level GT available)
+
         val_total_loss, val_loss_dict = self.loss(
             reconstruction=reconstruction,
             original=images_single_ch,
@@ -433,7 +456,55 @@ class DraemCutPasteClf(AnomalibModule):
 
         # Combine batch information with predictions for evaluator
         # This ensures AUROC metric gets both pred_score and gt_label
+        pred_scores = predictions.pred_score.detach().cpu().tolist()
+        labels = batch.gt_label.detach().cpu().tolist()
+        self._val_scores.extend(pred_scores)
+        self._val_labels.extend(labels)
+
         return batch.update(**predictions._asdict())
+
+    def on_validation_epoch_start(self) -> None:
+        self._val_scores = []
+        self._val_labels = []
+
+    def on_validation_epoch_end(self) -> None:
+        if not self._val_scores:
+            return
+
+        from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score
+        import json
+
+        preds = [1 if s >= 0.5 else 0 for s in self._val_scores]
+        precision = precision_score(self._val_labels, preds, zero_division=0)
+        recall = recall_score(self._val_labels, preds, zero_division=0)
+        f1 = f1_score(self._val_labels, preds, zero_division=0)
+        cm_raw = confusion_matrix(self._val_labels, preds)
+        cm = cm_raw.tolist()
+        accuracy = ((cm_raw[0, 0] + cm_raw[1, 1]) / cm_raw.sum()) if cm_raw.sum() else 0.0
+        try:
+            auroc = roc_auc_score(self._val_labels, self._val_scores)
+        except ValueError:
+            auroc = float("nan")
+
+        metrics = {
+            "auroc": float(auroc),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1_score": float(f1),
+            "accuracy": float(accuracy),
+            "confusion_matrix": cm,
+            "total_samples": len(self._val_labels),
+            "positive_samples": int(sum(self._val_labels)),
+            "negative_samples": int(len(self._val_labels) - sum(self._val_labels)),
+        }
+
+        if self.validation_analysis_dir:
+            analysis_dir = Path(self.validation_analysis_dir)
+            analysis_dir.mkdir(parents=True, exist_ok=True)
+            val_path = analysis_dir / "val_metrics_report.json"
+            with open(val_path, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2, ensure_ascii=False)
+            rank_zero_info(f"💾 Validation metrics 저장: {val_path}")
 
     def test_step(self, batch: Batch, batch_idx: int) -> STEP_OUTPUT:
         """Test step.
@@ -492,5 +563,3 @@ class DraemCutPasteClf(AnomalibModule):
             "severity_input_channels": self.severity_input_channels,
             "detach_mask": self.detach_mask,
         }
-
-

@@ -161,6 +161,12 @@ def analyze_single_domain_experiments(results_dir: str):
 
             # Accuracy 계산
             accuracy = calculate_accuracy(metrics_data.get('confusion_matrix'))
+            val_metrics = metrics_data.get('validation_metrics')
+            val_accuracy = (
+                calculate_accuracy(val_metrics.get('confusion_matrix'))
+                if val_metrics and val_metrics.get('confusion_matrix')
+                else None
+            )
 
             # 결과 저장
             experiment_results.append({
@@ -173,6 +179,11 @@ def analyze_single_domain_experiments(results_dir: str):
                 'recall': metrics_data.get('recall'),
                 'f1_score': metrics_data.get('f1_score'),
                 'accuracy': accuracy,
+                'val_auroc': val_metrics.get('auroc') if val_metrics else None,
+                'val_precision': val_metrics.get('precision') if val_metrics else None,
+                'val_recall': val_metrics.get('recall') if val_metrics else None,
+                'val_f1_score': val_metrics.get('f1_score') if val_metrics else None,
+                'val_accuracy': val_accuracy,
                 'full_dir_name': exp_info['full_name']
             })
 
@@ -207,10 +218,19 @@ def analyze_single_domain_experiments(results_dir: str):
     display_df['Precision'] = display_df['precision'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
     display_df['Recall'] = display_df['recall'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
     display_df['F1 Score'] = display_df['f1_score'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
-    display_df['Accuracy'] = display_df['accuracy'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Test Accuracy'] = display_df['accuracy'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Val AUROC'] = display_df['val_auroc'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Val Precision'] = display_df['val_precision'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Val Recall'] = display_df['val_recall'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Val F1 Score'] = display_df['val_f1_score'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
+    display_df['Val Accuracy'] = display_df['val_accuracy'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else 'N/A')
 
     # 출력할 칼럼만 선택
-    output_columns = ['실험명', '도메인', '타임스탬프', 'AUROC', 'Threshold', 'Precision', 'Recall', 'F1 Score', 'Accuracy']
+    output_columns = [
+        '실험명', '도메인', '타임스탬프',
+        'AUROC', 'Threshold', 'Precision', 'Recall', 'F1 Score', 'Test Accuracy',
+        'Val AUROC', 'Val Precision', 'Val Recall', 'Val F1 Score', 'Val Accuracy'
+    ]
     display_df = display_df[output_columns]
 
     # CSV 형태로 출력 (comma separated)
@@ -279,41 +299,52 @@ def analyze_single_domain_experiments(results_dir: str):
 
     df['experiment_number'] = df['experiment_name'].apply(extract_experiment_number)
 
-    # 실험 번호별, 도메인별 accuracy 평균과 표준편차 계산
-    summary_data = []
-
+    summary_rows = []
+    val_summary_rows = []
     for exp_num in sorted(df['experiment_number'].unique()):
         exp_data = df[df['experiment_number'] == exp_num]
+        row = {'실험명': exp_num}
+        val_row = {'실험명': exp_num}
 
-        row_data = {'실험명': exp_num}
-
-        # 각 도메인에 대해 평균과 표준편차 계산
         for domain in ['A', 'B', 'C', 'D']:
-            domain_data = exp_data[exp_data['domain'] == domain]['accuracy']
-
-            if len(domain_data) > 0:
-                mean_acc = domain_data.mean()
-                # 데이터가 1개면 std = 0
-                std_acc = domain_data.std() if len(domain_data) > 1 else 0.0
-
-                row_data[f'Domain_{domain}_Mean'] = f"{mean_acc:.6f}"
-                row_data[f'Domain_{domain}_Std'] = f"{std_acc:.6f}"
+            test_data = exp_data[exp_data['domain'] == domain]['accuracy']
+            if len(test_data) > 0:
+                mean_test = test_data.mean()
+                std_test = test_data.std() if len(test_data) > 1 else 0.0
+                row[f'Domain_{domain}_Mean'] = f"{mean_test:.6f}"
+                row[f'Domain_{domain}_Std'] = f"{std_test:.6f}"
             else:
-                row_data[f'Domain_{domain}_Mean'] = 'N/A'
-                row_data[f'Domain_{domain}_Std'] = 'N/A'
+                row[f'Domain_{domain}_Mean'] = 'N/A'
+                row[f'Domain_{domain}_Std'] = 'N/A'
 
-        summary_data.append(row_data)
+            val_data = exp_data[exp_data['domain'] == domain]['val_accuracy']
+            if len(val_data) > 0:
+                mean_val = val_data.mean()
+                std_val = val_data.std() if len(val_data) > 1 else 0.0
+                val_row[f'Val_Domain_{domain}_Mean'] = f"{mean_val:.6f}"
+                val_row[f'Val_Domain_{domain}_Std'] = f"{std_val:.6f}"
+            else:
+                val_row[f'Val_Domain_{domain}_Mean'] = 'N/A'
+                val_row[f'Val_Domain_{domain}_Std'] = 'N/A'
 
-    # DataFrame 생성
-    summary_df = pd.DataFrame(summary_data)
+        summary_rows.append(row)
+        val_summary_rows.append(val_row)
 
-    # CSV 형태로 출력
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df['Overall_Mean'] = df.groupby('experiment_number')['accuracy'].mean().values
+    summary_df['Overall_Std'] = df.groupby('experiment_number')['accuracy'].std().fillna(0).values
     print(summary_df.to_csv(index=False, lineterminator='\n'))
-
-    # CSV 저장
     summary_output_path = results_path / "experiment_domain_accuracy_summary.csv"
     summary_df.to_csv(summary_output_path, index=False, encoding='utf-8-sig')
-    print(f"\n💾 실험별 도메인 Accuracy 요약 저장됨: {summary_output_path}")
+    print(f"\n💾 실험별 도메인 Test Accuracy 요약 저장됨: {summary_output_path}")
+
+    val_summary_df = pd.DataFrame(val_summary_rows)
+    val_summary_df['Val_Overall_Mean'] = df.groupby('experiment_number')['val_accuracy'].mean().values
+    val_summary_df['Val_Overall_Std'] = df.groupby('experiment_number')['val_accuracy'].std().fillna(0).values
+    print(val_summary_df.to_csv(index=False, lineterminator='\n'))
+    val_summary_output_path = results_path / "experiment_domain_val_accuracy_summary.csv"
+    val_summary_df.to_csv(val_summary_output_path, index=False, encoding='utf-8-sig')
+    print(f"\n💾 실험별 도메인 Validation Accuracy 요약 저장됨: {val_summary_output_path}")
 
     return df
 

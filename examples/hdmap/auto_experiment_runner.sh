@@ -46,7 +46,7 @@ USE_CONFIG=""                     # base-run.sh에 전달할 CONFIG 파일
 # GPU 모니터링 설정
 GPU_CHECK_INTERVAL=30             # GPU 상태 확인 간격 (초)
 GPU_IDLE_THRESHOLD=10             # GPU 사용률 임계값 (% 이하면 유휴)
-MEMORY_IDLE_THRESHOLD=2000        # 메모리 사용량 임계값 (MB 이하면 유휴)
+MEMORY_IDLE_THRESHOLD=10000        # 메모리 사용량 임계값 (MB 이하면 유휴)
 MAX_WAIT_TIME=18000                # 최대 대기 시간 (초, 5시간)
 SAFETY_WAIT=60                    # 실험 사이 안전 대기 시간 (초)
 MONITOR_GPUS=""                   # 모니터링할 GPU 목록 (예: "12,13,14,15" 또는 빈 문자열이면 전체)
