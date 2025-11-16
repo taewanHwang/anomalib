@@ -141,22 +141,37 @@ class DraemCutPaste(AnomalibModule):
         if self.validation_cutpaste_probability <= 0:
             return batch, torch.zeros(mask_shape, device=device, dtype=images.dtype)
 
+        target_ratio = float(max(0.0, min(1.0, self.validation_cutpaste_probability)))
         generator = self.model.synthetic_generator
         original_prob = getattr(generator, "probability", 1.0)
-        generator.probability = self.validation_cutpaste_probability
+        generator.probability = 1.0
         with torch.no_grad():
-            augmented, fault_mask, severity = generator(images)
+            augmented_all, fault_mask_all, _ = generator(images)
         generator.probability = original_prob
 
-        anomaly_labels = (severity > 0).long().to(device)
-        converted = int(anomaly_labels.sum().item())
+        batch_size = images.size(0)
+        num_anomalies = int(round(batch_size * target_ratio))
+        if num_anomalies > batch_size:
+            num_anomalies = batch_size
+
+        indices = torch.randperm(batch_size, device=device)
+        anomaly_idx = indices[:num_anomalies]
+        augmented = images.clone()
+        augmented[anomaly_idx] = augmented_all[anomaly_idx]
+
+        final_mask = torch.zeros_like(fault_mask_all)
+        final_mask[anomaly_idx] = fault_mask_all[anomaly_idx]
+
+        anomaly_labels = torch.zeros(batch_size, dtype=torch.long, device=device)
+        anomaly_labels[anomaly_idx] = 1
+
         rank_zero_info(
-            f"✂️ Validation CutPaste 적용: {converted}/{images.size(0)} anomalies "
-            f"(prob={self.validation_cutpaste_probability:.2f})"
+            f"✂️ Validation CutPaste 적용: {num_anomalies}/{batch_size} anomalies "
+            f"(ratio={target_ratio:.2f})"
         )
 
         batch = batch.update(image=augmented, gt_label=anomaly_labels)
-        return batch, fault_mask.to(device, dtype=images.dtype)
+        return batch, final_mask.to(device, dtype=images.dtype)
 
     def configure_optimizers(self) -> dict[str, Any] | torch.optim.Optimizer:
         """Configure the optimizer and learning rate scheduler.

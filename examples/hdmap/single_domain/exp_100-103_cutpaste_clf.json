@@ -23,7 +23,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -67,7 +67,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -111,7 +111,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -155,7 +155,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -199,7 +199,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -243,7 +243,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -287,7 +287,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -331,7 +331,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -375,7 +375,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -419,7 +419,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -463,7 +463,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -507,7 +507,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -551,7 +551,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -595,7 +595,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -639,7 +639,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [
@@ -683,7 +683,7 @@
         "val_split_mode": "FROM_TRAIN",
         "optimizer": "adamw",
         "weight_decay": 0.01,
-        "val_split_ratio": 0.01,
+        "val_split_ratio": 0.02,
         "num_workers": 16,
         "seed": 52,
         "cut_w_range": [

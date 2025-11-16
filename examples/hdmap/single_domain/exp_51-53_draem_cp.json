@@ -1,7 +1,7 @@
 {
   "experiment_conditions": [
     {
-      "name": "exp-41.A",
+      "name": "exp-51.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -23,9 +23,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.1,
         "augment_probability": 0.5,
-        "focal_alpha": 0.1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -35,7 +35,7 @@
       }
     },
     {
-      "name": "exp-41.B",
+      "name": "exp-51.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -57,9 +57,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.1,
         "augment_probability": 0.5,
-        "focal_alpha": 0.1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -69,7 +69,7 @@
       }
     },
     {
-      "name": "exp-41.C",
+      "name": "exp-51.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -91,9 +91,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.1,
         "augment_probability": 0.5,
-        "focal_alpha": 0.1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -103,7 +103,7 @@
       }
     },
     {
-      "name": "exp-41.D",
+      "name": "exp-51.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -125,9 +125,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.1,
         "augment_probability": 0.5,
-        "focal_alpha": 0.1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -137,7 +137,7 @@
       }
     },
     {
-      "name": "exp-42.A",
+      "name": "exp-52.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -159,7 +159,7 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.3,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -171,7 +171,7 @@
       }
     },
     {
-      "name": "exp-42.B",
+      "name": "exp-52.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -193,7 +193,7 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.3,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -205,7 +205,7 @@
       }
     },
     {
-      "name": "exp-42.C",
+      "name": "exp-52.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -227,7 +227,7 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.3,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -239,7 +239,7 @@
       }
     },
     {
-      "name": "exp-42.D",
+      "name": "exp-52.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -261,7 +261,7 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 0.3,
         "augment_probability": 0.5,
         "focal_alpha": 0.5,
         "norm": true,
@@ -273,7 +273,7 @@
       }
     },
     {
-      "name": "exp-43.A",
+      "name": "exp-53.A",
       "description": "Domain A - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -295,9 +295,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 1,
         "augment_probability": 0.5,
-        "focal_alpha": 1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -307,7 +307,7 @@
       }
     },
     {
-      "name": "exp-43.B",
+      "name": "exp-53.B",
       "description": "Domain B - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -329,9 +329,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 1,
         "augment_probability": 0.5,
-        "focal_alpha": 1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -341,7 +341,7 @@
       }
     },
     {
-      "name": "exp-43.C",
+      "name": "exp-53.C",
       "description": "Domain C - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -363,9 +363,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 1,
         "augment_probability": 0.5,
-        "focal_alpha": 1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
@@ -375,7 +375,7 @@
       }
     },
     {
-      "name": "exp-43.D",
+      "name": "exp-53.D",
       "description": "Domain D - DRAEM CutPaste (without severity head)",
       "config": {
         "model_type": "draem_cutpaste",
@@ -397,9 +397,9 @@
         "cut_w_range": [2, 127],
         "cut_h_range": [4, 8],
         "a_fault_start": 0.0,
-        "a_fault_range_end": 0.5,
+        "a_fault_range_end": 1,
         "augment_probability": 0.5,
-        "focal_alpha": 1,
+        "focal_alpha": 0.5,
         "norm": true,
         "scheduler": {
           "type": "steplr",
