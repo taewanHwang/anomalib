@@ -1,0 +1,100 @@
+{
+  "experiment_conditions": [
+    {
+      "name": "exp-27.A",
+      "description": "Domain A - EfficientAD baseline",
+      "config": {
+        "model_type": "efficient_ad",
+        "source_domain": "domain_A",
+        "max_epochs": 1,
+        "early_stopping_patience": 3,
+        "learning_rate": 0.0001,
+        "weight_decay": 0.00001,
+        "batch_size": 1,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_mode": "FROM_TEST",
+        "val_split_ratio": 0.01,
+        "num_workers": 16,
+        "seed": 52,
+        "teacher_out_channels": 384,
+        "model_size": "small",
+        "padding": true,
+        "pad_maps": true
+      }
+    },
+    {
+      "name": "exp-27.B",
+      "description": "Domain B - EfficientAD baseline",
+      "config": {
+        "model_type": "efficient_ad",
+        "source_domain": "domain_B",
+        "max_epochs": 1,
+        "early_stopping_patience": 3,
+        "learning_rate": 0.0001,
+        "weight_decay": 0.00001,
+        "batch_size": 1,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_mode": "FROM_TEST",
+        "val_split_ratio": 0.01,
+        "num_workers": 16,
+        "seed": 52,
+        "teacher_out_channels": 384,
+        "model_size": "small",
+        "padding": true,
+        "pad_maps": true
+      }
+    },
+    {
+      "name": "exp-27.C",
+      "description": "Domain C - EfficientAD baseline",
+      "config": {
+        "model_type": "efficient_ad",
+        "source_domain": "domain_C",
+        "max_epochs": 1,
+        "early_stopping_patience": 3,
+        "learning_rate": 0.0001,
+        "weight_decay": 0.00001,
+        "batch_size": 1,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_mode": "FROM_TEST",
+        "val_split_ratio": 0.01,
+        "num_workers": 16,
+        "seed": 52,
+        "teacher_out_channels": 384,
+        "model_size": "small",
+        "padding": true,
+        "pad_maps": true
+      }
+    },
+    {
+      "name": "exp-27.D",
+      "description": "Domain D - EfficientAD baseline",
+      "config": {
+        "model_type": "efficient_ad",
+        "source_domain": "domain_D",
+        "max_epochs": 1,
+        "early_stopping_patience": 3,
+        "learning_rate": 0.0001,
+        "weight_decay": 0.00001,
+        "batch_size": 1,
+        "target_size": [256, 256],
+        "resize_method": "resize",
+        "dataset_root": "datasets/HDMAP/1000_tiff_minmax",
+        "val_split_mode": "FROM_TEST",
+        "val_split_ratio": 0.01,
+        "num_workers": 16,
+        "seed": 52,
+        "teacher_out_channels": 384,
+        "model_size": "small",
+        "padding": true,
+        "pad_maps": true
+      }
+    }
+  ]
+}

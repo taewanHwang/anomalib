@@ -35,7 +35,17 @@ from experiment_utils import (
 from anomalib.models.image.draem import Draem
 from anomalib.models.image.draem_cutpaste import DraemCutPaste
 from anomalib.models.image.draem_cutpaste_clf import DraemCutPasteClf
-from anomalib.models.image import Dinomaly, Patchcore, EfficientAd, Fastflow, Padim, Supersimplenet, ReverseDistillation, CutPasteClassifier
+from anomalib.models.image import (
+    Dinomaly,
+    Patchcore,
+    EfficientAd,
+    Fastflow,
+    Padim,
+    Supersimplenet,
+    ReverseDistillation,
+    CutPasteClassifier,
+    UniNet,
+)
 from anomalib.models.image.reverse_distillation.anomaly_map import AnomalyMapGenerationMode
 from anomalib.engine import Engine
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -98,6 +108,8 @@ class BaseAnomalyTrainer:
             return self._create_supersimplenet_model()
         elif self.model_type == "reverse_distillation":
             return self._create_reverse_distillation_model()
+        elif self.model_type == "uninet":
+            return self._create_uninet_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
@@ -334,6 +346,10 @@ class BaseAnomalyTrainer:
         # (Adam with lr=0.005, betas=(0.5, 0.99))
 
         return model
+
+    def _create_uninet_model(self):
+        """UniNet 모델 생성"""
+        return UniNet()
 
     def _create_cutpaste_clf_model(self):
         """CutPaste + Simple CNN Classifier 모델 생성 (Baseline)"""

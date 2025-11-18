@@ -1054,7 +1054,14 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             
             # 이미지 텐서 추출 및 디바이스 이동을 한 번에 처리
             image_tensor = batch.image.to(device)
-            print(f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}, min: {image_tensor.min().item():.4f}, q1: {image_tensor.quantile(0.25).item():.4f}, q2: {image_tensor.quantile(0.5).item():.4f}, q3: {image_tensor.quantile(0.75).item():.4f}, max: {image_tensor.max().item():.4f}")
+            flat = image_tensor.detach().view(-1).cpu()
+            q1 = flat.quantile(0.25).item()
+            q2 = flat.quantile(0.5).item()
+            q3 = flat.quantile(0.75).item()
+            print(
+                f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}, "
+                f"min: {flat.min().item():.4f}, q1: {q1:.4f}, q2: {q2:.4f}, q3: {q3:.4f}, max: {flat.max().item():.4f}"
+            )
             
             # 모델로 직접 예측 수행 (inference mode에서 실행)
             with torch.no_grad():
@@ -1372,6 +1379,17 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
             raise AttributeError("Dinomaly 출력 속성 없음")
             
     elif model_type.lower() == "fastflow":
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            print(f"      📊 FastFlow pred_score: min={final_scores.min():.4f}, max={final_scores.max():.4f}")
+        else:
+            raise AttributeError("FastFlow 출력 속성 없음")
+    elif model_type == "efficient_ad":
+        if hasattr(model_output, 'pred_score'):
+            final_scores = model_output.pred_score.cpu().numpy()
+            print(f"      📊 EfficientAD pred_score: min={final_scores.min():.4f}, max={final_scores.max():.4f}")
+        else:
+            raise AttributeError("EfficientAD 출력 속성 없음")
         # FastFlow 모델 처리
         print(f"      🌊 FastFlow 점수 추출")
         
