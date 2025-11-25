@@ -80,6 +80,9 @@ class ReverseDistillation(AnomalibModule):
         layers: Sequence[str] = ("layer1", "layer2", "layer3"),
         anomaly_map_mode: AnomalyMapGenerationMode = AnomalyMapGenerationMode.ADD,
         pre_trained: bool = True,
+        learning_rate: float = 0.005,
+        weight_decay: float = 0.0,
+        lr_scheduler: str | None = None,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -99,6 +102,9 @@ class ReverseDistillation(AnomalibModule):
         self.pre_trained = pre_trained
         self.layers = layers
         self.anomaly_map_mode = anomaly_map_mode
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.lr_scheduler = lr_scheduler
 
         self.model = ReverseDistillationModel(
             backbone=self.backbone,
@@ -109,17 +115,54 @@ class ReverseDistillation(AnomalibModule):
         )
         self.loss = ReverseDistillationLoss()
 
-    def configure_optimizers(self) -> optim.Adam:
+    def configure_optimizers(self) -> dict | optim.Adam:
         """Configure optimizers for decoder and bottleneck.
 
         Returns:
-            Optimizer: Adam optimizer for each decoder
+            Optimizer: Adam optimizer for each decoder, optionally with scheduler
         """
-        return optim.Adam(
+        optimizer = optim.Adam(
             params=list(self.model.decoder.parameters()) + list(self.model.bottleneck.parameters()),
-            lr=0.005,
+            lr=self.learning_rate,
             betas=(0.5, 0.99),
+            weight_decay=self.weight_decay,
         )
+
+        if self.lr_scheduler is None:
+            return optimizer
+
+        # Configure scheduler based on type
+        if self.lr_scheduler == "cosine":
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=self.trainer.max_epochs if self.trainer.max_epochs != -1 else 100,
+                eta_min=self.learning_rate * 0.01
+            )
+        elif self.lr_scheduler == "step":
+            scheduler = optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=self.trainer.max_epochs // 3 if self.trainer.max_epochs != -1 else 30,
+                gamma=0.1
+            )
+        elif self.lr_scheduler == "plateau":
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                factor=0.5,
+                patience=5,
+                verbose=True
+            )
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "monitor": "val_loss",  # Monitor val_loss for plateau
+                }
+            }
+        else:
+            return optimizer
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     @staticmethod
     def configure_evaluator() -> Evaluator:
@@ -163,6 +206,11 @@ class ReverseDistillation(AnomalibModule):
 
         loss = self.loss(*self.model(batch.image))
         self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+
+        # Log current learning rate
+        current_lr = self.optimizers().param_groups[0]['lr']
+        self.log("learning_rate", current_lr, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
@@ -183,10 +231,18 @@ class ReverseDistillation(AnomalibModule):
         """
         del args, kwargs  # These variables are not used.
 
-        # Note: Lightning automatically sets model.eval() before validation_step
+        # Compute validation loss for monitoring and scheduler
+        # Temporarily set model to training mode to get features
+        self.model.train()
+        encoder_features, decoder_features = self.model(batch.image)
+        val_loss = self.loss(encoder_features, decoder_features)
+        self.log("val_loss", val_loss, on_step=False, on_epoch=True, prog_bar=True)
+
+        # Switch back to eval mode for predictions
+        self.model.eval()
         with torch.no_grad():
             predictions = self.model(batch.image)
-        
+
         # Return updated batch - Evaluator will handle metrics automatically
         return batch.update(**predictions._asdict())
 
