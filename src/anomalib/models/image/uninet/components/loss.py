@@ -46,6 +46,8 @@ class UniNetLoss(nn.Module):
         """
         loss = 0.0
         margin_loss_a = 0.0
+        margin_loss_n = 0.0
+        contrastive_loss = 0.0
 
         for idx in range(len(student_features)):
             student_feature = student_features[idx]

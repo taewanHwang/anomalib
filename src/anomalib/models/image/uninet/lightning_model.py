@@ -40,6 +40,8 @@ class UniNet(AnomalibModule):
         student_backbone: str = "wide_resnet50_2",
         teacher_backbone: str = "wide_resnet50_2",
         temperature: float = 0.1,
+        learning_rate: float = 5e-3,
+        weight_decay: float = 1e-5,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -51,6 +53,8 @@ class UniNet(AnomalibModule):
             evaluator=evaluator,
             visualizer=visualizer,
         )
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
         self.loss = UniNetLoss(temperature=temperature)  # base class expects self.loss in lightning module
         self.model = UniNetModel(student_backbone=student_backbone, teacher_backbone=teacher_backbone, loss=self.loss)
 
@@ -60,7 +64,7 @@ class UniNet(AnomalibModule):
 
         loss = self.model(images=batch.image, masks=batch.gt_mask, labels=batch.gt_label)
 
-        self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True)
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
@@ -70,6 +74,14 @@ class UniNet(AnomalibModule):
             msg = "Expected batch.image to be a tensor, but got None or non-tensor type"
             raise ValueError(msg)
 
+        # UniNet model returns InferenceBatch during validation (self.training=False)
+        # So we temporarily set training mode to compute loss
+        self.model.train()
+        loss = self.model(images=batch.image, masks=batch.gt_mask, labels=batch.gt_label)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+
+        # Switch back to eval mode for predictions
+        self.model.eval()
         predictions = self.model(batch.image)
         return batch.update(**predictions._asdict())
 
@@ -84,11 +96,11 @@ class UniNet(AnomalibModule):
                 {"params": self.model.student.parameters()},
                 {"params": self.model.bottleneck.parameters()},
                 {"params": self.model.dfs.parameters()},
-                {"params": self.model.teachers.target_teacher.parameters(), "lr": 1e-6},
+                {"params": self.model.teachers.target_teacher.parameters(), "lr": self.learning_rate * 0.0002},
             ],
-            lr=5e-3,
+            lr=self.learning_rate,
             betas=(0.9, 0.999),
-            weight_decay=1e-5,
+            weight_decay=self.weight_decay,
             eps=1e-10,
             amsgrad=True,
         )
