@@ -19,6 +19,7 @@ import shutil
 import warnings
 import logging
 import torch
+import numpy as np
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Tuple
@@ -747,31 +748,136 @@ def plot_roc_curve(
     return auroc
 
 
+def compute_enhanced_metrics(
+    val_normal_scores: List[float] | np.ndarray,
+    test_scores: List[float] | np.ndarray,
+    test_labels: List[int] | np.ndarray,
+    percentiles: List[float] = None,
+    fixed_threshold: float = 0.5
+) -> dict:
+    """
+    AUROC 및 다양한 threshold-dependent 메트릭을 계산합니다.
+
+    One-class 학습 환경에서 사용 가능한 메트릭들:
+    1. AUROC (threshold-independent)
+    2. TPR @ Percentile-based thresholds (공정한 비교)
+    3. TPR @ Fixed threshold (bounded 모델의 장점 부각)
+    4. Precision @ Percentile-based thresholds (실무 관점)
+
+    Args:
+        val_normal_scores: Validation 정상 샘플 점수 (threshold 설정용)
+        test_scores: Test set 점수
+        test_labels: Test set 라벨 (0=normal, 1=anomaly)
+        percentiles: List of percentiles for threshold setting (default: [99.5, 99.9])
+        fixed_threshold: Fixed threshold for bounded models (default: 0.5)
+
+    Returns:
+        Dictionary with enhanced metrics
+    """
+    from sklearn.metrics import roc_auc_score, confusion_matrix
+
+    if percentiles is None:
+        percentiles = [99.5, 99.9]
+
+    # Convert to numpy arrays
+    val_normal_scores = np.array(val_normal_scores)
+    test_scores = np.array(test_scores)
+    test_labels = np.array(test_labels)
+
+    # 1. AUROC (threshold-independent)
+    auroc = roc_auc_score(test_labels, test_scores)
+
+    # Base metrics dictionary
+    metrics = {
+        "auroc": float(auroc),
+        "fixed_threshold": float(fixed_threshold),
+        "val_normal_score_min": float(np.min(val_normal_scores)),
+        "val_normal_score_max": float(np.max(val_normal_scores)),
+        "val_normal_score_mean": float(np.mean(val_normal_scores)),
+        "val_normal_score_std": float(np.std(val_normal_scores)),
+    }
+
+    # 2. Compute metrics for each percentile
+    for percentile in percentiles:
+        # Percentile-based threshold (from validation normal scores)
+        percentile_threshold = np.percentile(val_normal_scores, percentile)
+
+        # Predictions and metrics @ percentile threshold
+        predictions_percentile = (test_scores > percentile_threshold).astype(int)
+        cm_percentile = confusion_matrix(test_labels, predictions_percentile)
+
+        # TPR, FPR, Precision @ percentile threshold
+        if cm_percentile.shape == (2, 2):
+            tn_p, fp_p, fn_p, tp_p = cm_percentile.ravel()
+            tpr_at_percentile = tp_p / (tp_p + fn_p) if (tp_p + fn_p) > 0 else 0.0
+            fpr_at_percentile = fp_p / (fp_p + tn_p) if (fp_p + tn_p) > 0 else 0.0
+            precision_at_percentile = tp_p / (tp_p + fp_p) if (tp_p + fp_p) > 0 else 0.0
+        else:
+            tpr_at_percentile = 0.0
+            fpr_at_percentile = 0.0
+            precision_at_percentile = 0.0
+
+        # Store metrics with percentile-specific keys
+        percentile_key = str(percentile).replace('.', '_')
+        metrics[f"percentile_{percentile_key}_threshold"] = float(percentile_threshold)
+        metrics[f"tpr_at_percentile_{percentile_key}"] = float(tpr_at_percentile)
+        metrics[f"fpr_at_percentile_{percentile_key}"] = float(fpr_at_percentile)
+        metrics[f"precision_at_percentile_{percentile_key}"] = float(precision_at_percentile)
+
+    # 3. Predictions and metrics @ fixed threshold (0.5)
+    predictions_fixed = (test_scores > fixed_threshold).astype(int)
+    cm_fixed = confusion_matrix(test_labels, predictions_fixed)
+
+    # TPR @ fixed threshold
+    if cm_fixed.shape == (2, 2):
+        tn_f, fp_f, fn_f, tp_f = cm_fixed.ravel()
+        tpr_at_fixed = tp_f / (tp_f + fn_f) if (tp_f + fn_f) > 0 else 0.0
+        fpr_at_fixed = fp_f / (fp_f + tn_f) if (fp_f + tn_f) > 0 else 0.0
+        precision_at_fixed = tp_f / (tp_f + fp_f) if (tp_f + fp_f) > 0 else 0.0
+    else:
+        tpr_at_fixed = 0.0
+        fpr_at_fixed = 0.0
+        precision_at_fixed = 0.0
+
+    metrics["tpr_at_fixed"] = float(tpr_at_fixed)
+    metrics["fpr_at_fixed"] = float(fpr_at_fixed)
+    metrics["precision_at_fixed"] = float(precision_at_fixed)
+
+    return metrics
+
+
 def save_metrics_report(
     ground_truth: List[int],
     predictions: List[int],
     scores: List[float],
     result_dir: Path,
     auroc: float,
-    optimal_threshold: float = 0.5
+    optimal_threshold: float = 0.5,
+    val_normal_scores: List[float] | np.ndarray | None = None,
+    percentiles: List[float] = None
 ) -> None:
     """
     성능 메트릭을 JSON 파일로 저장합니다.
-    
+
     Args:
         ground_truth: 실제 정답 리스트
-        predictions: 예측 결과 리스트  
+        predictions: 예측 결과 리스트
         scores: 예측 점수 리스트
         result_dir: 결과 저장 디렉토리
         auroc: AUROC 값
         optimal_threshold: 최적 threshold
+        val_normal_scores: Validation 정상 샘플 점수 (enhanced metrics 계산용)
+        percentiles: List of percentiles for threshold setting (default: [99.5, 99.9])
     """
     from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
     import json
-    
+
+    if percentiles is None:
+        percentiles = [99.5, 99.9]
+
     # result_dir을 analysis_dir로 직접 사용 (중복 폴더 생성 방지)
     analysis_dir = Path(result_dir)
-    
+
     # 메트릭 계산
     precision = precision_score(ground_truth, predictions, zero_division=0)
     recall = recall_score(ground_truth, predictions, zero_division=0)
@@ -779,8 +885,8 @@ def save_metrics_report(
     cm_raw = confusion_matrix(ground_truth, predictions)
     cm = cm_raw.tolist()
     accuracy = ((cm_raw[0, 0] + cm_raw[1, 1]) / cm_raw.sum()) if cm_raw.sum() else 0.0
-    
-    # 메트릭 보고서 생성
+
+    # 메트릭 보고서 생성 (기본 메트릭)
     metrics_report = {
         "auroc": float(auroc),
         "optimal_threshold": float(optimal_threshold),
@@ -793,6 +899,32 @@ def save_metrics_report(
         "positive_samples": int(sum(ground_truth)),
         "negative_samples": int(len(ground_truth) - sum(ground_truth))
     }
+
+    # Enhanced metrics 계산 (validation normal scores가 있는 경우)
+    if val_normal_scores is not None and len(val_normal_scores) > 0:
+        try:
+            enhanced_metrics = compute_enhanced_metrics(
+                val_normal_scores=val_normal_scores,
+                test_scores=scores,
+                test_labels=ground_truth,
+                percentiles=percentiles,
+                fixed_threshold=0.5
+            )
+            metrics_report["enhanced_metrics"] = enhanced_metrics
+            print(f"   ✨ Enhanced metrics 계산 완료:")
+            for percentile in percentiles:
+                percentile_key = str(percentile).replace('.', '_')
+                thresh_key = f"percentile_{percentile_key}_threshold"
+                tpr_key = f"tpr_at_percentile_{percentile_key}"
+                prec_key = f"precision_at_percentile_{percentile_key}"
+                print(f"      - TPR @ {percentile}%-ile ({enhanced_metrics[thresh_key]:.4f}): {enhanced_metrics[tpr_key]:.4f}")
+                print(f"      - Precision @ {percentile}%-ile: {enhanced_metrics[prec_key]:.4f}")
+            print(f"      - TPR @ Fixed 0.5: {enhanced_metrics['tpr_at_fixed']:.4f}")
+            print(f"      - Precision @ Fixed 0.5: {enhanced_metrics['precision_at_fixed']:.4f}")
+        except Exception as e:
+            print(f"   ⚠️ Enhanced metrics 계산 실패: {e}")
+            import traceback
+            traceback.print_exc()
 
     val_metrics_path = analysis_dir / "val_metrics_report.json"
     if val_metrics_path.exists():
@@ -1222,15 +1354,17 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
     # ROC curve 생성
     plot_roc_curve(all_ground_truth, all_scores, analysis_dir, experiment_name)
 
-    # 메트릭 보고서 저장 (threshold 0.5 사용)
-    save_metrics_report(all_ground_truth, predictions, all_scores, analysis_dir, auroc, fixed_threshold)
-    
-    # 점수 분포 히스토그램 생성
-    normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
-    anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
-    plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, experiment_name)
+    # 점수 분포 히스토그램 생성 (non-critical)
+    try:
+        normal_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 0]
+        anomaly_scores = [score for gt, score in zip(all_ground_truth, all_scores) if gt == 1]
+        plot_score_distributions(normal_scores, anomaly_scores, analysis_dir, experiment_name)
+    except Exception as e:
+        print(f"   ⚠️ Test 점수 분포 시각화 실패 (무시): {e}")
 
     # Validation score distributions (synthetic CutPaste) if available
+    # Collect validation scores BEFORE saving metrics report (for enhanced metrics)
+    val_normal_scores_for_metrics = None
     if getattr(datamodule, "val_data", None):
         try:
             val_dataloader = datamodule.val_dataloader()
@@ -1260,13 +1394,33 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             if val_scores:
                 val_normal_scores = [score for gt, score in zip(val_labels, val_scores) if gt == 0]
                 val_anomaly_scores = [score for gt, score in zip(val_labels, val_scores) if gt == 1]
-                plot_score_distributions(
-                    val_normal_scores,
-                    val_anomaly_scores,
-                    analysis_dir,
-                    f"{experiment_name} (Validation)",
-                    filename_suffix="val",
-                )
+
+                # Save for enhanced metrics computation
+                val_normal_scores_for_metrics = val_normal_scores
+
+                # Try to plot validation score distributions (non-critical)
+                try:
+                    plot_score_distributions(
+                        val_normal_scores,
+                        val_anomaly_scores,
+                        analysis_dir,
+                        f"{experiment_name} (Validation)",
+                        filename_suffix="val",
+                    )
+                except Exception as e:
+                    print(f"   ⚠️ Validation 점수 분포 시각화 실패 (무시): {e}")
+
+    # 메트릭 보고서 저장 (threshold 0.5 사용 + enhanced metrics)
+    save_metrics_report(
+        all_ground_truth,
+        predictions,
+        all_scores,
+        analysis_dir,
+        auroc,
+        fixed_threshold,
+        val_normal_scores=val_normal_scores_for_metrics,
+        percentiles=[99.5, 99.9]  # 두 가지 percentile 모두 계산
+    )
         
     # 실험 요약 저장
     save_experiment_summary({}, {"auroc": auroc}, analysis_dir)
@@ -1446,9 +1600,9 @@ def extract_scores_from_model_output(model_output, batch_size, batch_idx, model_
             final_scores = np.array([float(np.max(am)) if am.size > 0 else 0.0 for am in anomaly_map])
         else:
             raise AttributeError(f"지원되지 않는 모델 출력 형식: {type(model_output)}")
-            
-        print(f"      📊 일반 모델 점수 추출: anomaly_score={final_scores[0]:.4f}")
-        
+
+        print(f"      📊 일반 모델 점수 추출: anomaly_score={float(final_scores[0]):.4f}")
+
     return final_scores
 
 

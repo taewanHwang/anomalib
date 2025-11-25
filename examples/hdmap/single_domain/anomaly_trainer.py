@@ -334,22 +334,39 @@ class BaseAnomalyTrainer:
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
 
+        # anomaly_map_mode 파싱
+        anomaly_map_mode_str = self.config.get("anomaly_map_mode", "add").lower()
+        if anomaly_map_mode_str == "add":
+            anomaly_map_mode = AnomalyMapGenerationMode.ADD
+        elif anomaly_map_mode_str == "multiply":
+            anomaly_map_mode = AnomalyMapGenerationMode.MULTIPLY
+        else:
+            anomaly_map_mode = AnomalyMapGenerationMode.ADD  # 기본값
+
         model = ReverseDistillation(
             backbone=self.config.get("backbone", "wide_resnet50_2"),
             layers=self.config.get("layers", ["layer1", "layer2", "layer3"]),
-            anomaly_map_mode=AnomalyMapGenerationMode.ADD,  # 기본값
+            anomaly_map_mode=anomaly_map_mode,
             pre_trained=self.config.get("pre_trained", True),
+            learning_rate=self.config.get("learning_rate", 0.005),
+            weight_decay=self.config.get("weight_decay", 0.0),
+            lr_scheduler=self.config.get("lr_scheduler", None),
             evaluator=evaluator
         )
-
-        # Reverse Distillation은 내부에서 optimizer를 configure하므로 별도 설정 불필요
-        # (Adam with lr=0.005, betas=(0.5, 0.99))
 
         return model
 
     def _create_uninet_model(self):
         """UniNet 모델 생성"""
-        return UniNet()
+        model = UniNet(
+            student_backbone=self.config.get('student_backbone', 'wide_resnet50_2'),
+            teacher_backbone=self.config.get('teacher_backbone', 'wide_resnet50_2'),
+            temperature=self.config.get('temperature', 0.1),
+            learning_rate=self.config.get('learning_rate', 5e-3),
+            weight_decay=self.config.get('weight_decay', 1e-5),
+            pre_processor=False  # HDMAPDataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
+        )
+        return model
 
     def _create_cutpaste_clf_model(self):
         """CutPaste + Simple CNN Classifier 모델 생성 (Baseline)"""
