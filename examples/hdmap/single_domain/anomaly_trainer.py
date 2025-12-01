@@ -45,6 +45,8 @@ from anomalib.models.image import (
     ReverseDistillation,
     CutPasteClassifier,
     UniNet,
+    Ganomaly,
+    Cflow,
 )
 from anomalib.models.image.reverse_distillation.anomaly_map import AnomalyMapGenerationMode
 from anomalib.engine import Engine
@@ -110,6 +112,10 @@ class BaseAnomalyTrainer:
             return self._create_reverse_distillation_model()
         elif self.model_type == "uninet":
             return self._create_uninet_model()
+        elif self.model_type == "ganomaly":
+            return self._create_ganomaly_model()
+        elif self.model_type == "cflow":
+            return self._create_cflow_model()
         else:
             raise ValueError(f"지원하지 않는 모델 타입: {self.model_type}")
     
@@ -226,12 +232,23 @@ class BaseAnomalyTrainer:
     
     def _create_patchcore_model(self):
         """Patchcore 모델 생성"""
+        # PatchCore는 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        layers = self.config.get("layers", ["layer2", "layer3"])
+        backbone = self.config.get("backbone", "wide_resnet50_2")
+        print(f"   🔍 PatchCore 모델 생성 - backbone: {backbone}, layers: {layers}")
+
         return Patchcore(
-            backbone=self.config["backbone"],
-            layers=self.config["layers"],
-            pre_trained=self.config["pre_trained"],
-            coreset_sampling_ratio=self.config["coreset_sampling_ratio"],
-            num_neighbors=self.config["num_neighbors"]
+            backbone=backbone,
+            layers=layers,
+            pre_trained=self.config.get("pre_trained", True),
+            coreset_sampling_ratio=self.config.get("coreset_sampling_ratio", 0.1),
+            num_neighbors=self.config.get("num_neighbors", 9),
+            evaluator=evaluator,
+            pre_processor=False  # DataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
         )
     
     def _create_efficient_ad_model(self):
@@ -269,15 +286,10 @@ class BaseAnomalyTrainer:
             flow_steps=self.config.get("flow_steps", 8),
             conv3x3_only=self.config.get("conv3x3_only", False),
             hidden_ratio=self.config.get("hidden_ratio", 1.0),
+            learning_rate=self.config.get("learning_rate", 0.001),
+            weight_decay=self.config.get("weight_decay", 0.00001),
             evaluator=evaluator
         )
-
-        # 학습 설정을 _training_config에 저장
-        model._training_config = {
-            'learning_rate': self.config.get("learning_rate", 0.001),
-            'weight_decay': self.config.get("weight_decay", 0.00001),
-            'max_epochs': self.config["max_epochs"],
-        }
 
         return model
 
@@ -289,14 +301,16 @@ class BaseAnomalyTrainer:
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
 
         layers = self.config.get("layers", ["layer1", "layer2", "layer3"])
-        print(f"   🔍 PaDiM 모델 생성 - 요청된 layers: {layers}")
+        backbone = self.config.get("backbone", "resnet18")
+        print(f"   🔍 PaDiM 모델 생성 - backbone: {backbone}, layers: {layers}")
 
         model = Padim(
-            backbone=self.config.get("backbone", "resnet18"),
+            backbone=backbone,
             layers=layers,
             pre_trained=self.config.get("pre_trained", True),
             n_features=self.config.get("n_features", None),  # None = use default (100 for resnet18)
-            evaluator=evaluator
+            evaluator=evaluator,
+            pre_processor=False  # DataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
         )
 
         # 모델 생성 후 실제 사용되는 layers 확인
@@ -361,11 +375,69 @@ class BaseAnomalyTrainer:
         model = UniNet(
             student_backbone=self.config.get('student_backbone', 'wide_resnet50_2'),
             teacher_backbone=self.config.get('teacher_backbone', 'wide_resnet50_2'),
-            temperature=self.config.get('temperature', 0.1),
-            learning_rate=self.config.get('learning_rate', 5e-3),
-            weight_decay=self.config.get('weight_decay', 1e-5),
+            temperature=self.config.get('temperature', 2.0),
+            learning_rate=self.config.get('learning_rate', 1e-3),
+            weight_decay=self.config.get('weight_decay', 1e-4),
+            warmup_epochs=self.config.get('warmup_epochs', 5),
             pre_processor=False  # HDMAPDataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
         )
+        return model
+
+    def _create_ganomaly_model(self):
+        """GANomaly 모델 생성 (Reconstruction 기반 Anomaly Detection)"""
+        # GANomaly는 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        model = Ganomaly(
+            batch_size=self.config.get("batch_size", 32),
+            n_features=self.config.get("n_features", 64),
+            latent_vec_size=self.config.get("latent_vec_size", 100),
+            extra_layers=self.config.get("extra_layers", 0),
+            add_final_conv_layer=self.config.get("add_final_conv_layer", True),
+            wadv=self.config.get("wadv", 1),
+            wcon=self.config.get("wcon", 50),
+            wenc=self.config.get("wenc", 1),
+            lr=self.config.get("learning_rate", 0.0002),
+            beta1=self.config.get("beta1", 0.5),
+            beta2=self.config.get("beta2", 0.999),
+            evaluator=evaluator,
+            pre_processor=True  # GANomaly는 input_size가 필요하므로 PreProcessor 사용
+        )
+
+        return model
+
+    def _create_cflow_model(self):
+        """CFlow 모델 생성 (Conditional Normalizing Flow 기반 Anomaly Detection)"""
+        # CFlow는 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
+        # layers 설정 - config에서 가져오거나 기본값 사용
+        layers = self.config.get("layers", ["layer2", "layer3", "layer4"])
+        if isinstance(layers, list):
+            layers = tuple(layers)
+
+        backbone = self.config.get("backbone", "wide_resnet50_2")
+        print(f"   🔍 CFlow 모델 생성 - backbone: {backbone}, layers: {layers}")
+
+        model = Cflow(
+            backbone=backbone,
+            layers=layers,
+            pre_trained=self.config.get("pre_trained", True),
+            fiber_batch_size=self.config.get("fiber_batch_size", 64),
+            decoder=self.config.get("decoder", "freia-cflow"),
+            condition_vector=self.config.get("condition_vector", 128),
+            coupling_blocks=self.config.get("coupling_blocks", 8),
+            clamp_alpha=self.config.get("clamp_alpha", 1.9),
+            permute_soft=self.config.get("permute_soft", False),
+            lr=self.config.get("learning_rate", 0.0001),
+            evaluator=evaluator,
+            pre_processor=False  # DataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
+        )
+
         return model
 
     def _create_cutpaste_clf_model(self):
@@ -531,11 +603,16 @@ class BaseAnomalyTrainer:
                 monitor_metric = "val_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper()}: EarlyStopping 활성화 (val_loss 모니터링)")
-            elif self.model_type in ["supersimplenet", "reverse_distillation"]:
-                # SuperSimpleNet, Reverse Distillation: train_loss 기반 EarlyStopping
+            elif self.model_type in ["supersimplenet", "reverse_distillation", "cflow"]:
+                # SuperSimpleNet, Reverse Distillation, CFlow: train_loss 기반 EarlyStopping
                 monitor_metric = "train_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 활성화 (train_loss 모니터링)")
+            elif self.model_type == "ganomaly":
+                # GANomaly: generator_loss 기반 EarlyStopping (GAN 모델)
+                monitor_metric = "generator_loss"
+                monitor_mode = "min"
+                print(f"   ℹ️ GANOMALY: EarlyStopping 활성화 (generator_loss 모니터링)")
             elif self.model_type in ["efficient_ad", "fastflow", "cutpaste_clf"]:
                 # EfficientAD, FastFlow, CutPaste Classifier: val_image_AUROC 기반 EarlyStopping (높을수록 좋음)
                 monitor_metric = "val_image_AUROC"
@@ -566,10 +643,18 @@ class BaseAnomalyTrainer:
                     save_top_k=1,
                     verbose=True
                 )
-            elif self.model_type in ["supersimplenet", "reverse_distillation"]:
+            elif self.model_type in ["supersimplenet", "reverse_distillation", "cflow"]:
                 checkpoint = ModelCheckpoint(
                     filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{train_loss:.4f}",
                     monitor="train_loss",
+                    mode="min",
+                    save_top_k=1,
+                    verbose=True
+                )
+            elif self.model_type == "ganomaly":
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{generator_loss:.4f}",
+                    monitor="generator_loss",
                     mode="min",
                     save_top_k=1,
                     verbose=True

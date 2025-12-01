@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT
-from torch.optim.lr_scheduler import MultiStepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
 from anomalib import LearningType
 from anomalib.data import Batch
@@ -39,9 +39,10 @@ class UniNet(AnomalibModule):
         self,
         student_backbone: str = "wide_resnet50_2",
         teacher_backbone: str = "wide_resnet50_2",
-        temperature: float = 0.1,
-        learning_rate: float = 5e-3,
-        weight_decay: float = 1e-5,
+        temperature: float = 2.0,
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-4,
+        warmup_epochs: int = 5,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -55,6 +56,7 @@ class UniNet(AnomalibModule):
         )
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.warmup_epochs = warmup_epochs
         self.loss = UniNetLoss(temperature=temperature)  # base class expects self.loss in lightning module
         self.model = UniNetModel(student_backbone=student_backbone, teacher_backbone=teacher_backbone, loss=self.loss)
 
@@ -85,11 +87,11 @@ class UniNet(AnomalibModule):
         predictions = self.model(batch.image)
         return batch.update(**predictions._asdict())
 
-    def configure_optimizers(self) -> tuple[torch.optim.Optimizer, torch.optim.Optimizer]:
-        """Configure optimizers for training.
+    def configure_optimizers(self) -> tuple[list[torch.optim.Optimizer], list[dict]]:
+        """Configure optimizers with warm-up + cosine annealing scheduler.
 
         Returns:
-            tuple[torch.optim.Optimizer, torch.optim.Optimizer]: Optimizers for student and target teacher.
+            tuple[list[Optimizer], list[dict]]: Optimizers and scheduler configs.
         """
         optimizer = torch.optim.AdamW(
             [
@@ -104,11 +106,32 @@ class UniNet(AnomalibModule):
             eps=1e-10,
             amsgrad=True,
         )
-        milestones = [
-            int(self.trainer.max_steps * 0.8) if self.trainer.max_steps != -1 else (self.trainer.max_epochs * 0.8),
-        ]
-        scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=0.2)
-        return [optimizer], [scheduler]
+
+        # Warm-up scheduler: start from 0.1x lr and linearly increase to full lr
+        warmup_scheduler = LinearLR(
+            optimizer,
+            start_factor=0.1,
+            end_factor=1.0,
+            total_iters=self.warmup_epochs,
+        )
+
+        # Cosine annealing after warm-up
+        max_epochs = self.trainer.max_epochs if self.trainer.max_epochs else 30
+        cosine_epochs = max_epochs - self.warmup_epochs
+        cosine_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=cosine_epochs,
+            eta_min=self.learning_rate * 0.01,  # minimum lr = 1% of peak lr
+        )
+
+        # Combine warm-up + cosine annealing
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[self.warmup_epochs],
+        )
+
+        return [optimizer], [{"scheduler": scheduler, "interval": "epoch"}]
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:

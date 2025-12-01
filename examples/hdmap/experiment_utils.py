@@ -1156,6 +1156,18 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             print(f"   🔍 PaDiM feature_extractor layers: {torch_model.feature_extractor.layers}")
         if hasattr(torch_model, 'memory_bank'):
             print(f"   🔍 PaDiM memory_bank shape: {torch_model.memory_bank.shape}")
+        # Gaussian fitting 상태 확인 (중요!)
+        if hasattr(torch_model, 'gaussian'):
+            gaussian = torch_model.gaussian
+            print(f"   🔍 PaDiM Gaussian 상태:")
+            if hasattr(gaussian, 'mean') and gaussian.mean is not None:
+                print(f"      - mean shape: {gaussian.mean.shape}")
+            else:
+                print(f"      - mean: None (Gaussian fitting 미완료!)")
+            if hasattr(gaussian, 'inv_covariance') and gaussian.inv_covariance is not None:
+                print(f"      - inv_covariance shape: {gaussian.inv_covariance.shape}")
+            else:
+                print(f"      - inv_covariance: None (Gaussian fitting 미완료!)")
 
     # 시각화 디렉터리 생성
     visualization_dir = Path(experiment_dir) / "visualizations"
@@ -1187,9 +1199,20 @@ def unified_model_evaluation(model, datamodule, experiment_dir, experiment_name,
             # 이미지 텐서 추출 및 디바이스 이동을 한 번에 처리
             image_tensor = batch.image.to(device)
             flat = image_tensor.detach().view(-1).cpu()
-            q1 = flat.quantile(0.25).item()
-            q2 = flat.quantile(0.5).item()
-            q3 = flat.quantile(0.75).item()
+
+            # 큰 텐서의 경우 샘플링하여 quantile 계산 (메모리 효율성)
+            max_samples = 1000000  # 최대 100만 샘플
+            if flat.numel() > max_samples:
+                # 랜덤 샘플링으로 근사 quantile 계산
+                indices = torch.randperm(flat.numel())[:max_samples]
+                flat_sampled = flat[indices]
+                q1 = flat_sampled.quantile(0.25).item()
+                q2 = flat_sampled.quantile(0.5).item()
+                q3 = flat_sampled.quantile(0.75).item()
+            else:
+                q1 = flat.quantile(0.25).item()
+                q2 = flat.quantile(0.5).item()
+                q3 = flat.quantile(0.75).item()
             print(
                 f"      🖼️  이미지 텐서 크기: {image_tensor.shape}, 경로 수: {len(image_paths)}, "
                 f"min: {flat.min().item():.4f}, q1: {q1:.4f}, q2: {q2:.4f}, q3: {q3:.4f}, max: {flat.max().item():.4f}"

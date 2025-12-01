@@ -26,7 +26,7 @@ import tifffile
 # 🚀 사용자 설정 (필요에 따라 수정)
 # =============================================================================
 # 데이터 설정
-N_TRAINING = 1000  # 훈련 샘플 수
+N_TRAINING = 5000  # 훈련 샘플 수
 N_TESTING = 2000   # 테스트 샘플 수
 SAVE_FORMATS = ['tiff']  # 저장 형식 (TIFF, PNG)
 BASE_FOLDER = "HDMAP"    # 최상위 폴더명

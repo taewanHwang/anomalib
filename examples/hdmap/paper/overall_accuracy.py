@@ -14,12 +14,12 @@ linestyles = ['-', '--', '-.', ':']
 markers = ['o', 's', '^', 'D']
 markersizes = [6, 6, 7, 6]
 
-methods = ["DRAEM", "AD", "PatchCore", "Dinomaly", "Scaled \nCutPaste", "Scaled \nCutPaste \n(best)", "Proposed\n(best)"]
-domain_avg = np.array([51.0, 70.6, 71.3, 93.0, 97.1, 97.3, 99.6])
-domain_avg_std = np.array([2.0, 0.8, 0.5, 1.2, 0.5, 1.3, 0.4])
+methods = ["DRAEM","CutPaste","2D CNN","UniNet","Rerverse\nDistillation","Padim","Dinomaly","PatchCore","C-Flow","Scaled\nCutPaste", "Proposed"]
+domain_avg = np.array([51.0, 65.9, 70.6, 72.4 ,78.0, 81.7, 90.9, 91.6, 92.0, 97.1, 99.6])
+domain_avg_std = np.array([2.0, 18.0, 0.8, 9.8, 8.3, 9.3, 5.7, 7.7, 6.2, 0.5, 0.4])
 
-domain_c    = np.array([50.0, 75.0, 60.9, 85.3, 93.3, 91.5, 99.1])
-domain_c_std = np.array([0.0, 0.0, 0.3, 1.8, 1.0, 2.4, 0.6])
+domain_c    = np.array([50, 72.1, 75, 73.3, 71.2, 72.9, 83.9, 79.9, 84.4, 93.3, 99.1])
+domain_c_std = np.array([0, 15.3, 0, 1.3, 4.2, 1.6, 0.8, 1.2, 1.4, 1.0, 0.6])
 
 x_positions = np.arange(len(methods))
 

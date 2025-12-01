@@ -74,6 +74,10 @@ class Fastflow(AnomalibModule):
         hidden_ratio (float, optional): Ratio used to calculate hidden variable
             channels.
             Defaults to ``1.0``.
+        learning_rate (float, optional): Learning rate for Adam optimizer.
+            Defaults to ``0.001``.
+        weight_decay (float, optional): Weight decay for Adam optimizer.
+            Defaults to ``0.00001``.
         pre_processor (PreProcessor | bool, optional): Pre-processor to use for
             input data.
             Defaults to ``True``.
@@ -104,6 +108,8 @@ class Fastflow(AnomalibModule):
         flow_steps: int = 8,
         conv3x3_only: bool = False,
         hidden_ratio: float = 1.0,
+        learning_rate: float = 0.001,
+        weight_decay: float = 0.00001,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -124,6 +130,8 @@ class Fastflow(AnomalibModule):
         self.flow_steps = flow_steps
         self.conv3x3_only = conv3x3_only
         self.hidden_ratio = hidden_ratio
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
 
         self.model = FastflowModel(
             input_size=self.input_size,
@@ -182,8 +190,8 @@ class Fastflow(AnomalibModule):
         """
         return optim.Adam(
             params=self.model.parameters(),
-            lr=0.001,
-            weight_decay=0.00001,
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
         )
 
     @property
