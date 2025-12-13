@@ -23,8 +23,8 @@ scp_means = np.array([96.0, 97.3, 96.9, 97.0, 94.0])
 scp_stds  = np.array([1.7, 1.3, 1.6, 1.6, 2.8])
 
 # Proposed (Draem+CP)
-prop_means = np.array([97.7, 98.2, 99.1, 99.6, 99.6])
-prop_stds  = np.array([1.2, 1.4, 0.9, 2.4, 0.4])
+prop_means = np.array([97.1, 98.6, 98.6, 99.4, 99.3])
+prop_stds  = np.array([3.4, 1.1, 1.2, 0.8, 0.9])
 
 x = np.arange(len(shapes))
 

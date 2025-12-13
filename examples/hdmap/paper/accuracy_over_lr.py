@@ -23,8 +23,8 @@ scaled_mean = np.array([97.0, 97.0, 94.5])
 scaled_std  = np.array([1.5, 1.6, 5.9])
 
 # Domain mean and std for Proposed
-prop_mean = np.array([99.2, 99.6, 98.8])
-prop_std  = np.array([0.4, 0.4, 0.8])
+prop_mean = np.array([98.5, 99.4, 99.2])
+prop_std  = np.array([2.8, 0.8, 0.7])
 
 plt.figure(figsize=(10,6))
 
