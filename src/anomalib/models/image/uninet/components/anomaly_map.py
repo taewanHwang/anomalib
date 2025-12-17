@@ -94,10 +94,10 @@ def weighted_decision_mechanism(
         single_anomaly_score_exp = gaussian_blur(einops.rearrange(single_anomaly_score_exp, "h w -> 1 1 h w"))
         single_anomaly_score_exp = single_anomaly_score_exp.squeeze()
 
-        # Flatten and get top-k values
+        # Flatten and get top-k values, then compute mean (original UniNet behavior)
         single_map_flat = single_anomaly_score_exp.view(-1)
         top_k_values = torch.topk(single_map_flat, top_k).values
-        single_anomaly_score = top_k_values[0] if len(top_k_values) > 0 else torch.tensor(0.0, device=device)
+        single_anomaly_score = torch.mean(top_k_values) if len(top_k_values) > 0 else torch.tensor(0.0, device=device)
         anomaly_scores[idx] = single_anomaly_score.detach()
 
     return anomaly_scores.unsqueeze(1), processed_anomaly_maps.detach()

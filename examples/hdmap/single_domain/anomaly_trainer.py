@@ -372,6 +372,11 @@ class BaseAnomalyTrainer:
 
     def _create_uninet_model(self):
         """UniNet 모델 생성"""
+        # UniNet은 image-level 메트릭만 사용 (gt_mask 없음)
+        val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
+        test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
+        evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
+
         model = UniNet(
             student_backbone=self.config.get('student_backbone', 'wide_resnet50_2'),
             teacher_backbone=self.config.get('teacher_backbone', 'wide_resnet50_2'),
@@ -379,7 +384,8 @@ class BaseAnomalyTrainer:
             learning_rate=self.config.get('learning_rate', 1e-3),
             weight_decay=self.config.get('weight_decay', 1e-4),
             warmup_epochs=self.config.get('warmup_epochs', 5),
-            pre_processor=False  # HDMAPDataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
+            pre_processor=False,  # HDMAPDataModule의 target_size로 리사이즈되므로 PreProcessor 비활성화
+            evaluator=evaluator
         )
         return model
 
@@ -608,6 +614,11 @@ class BaseAnomalyTrainer:
                 monitor_metric = "train_loss"
                 monitor_mode = "min"
                 print(f"   ℹ️ {self.model_type.upper().replace('_', ' ')}: EarlyStopping 활성화 (train_loss 모니터링)")
+            elif self.model_type == "uninet":
+                # UniNet: val_image_AUROC 기반 EarlyStopping (원본 UniNet도 AUROC 기반 평가)
+                monitor_metric = "val_image_AUROC"
+                monitor_mode = "max"
+                print(f"   ℹ️ UNINET: EarlyStopping 활성화 (val_image_AUROC 모니터링)")
             elif self.model_type == "ganomaly":
                 # GANomaly: generator_loss 기반 EarlyStopping (GAN 모델)
                 monitor_metric = "generator_loss"
@@ -650,6 +661,15 @@ class BaseAnomalyTrainer:
                     mode="min",
                     save_top_k=1,
                     verbose=True
+                )
+            elif self.model_type == "uninet":
+                checkpoint = ModelCheckpoint(
+                    filename=f"{self.model_type}_single_domain_{domain}_" + "{epoch:02d}_{val_image_AUROC:.4f}",
+                    monitor="val_image_AUROC",
+                    mode="max",
+                    save_top_k=1,
+                    verbose=True,
+                    save_weights_only=True  # Avoid recursion error during checkpoint save
                 )
             elif self.model_type == "ganomaly":
                 checkpoint = ModelCheckpoint(

@@ -34,5 +34,6 @@ See Also:
 """
 
 from anomalib.models.image.dinomaly.lightning_model import Dinomaly
+from anomalib.models.image.dinomaly.lightning_model_adaptive import DinomalyAdaptive
 
-__all__ = ["Dinomaly"]
+__all__ = ["Dinomaly", "DinomalyAdaptive"]

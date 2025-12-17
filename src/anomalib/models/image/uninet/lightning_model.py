@@ -67,31 +67,52 @@ class UniNet(AnomalibModule):
         loss = self.model(images=batch.image, masks=batch.gt_mask, labels=batch.gt_label)
 
         self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True)
+
+        # Log learning rate
+        if self.trainer and self.trainer.optimizers:
+            current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+            self.log("learning_rate", current_lr, on_step=False, on_epoch=True)
+
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Perform a validation step of UniNet."""
+        """Perform a validation step of UniNet.
+
+        Note: Unlike training, validation does not compute loss because:
+        1. Original UniNet only computes AUROC metrics during evaluation
+        2. Setting model to train mode for loss computation corrupts BatchNorm statistics
+        """
         del args, kwargs  # These variables are not used.
         if batch.image is None or not isinstance(batch.image, torch.Tensor):
             msg = "Expected batch.image to be a tensor, but got None or non-tensor type"
             raise ValueError(msg)
 
-        # UniNet model returns InferenceBatch during validation (self.training=False)
-        # So we temporarily set training mode to compute loss
-        self.model.train()
-        loss = self.model(images=batch.image, masks=batch.gt_mask, labels=batch.gt_label)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-
-        # Switch back to eval mode for predictions
+        # Keep model in eval mode for proper BatchNorm behavior
         self.model.eval()
         predictions = self.model(batch.image)
+
+        # Log prediction statistics for monitoring
+        if predictions.pred_score is not None:
+            pred_scores = predictions.pred_score
+            self.log("val_pred_score_mean", pred_scores.mean(), on_step=False, on_epoch=True)
+            self.log("val_pred_score_std", pred_scores.std(), on_step=False, on_epoch=True)
+            self.log("val_pred_score_min", pred_scores.min(), on_step=False, on_epoch=True)
+            self.log("val_pred_score_max", pred_scores.max(), on_step=False, on_epoch=True)
+
+        if predictions.anomaly_map is not None:
+            anomaly_map = predictions.anomaly_map
+            self.log("val_anomaly_map_mean", anomaly_map.mean(), on_step=False, on_epoch=True)
+            self.log("val_anomaly_map_std", anomaly_map.std(), on_step=False, on_epoch=True)
+
         return batch.update(**predictions._asdict())
 
-    def configure_optimizers(self) -> tuple[list[torch.optim.Optimizer], list[dict]]:
-        """Configure optimizers with warm-up + cosine annealing scheduler.
+    def configure_optimizers(self) -> tuple[list[torch.optim.Optimizer], list[dict]] | list[torch.optim.Optimizer]:
+        """Configure optimizers with optional warm-up + cosine annealing scheduler.
+
+        If warmup_epochs is 0, no scheduler is used (original UniNet behavior).
 
         Returns:
-            tuple[list[Optimizer], list[dict]]: Optimizers and scheduler configs.
+            Optimizers and optional scheduler configs.
         """
         optimizer = torch.optim.AdamW(
             [
@@ -106,6 +127,10 @@ class UniNet(AnomalibModule):
             eps=1e-10,
             amsgrad=True,
         )
+
+        # If warmup_epochs is 0, use fixed learning rate (original UniNet behavior)
+        if self.warmup_epochs == 0:
+            return [optimizer]
 
         # Warm-up scheduler: start from 0.1x lr and linearly increase to full lr
         warmup_scheduler = LinearLR(

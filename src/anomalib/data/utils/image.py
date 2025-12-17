@@ -299,7 +299,7 @@ def get_image_height_and_width(image_size: int | Sequence[int]) -> tuple[int, in
 
 
 def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
-    """Read 32-bit floating point image from disk.
+    """Read image from disk (supports RGB, grayscale, 32-bit float, and 16-bit integer).
 
     Args:
         path (str | Path): Path to image file
@@ -308,11 +308,8 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
     Returns:
         torch.Tensor | np.ndarray: Image as tensor or array
 
-    Raises:
-        ValueError: If image mode is not 'F' (32-bit floating point)
-
     Examples:
-        >>> image = read_image("image.tiff")  # Mode 'F'
+        >>> image = read_image("image.png")  # RGB or grayscale
         >>> type(image)
         <class 'numpy.ndarray'>
 
@@ -322,9 +319,30 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
     """
     pil_image = Image.open(path)
 
-    # F 모드(32-bit floating point) 또는 I;16 모드(16-bit integer) 지원
+    # RGB 또는 RGBA 이미지 (일반적인 PNG, JPEG)
+    if pil_image.mode in ('RGB', 'RGBA'):
+        # RGBA를 RGB로 변환
+        if pil_image.mode == 'RGBA':
+            pil_image = pil_image.convert('RGB')
+        # [0, 255] -> [0, 1] 정규화
+        image_array = np.array(pil_image, dtype=np.float32) / 255.0
+
+        if as_tensor:
+            return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
+        return image_array
+
+    # 그레이스케일 이미지 (L 모드)
+    if pil_image.mode == 'L':
+        image_array = np.array(pil_image, dtype=np.float32) / 255.0
+        # 그레이스케일을 RGB로 변환 (3채널 복사)
+        image_array = np.stack([image_array] * 3, axis=-1)
+
+        if as_tensor:
+            return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
+        return image_array
+
+    # F 모드 (32-bit floating point TIFF)
     if pil_image.mode == 'F':
-        # 32-bit float 이미지를 numpy로 변환
         image_array = np.array(pil_image, dtype=np.float32)
 
         # 그레이스케일을 RGB로 변환 (3채널 복사)
@@ -333,10 +351,10 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
 
         if as_tensor:
             return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
-        else:
-            return image_array
-    elif pil_image.mode == 'I;16':
-        # 16-bit PNG 이미지를 numpy로 변환 후 [0, 1] 정규화
+        return image_array
+
+    # I;16 모드 (16-bit integer PNG)
+    if pil_image.mode == 'I;16':
         image_array = np.array(pil_image, dtype=np.uint16).astype(np.float32) / 65535.0
 
         # 그레이스케일을 RGB로 변환 (3채널 복사)
@@ -345,11 +363,11 @@ def read_image(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.n
 
         if as_tensor:
             return torch.from_numpy(image_array).permute(2, 0, 1)  # HWC -> CHW
-        else:
-            return image_array
-    else:
-        # F 또는 I;16 모드가 아닌 경우 에러 발생
-        raise ValueError(f"Unsupported image mode: '{pil_image.mode}'. Only mode 'F' (32-bit floating point) or 'I;16' (16-bit integer) is supported.")
+        return image_array
+
+    # 지원하지 않는 모드
+    msg = f"Unsupported image mode: '{pil_image.mode}'. Supported modes: RGB, RGBA, L, F, I;16"
+    raise ValueError(msg)
 
 def read_mask(path: str | Path, as_tensor: bool = False) -> torch.Tensor | np.ndarray:
     """Read grayscale mask from disk.
