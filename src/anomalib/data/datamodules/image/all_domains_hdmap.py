@@ -102,43 +102,56 @@ def make_all_domains_hdmap_dataset(
 
 class AllDomainsHDMAPDataset(HDMAPDataset):
     """All Domains HDMAP Dataset / 전체 도메인 통합 HDMAP 데이터셋.
-    
+
     기존 HDMAPDataset을 확장하여 모든 도메인의 데이터를 통합 처리합니다.
     Extends the existing HDMAPDataset to handle integrated data from all domains.
-    
+
     **상속 관계**: AllDomainsHDMAPDataset ← HDMAPDataset ← AnomalibDataset
     **Inheritance**: AllDomainsHDMAPDataset ← HDMAPDataset ← AnomalibDataset
-    
+
     **핵심 차이점**: 단일 도메인 대신 모든 도메인의 데이터를 통합
     **Key Difference**: Integrates data from all domains instead of a single domain
     """
-    
+
     def __init__(
         self,
         root: Path | str = "./datasets/HDMAP/1000_8bit_resize_224x224",
         domains: list[str] | None = None,
         split: str | None = None,
+        target_size: tuple[int, int] | None = None,
+        resize_method: str = "resize",
         **kwargs: Any,
     ) -> None:
         """Initialize AllDomains HDMAP Dataset / 전체 도메인 통합 HDMAP 데이터셋 초기화.
-        
+
         Args:
             root (Path | str): Path to dataset root directory.
-            domains (list[str] | None): List of domains to include. 
+            domains (list[str] | None): List of domains to include.
                 If None, includes all domains.
-            split (str | None): Dataset split (train/test). 
+            split (str | None): Dataset split (train/test).
                 If None, includes both splits.
+            target_size (tuple[int, int] | None): Target image size (H, W) for resizing.
+                Defaults to None (no resizing).
+            resize_method (str): Resize method - "resize", "black_padding", or "noise_padding".
+                Defaults to "resize".
             **kwargs: Additional arguments passed to parent class.
         """
         # 부모 클래스 초기화를 건너뛰고 직접 AnomalibDataset 초기화
         # Skip HDMAPDataset.__init__ and directly initialize AnomalibDataset
         from anomalib.data.datasets.base.image import AnomalibDataset
         AnomalibDataset.__init__(self, **kwargs)
-        
+
+        # HDMAPDataset의 로깅 플래그 초기화 (load_and_resize_image에서 사용)
+        self._logged_data_stats = False
+
         self.root = Path(root)
         self.domains = domains or list(DOMAINS)
         self.split = split
-        
+
+        # HDMAPDataset의 resize 관련 속성 추가 (load_and_resize_image에서 사용)
+        self.target_size = target_size
+        self.resize_method = resize_method
+
         # 통합된 샘플 생성 / Create integrated samples
         self.samples = make_all_domains_hdmap_dataset(
             root=self.root,
@@ -221,6 +234,8 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
         test_split_mode: TestSplitMode | str = TestSplitMode.FROM_DIR,  # 별도 test 디렉토리 사용
         test_split_ratio: float = 0.2,
         seed: int | None = None,
+        target_size: tuple[int, int] | None = None,
+        resize_method: str = "resize",
         **kwargs: Any,
     ) -> None:
         """Initialize All Domains HDMAP DataModule / 전체 도메인 통합 HDMAP 데이터모듈 초기화."""
@@ -230,15 +245,17 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
             num_workers=num_workers,
             val_split_mode=val_split_mode,  # train에서 validation 분할
             val_split_ratio=val_split_ratio,
-            test_split_mode=test_split_mode,  # 별도 test 디렉토리 사용  
+            test_split_mode=test_split_mode,  # 별도 test 디렉토리 사용
             test_split_ratio=test_split_ratio,
             seed=seed,
             **kwargs,
         )
-        
+
         self.root = Path(root)
         self.domains = domains or list(DOMAINS)  # 기본값: 모든 도메인
-        
+        self.target_size = target_size
+        self.resize_method = resize_method
+
         # 도메인 유효성 검사 / Validate domains
         for domain in self.domains:
             if domain not in DOMAINS:
@@ -257,7 +274,7 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
     
     def _setup(self, _stage: str | None = None) -> None:
         """Set up datasets for all domains / 모든 도메인에 대한 데이터셋 설정.
-        
+
         **핵심 로직**: 모든 지정된 도메인의 train/test 데이터를 통합하여 데이터셋을 생성합니다.
         **Core Logic**: Create datasets by integrating train/test data from all specified domains.
         """
@@ -267,14 +284,18 @@ class AllDomainsHDMAPDataModule(AnomalibDataModule):
             domains=self.domains,
             split="train",
             augmentations=self.train_augmentations,
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
-        
+
         # 모든 도메인의 테스트 데이터 통합 / Integrate test data from all domains
         self.test_data = AllDomainsHDMAPDataset(
             root=self.root,
             domains=self.domains,
-            split="test", 
+            split="test",
             augmentations=self.test_augmentations,
+            target_size=self.target_size,
+            resize_method=self.resize_method,
         )
     
     def prepare_data(self) -> None:

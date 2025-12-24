@@ -10,14 +10,103 @@
 - **GPU**: NVIDIA GPU (CUDA 지원)
 - **데이터셋**: `/mnt/ex-disk/taewan.hwang/study/anomalib/datasets/HDMAP/1000_tiff_minmax`
 - **로그 경로**: `/mnt/ex-disk/taewan.hwang/study/anomalib/logs/`
+- **이미지 크기**: 448 → CenterCrop 392
 
-### 데이터 로딩 주의사항
+### 데이터 로딩 정책 (통합됨 ✅)
 
-**반드시 체크리스트 확인 후 실험 진행** (상세: v1 문서 참조)
+> **중요**: Training과 Testing 모두 동일한 `HDMAPDataset`을 사용하여 **일관된 TIFF 로딩**을 보장합니다.
 
-- [ ] TIFF float32 로딩 (NO clipping)
-- [ ] transforms.v2 사용
-- [ ] Train-Test 전처리 일치
+#### Training & Testing (통합 방식)
+
+| 항목 | 설정 |
+|------|------|
+| **데이터 모듈** | `AllDomainsHDMAPDataModule` (4개 도메인 통합 훈련) |
+| **데이터셋** | `HDMAPDataset` (anomalib 내부, Training과 Testing 동일) |
+| **이미지 로딩** | `tifffile.imread()` → float32 (NO clipping) |
+| **Transforms** | anomalib PreProcessor (내부 처리) |
+| **정규화** | ImageNet 표준 (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) |
+
+```python
+# Training: AllDomainsHDMAPDataModule 사용
+from anomalib.data.datamodules.image.all_domains_hdmap import AllDomainsHDMAPDataModule
+
+datamodule = AllDomainsHDMAPDataModule(
+    root=data_root,
+    domains=["domain_A", "domain_B", "domain_C", "domain_D"],
+    train_batch_size=16,
+    eval_batch_size=16,
+    val_split_mode="from_test",
+    val_split_ratio=0.1,
+)
+```
+
+#### HDMAPDataset TIFF 로딩 방식
+
+```python
+# HDMAPDataset.load_and_resize_image() 내부 구현
+# TIFF 파일: tifffile 사용 (float32 정밀도 유지)
+if image_path.lower().endswith(('.tiff', '.tif')):
+    img_array = tifffile.imread(image_path).astype(np.float32)  # NO clipping
+else:
+    # PNG 등 기타 파일은 PIL 사용
+    with Image.open(image_path) as img:
+        img_array = np.array(img).astype(np.float32)
+```
+
+#### Per-Domain Evaluation
+
+```python
+# HDMAPDataset을 사용하여 동일한 로딩 방식 보장
+from anomalib.data.datasets.image.hdmap import HDMAPDataset
+
+test_dataset = HDMAPDataset(
+    root=data_root,
+    domain="domain_A",
+    split="test",
+    target_size=(448, 448),
+)
+```
+
+### 체크리스트
+
+#### 데이터 로딩
+- [x] TIFF float32 로딩 (NO clipping) - `tifffile.imread()` 사용
+- [x] transforms.v2 사용 - `torchvision.transforms.v2`
+- [x] **Train-Test 전처리 완전 일치** - `HDMAPDataset` 통합 사용 ✅
+- [x] **데이터 로딩 검증 로깅** - 학습/추론 시 값 범위 확인 (HDMAPDataset에 추가됨)
+
+#### 학습 안정성
+- [x] GPU 기반 Per-Domain 평가 - `torch.amp.autocast('cuda')` 사용
+- [x] **Gradient Monitoring** - TensorBoard에 `grad/total_norm`, `grad/nan_count` 로깅
+- [x] **NaN Loss 감지** - training_step에서 NaN 발생 시 경고 로깅
+- [ ] ~~**Early Stopping**~~ - 성능 변화 관찰을 위해 일단 사용 안함
+
+#### Lessons Learned (2024-12-24)
+
+| 문제 | 원인 | 해결책 |
+|------|------|--------|
+| **Step 3000에서 NaN 발생** | Gradient explosion 또는 학습 불안정 | Gradient monitoring 추가, max_steps 감소 |
+| **AUROC 감소 (Step 1000→3000)** | 과적합 (HDMAP 다양성 < MVTec) | max_steps=1500~2000 권장 |
+| **TPR@FPR=0%** | NaN으로 ROC curve 계산 실패 | NaN 발생 시 해당 도메인 스킵 또는 경고 |
+| **Baseline=GEM 동일 결과** | 100 steps로는 차이 안 나타남 | 충분한 학습 후 비교 필요 |
+
+#### 원본 Dinomaly 학습 조건 (MVTec)
+```
+total_iters = 10000      # MVTec 15개 카테고리
+batch_size = 16
+lr = 2e-3 → 2e-4         # WarmCosineScheduler
+warmup_iters = 100
+gradient_clip = 0.1
+evaluation_interval = 5000
+```
+
+> **HDMAP 권장 설정**: MVTec(15개)보다 다양성이 낮으므로 (4개 도메인)
+> - `max_steps = 1500~2000` (원본 10000의 15~20%)
+> - `val_check_interval = 500` (더 자주 검증)
+
+> **Note**: `Folder` 데이터모듈 대신 `AllDomainsHDMAPDataModule`을 사용하여
+> Training과 Testing에서 **동일한 HDMAPDataset**을 사용합니다.
+> 이로써 TIFF float32 로딩이 완전히 일치합니다.
 
 ---
 
@@ -69,15 +158,17 @@ t_stat, p_value = ttest_rel(baseline_scores, method_scores)
 
 ```bash
 # 5 seeds 병렬 실행 (3초 간격)
+start_gpu=0  # ← 시작 GPU 번호 수정
+gpu_id=$start_gpu
 for seed in 42 43 44 123 456; do
-    gpu_id=$((seed % 5))  # GPU 0-4 순환
     nohup python examples/notebooks/dinomaly_baseline.py \
         --mode multiclass \
-        --max-steps 10000 \
+        --max-steps 3000 \
         --seed $seed \
         --gpu $gpu_id \
         --result-dir results/dinomaly_baseline \
         > logs/baseline_seed${seed}.log 2>&1 &
+    gpu_id=$((gpu_id + 1))
     sleep 3
 done
 ```
@@ -129,15 +220,17 @@ done
 
 ```bash
 # 5 seeds 병렬 실행 (3초 간격)
+start_gpu=5  # ← 시작 GPU 번호 수정
+gpu_id=$start_gpu
 for seed in 42 43 44 123 456; do
-    gpu_id=$((seed % 5))
     nohup python examples/notebooks/dinomaly_gem.py \
-        --max-steps 10000 \
+        --max-steps 3000 \
         --seed $seed \
         --gpu $gpu_id \
         --gem-p 3.0 \
         --result-dir results/dinomaly_gem \
         > logs/gem_seed${seed}.log 2>&1 &
+    gpu_id=$((gpu_id + 1))
     sleep 3
 done
 ```

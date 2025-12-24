@@ -262,10 +262,100 @@ class Dinomaly(AnomalibModule):
             on increasingly difficult examples as training progresses.
         """
         del args, kwargs  # These variables are not used.
+
+        # 첫 번째 배치에서 데이터 검증 로깅
+        if self.global_step == 0:
+            self._log_batch_statistics(batch.image, phase="train")
+
         loss = self.model(batch.image, global_step=self.global_step)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
+        # Check for NaN loss
+        if torch.isnan(loss):
+            logger.warning(f"NaN loss detected at step {self.global_step}")
+            self.log("nan_loss_count", 1.0, on_step=True, on_epoch=True)
+
         return {"loss": loss}
+
+    def _log_batch_statistics(self, images: torch.Tensor, phase: str = "train") -> None:
+        """Log batch data statistics for verification.
+
+        Args:
+            images: Batch of images (B, C, H, W)
+            phase: Current phase (train/val/test)
+        """
+        img_min = images.min().item()
+        img_max = images.max().item()
+        img_mean = images.mean().item()
+        img_std = images.std().item()
+        has_nan = torch.isnan(images).any().item()
+        has_inf = torch.isinf(images).any().item()
+
+        # 값 범위 체크 (ImageNet 정규화 후 대략 [-2.5, 2.5] 범위)
+        is_normalized = (img_min < 0 or img_max > 1.5)
+
+        logger.info(
+            f"[Dinomaly] Batch Data Verification ({phase}):\n"
+            f"  Shape: {tuple(images.shape)}, dtype: {images.dtype}, device: {images.device}\n"
+            f"  Range: [{img_min:.4f}, {img_max:.4f}]\n"
+            f"  Mean: {img_mean:.4f}, Std: {img_std:.4f}\n"
+            f"  NaN: {has_nan}, Inf: {has_inf}\n"
+            f"  {'[OK] Data appears ImageNet-normalized' if is_normalized else '[WARN] Data may not be normalized'}"
+        )
+
+    def on_before_optimizer_step(self, optimizer: torch.optim.Optimizer) -> None:
+        """Log gradient statistics before optimizer step for monitoring.
+
+        This hook is called after backward() but before optimizer.step().
+        Logs gradient norms and statistics to TensorBoard for debugging
+        training stability issues like gradient explosion.
+
+        Args:
+            optimizer: The optimizer about to perform a step.
+        """
+        # Only log every 100 steps to reduce overhead
+        if self.global_step % 100 != 0:
+            return
+
+        total_norm = 0.0
+        max_grad = 0.0
+        min_grad = float('inf')
+        nan_count = 0
+        inf_count = 0
+
+        for name, param in self.trainable_modules.named_parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2).item()
+                total_norm += param_norm ** 2
+
+                grad_max = param.grad.data.abs().max().item()
+                grad_min = param.grad.data.abs().min().item()
+                max_grad = max(max_grad, grad_max)
+                min_grad = min(min_grad, grad_min)
+
+                # Check for NaN/Inf gradients
+                if torch.isnan(param.grad.data).any():
+                    nan_count += 1
+                if torch.isinf(param.grad.data).any():
+                    inf_count += 1
+
+        total_norm = total_norm ** 0.5
+
+        # Log gradient statistics
+        self.log("grad/total_norm", total_norm, on_step=True, on_epoch=False)
+        self.log("grad/max", max_grad, on_step=True, on_epoch=False)
+        self.log("grad/min", min_grad if min_grad != float('inf') else 0.0, on_step=True, on_epoch=False)
+        self.log("grad/nan_count", float(nan_count), on_step=True, on_epoch=False)
+        self.log("grad/inf_count", float(inf_count), on_step=True, on_epoch=False)
+
+        # Log learning rate
+        if optimizer.param_groups:
+            current_lr = optimizer.param_groups[0]['lr']
+            self.log("train/lr", current_lr, on_step=True, on_epoch=False)
+
+        # Warn if gradient norm is very high
+        if total_norm > 10.0:
+            logger.warning(f"High gradient norm detected: {total_norm:.4f} at step {self.global_step}")
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Validation step for the Dinomaly model.
@@ -312,25 +402,29 @@ class Dinomaly(AnomalibModule):
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
         """Test step for the Dinomaly model.
-        
+
         Ensures identical inference behavior as validation_step for consistency.
-        
+
         Args:
             batch (Batch): Input batch containing images and metadata.
             batch_idx (int): Index of the batch.
             *args: Additional positional arguments (unused).
             **kwargs: Additional keyword arguments (unused).
-            
+
         Returns:
             STEP_OUTPUT: Updated batch with model predictions.
         """
-        del args, kwargs, batch_idx  # These variables are not used.
-        
+        del args, kwargs  # These variables are not used.
+
+        # 첫 번째 테스트 배치에서 데이터 검증 로깅
+        if batch_idx == 0:
+            self._log_batch_statistics(batch.image, phase="test")
+
         # 🔧 Identical inference logic as validation_step
         # Note: Lightning automatically sets model.eval() before test_step
         with torch.no_grad():
             predictions = self.model(batch.image)
-        
+
         # Use _asdict() for consistent field extraction like validation_step
         return batch.update(**predictions._asdict())
     

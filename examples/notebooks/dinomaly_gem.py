@@ -15,7 +15,7 @@ Usage:
     python dinomaly_gem.py --seed 42 --gpu 0 --result-dir results/dinomaly_gem
 
 HDMAP Dataset Structure:
-    datasets/HDMAP/1000_png/
+    datasets/HDMAP/1000_tiff_minmax/
     ├── domain_A/
     │   ├── train/good/
     │   └── test/{good,fault}/
@@ -40,18 +40,34 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
+import tifffile
 import torch
 from PIL import Image
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import (
+    roc_auc_score,
+    roc_curve,
+    precision_recall_curve,
+    precision_score,
+    recall_score,
+    f1_score,
+    accuracy_score,
+    confusion_matrix,
+)
 from torch.utils.data import DataLoader
-from torchvision import transforms
+from torchvision.transforms import v2 as transforms
 
 from anomalib.data import Folder
+from anomalib.data.datamodules.image.all_domains_hdmap import AllDomainsHDMAPDataModule
+from anomalib.data.datamodules.image.hdmap import HDMAPDataModule
+from anomalib.data.datasets.image.hdmap import HDMAPDataset
 from anomalib.engine import Engine
 from anomalib.metrics import AUROC
 from anomalib.metrics.evaluator import Evaluator
 from anomalib.models.image.dinomaly_variants import DinomalyGEM
+from anomalib.visualization.image.item_visualizer import visualize_image_item
+from anomalib.data import NumpyImageItem
 
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint
@@ -198,17 +214,22 @@ def create_safe_symlink(src: Path, dst: Path) -> bool:
 
 
 @contextmanager
-def temporary_combined_dataset(data_root: Path, domains: list[str]):
+def temporary_combined_dataset(data_root: Path, domains: list[str], seed: int = 42):
     """Context manager for temporary combined dataset with cleanup.
 
     Args:
         data_root: Root path of dataset.
         domains: List of domain names.
+        seed: Random seed (used to create unique folder per run).
 
     Yields:
         Path to combined dataset root.
     """
-    combined_root = data_root / "_combined_multiclass"
+    combined_root = data_root / f"_combined_multiclass_seed{seed}"
+    # Clean up any existing folder before starting (ensures fresh symlinks)
+    if combined_root.exists():
+        logger.info(f"Removing existing combined dataset: {combined_root}")
+        shutil.rmtree(combined_root)
     try:
         yield combined_root
     finally:
@@ -226,7 +247,7 @@ def evaluate_domain(
     dataloader: DataLoader,
     device: torch.device,
 ) -> tuple[list[int], list[float]]:
-    """Evaluate model on a single domain.
+    """Evaluate model on a single domain using GPU.
 
     Args:
         model: PyTorch model to evaluate.
@@ -239,32 +260,385 @@ def evaluate_domain(
     labels: list[int] = []
     scores: list[float] = []
 
+    # Ensure model is on GPU and in eval mode
+    model = model.to(device)
     model.eval()
-    with torch.no_grad():
-        for batch in dataloader:
-            images = batch["image"].to(device)
-            batch_labels = batch["label"]
 
-            # Forward pass
+    logger.info(f"  Evaluating on device: {device} (samples: {len(dataloader.dataset)})")
+
+    # Use updated torch.amp.autocast API (torch.cuda.amp.autocast is deprecated)
+    with torch.no_grad(), torch.amp.autocast('cuda', enabled=True):
+        for batch in dataloader:
+            # HDMAPDataset returns ImageBatch (dataclass), not dict
+            # Support both formats for compatibility
+            if hasattr(batch, 'image'):
+                # ImageBatch dataclass format
+                images = batch.image.to(device, non_blocking=True)
+                batch_labels = batch.gt_label
+            else:
+                # Dict format (legacy/other datasets)
+                images = batch["image"].to(device, non_blocking=True)
+                batch_labels = batch["label"]
+
+            # Forward pass - handle AnomalibModule output
             output = model(images)
 
-            # Robust score extraction
-            if hasattr(output, "pred_score"):
+            # Robust score extraction for AnomalibModule
+            if hasattr(output, "pred_score") and output.pred_score is not None:
                 batch_scores = output.pred_score.cpu()
-            elif isinstance(output, dict) and "pred_score" in output:
-                batch_scores = output["pred_score"].cpu()
+            elif hasattr(output, "anomaly_map") and output.anomaly_map is not None:
+                # Fallback: use max of anomaly map as score
+                batch_scores = output.anomaly_map.flatten(1).max(dim=1)[0].cpu()
+            elif isinstance(output, dict):
+                if "pred_score" in output and output["pred_score"] is not None:
+                    batch_scores = output["pred_score"].cpu()
+                elif "anomaly_map" in output and output["anomaly_map"] is not None:
+                    batch_scores = output["anomaly_map"].flatten(1).max(dim=1)[0].cpu()
+                else:
+                    raise ValueError(f"No valid score in output dict: {output.keys()}")
             elif torch.is_tensor(output):
                 batch_scores = output.cpu()
             else:
                 raise ValueError(f"Unexpected output format: {type(output)}")
 
+            # Convert to list
+            if batch_scores.dim() == 0:
+                scores.append(float(batch_scores))
+            else:
+                scores.extend(batch_scores.numpy().tolist())
             labels.extend(batch_labels.numpy().tolist())
-            scores.extend(batch_scores.numpy().tolist())
 
-            # Cleanup GPU memory
-            del images, output
+    # Cleanup GPU memory once after all batches (NOT per-batch - that's very slow)
+    torch.cuda.empty_cache()
 
     return labels, scores
+
+
+def visualize_domain_predictions(
+    model: torch.nn.Module,
+    dataloader: DataLoader,
+    device: torch.device,
+    output_dir: Path,
+    domain: str,
+    max_samples: int = 50,
+) -> None:
+    """Visualize model predictions for a domain and save images.
+
+    Args:
+        model: PyTorch model to evaluate.
+        dataloader: DataLoader for the domain.
+        device: Device to run inference on.
+        output_dir: Directory to save visualizations.
+        domain: Domain name for folder organization.
+        max_samples: Maximum number of samples to visualize per class (randomly selected).
+    """
+    # Create output directories
+    vis_dir = output_dir / "visualizations" / domain
+    (vis_dir / "good").mkdir(parents=True, exist_ok=True)
+    (vis_dir / "fault").mkdir(parents=True, exist_ok=True)
+
+    model = model.to(device)
+    model.eval()
+
+    # Collect all indices by class for random sampling
+    dataset = dataloader.dataset
+    good_indices = []
+    fault_indices = []
+
+    for idx in range(len(dataset)):
+        sample = dataset[idx]
+        if hasattr(sample, 'gt_label'):
+            label = int(sample.gt_label)
+        elif isinstance(sample, dict):
+            label = int(sample.get('label', sample.get('gt_label', 0)))
+        else:
+            label = 0
+        if label == 1:
+            fault_indices.append(idx)
+        else:
+            good_indices.append(idx)
+
+    # Randomly sample indices
+    random.shuffle(good_indices)
+    random.shuffle(fault_indices)
+    selected_good = good_indices[:max_samples]
+    selected_fault = fault_indices[:max_samples]
+    selected_indices = selected_good + selected_fault
+
+    logger.info(f"  Generating visualizations for {domain} (random sampling: {len(selected_good)} good, {len(selected_fault)} fault)...")
+
+    good_count = 0
+    fault_count = 0
+
+    # Process selected indices directly (random order)
+    with torch.no_grad(), torch.amp.autocast('cuda', enabled=True):
+        for idx in selected_indices:
+            sample = dataset[idx]
+
+            # Get sample data
+            if hasattr(sample, 'image'):
+                image = sample.image.unsqueeze(0).to(device, non_blocking=True)
+                label = int(sample.gt_label)
+                image_path = sample.image_path if hasattr(sample, 'image_path') else f"sample_{idx}"
+            elif isinstance(sample, dict):
+                image = sample["image"].unsqueeze(0).to(device, non_blocking=True)
+                label = int(sample.get("label", sample.get("gt_label", 0)))
+                image_path = sample.get("image_path", f"sample_{idx}")
+            else:
+                continue
+
+            # Forward pass (single image)
+            output = model(image)
+
+            # Get anomaly map and score
+            if hasattr(output, "anomaly_map") and output.anomaly_map is not None:
+                anomaly_map = output.anomaly_map[0].cpu().numpy()  # Remove batch dim
+            else:
+                anomaly_map = None
+
+            if hasattr(output, "pred_score") and output.pred_score is not None:
+                pred_score = float(output.pred_score[0].cpu())
+            elif anomaly_map is not None:
+                pred_score = float(anomaly_map.max())
+            else:
+                pred_score = None
+
+            # Denormalize image for visualization (ImageNet)
+            mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
+            std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
+            image_denorm = image * std + mean
+            image_denorm = image_denorm.clamp(0, 1)[0].cpu().numpy()  # Remove batch dim
+
+            label_str = "fault" if label == 1 else "good"
+
+            # Get image path stem for filename
+            if isinstance(image_path, Path):
+                img_name = image_path.stem
+            elif isinstance(image_path, str):
+                img_name = Path(image_path).stem
+            else:
+                img_name = f"sample_{idx}"
+
+            # Prepare data for visualization
+            image_np = image_denorm.transpose(1, 2, 0)  # CHW -> HWC
+            image_np = (image_np * 255).astype(np.uint8)
+
+            # Create NumpyImageItem for visualization
+            item_data = {
+                "image": image_np,
+                "image_path": str(image_path) if image_path else None,
+            }
+
+            if anomaly_map is not None:
+                # Normalize anomaly map for visualization (0-1 range)
+                if anomaly_map.ndim == 3:
+                    anomaly_map = anomaly_map.squeeze(0)  # Remove channel dim if present
+                amap_min, amap_max = anomaly_map.min(), anomaly_map.max()
+                if amap_max > amap_min:
+                    amap_norm = (anomaly_map - amap_min) / (amap_max - amap_min)
+                else:
+                    amap_norm = np.zeros_like(anomaly_map)
+                item_data["anomaly_map"] = amap_norm
+
+            if pred_score is not None:
+                item_data["pred_score"] = pred_score
+
+            try:
+                item = NumpyImageItem(**item_data)
+
+                # Generate visualization
+                vis_image = visualize_image_item(
+                    item,
+                    fields=["image"],
+                    overlay_fields=[("image", ["anomaly_map"])] if anomaly_map is not None else [],
+                    field_size=(256, 256),
+                )
+
+                if vis_image is not None:
+                    # Add score text to filename
+                    score_str = f"_score{pred_score:.3f}" if pred_score is not None else ""
+                    save_path = vis_dir / label_str / f"{img_name}{score_str}.png"
+                    vis_image.save(save_path)
+
+                    if label_str == "good":
+                        good_count += 1
+                    else:
+                        fault_count += 1
+
+            except Exception as e:
+                logger.warning(f"  Failed to visualize {img_name}: {e}")
+                continue
+
+    logger.info(f"  Saved {good_count} good, {fault_count} fault visualizations to {vis_dir}")
+
+
+def visualize_score_distribution(
+    labels: list[int],
+    scores: list[float],
+    domain: str,
+    output_dir: Path,
+) -> None:
+    """Visualize anomaly score distribution for a domain.
+
+    Creates histogram plot showing good vs fault score distributions.
+
+    Args:
+        labels: Ground truth labels (0=normal, 1=anomaly).
+        scores: Anomaly scores.
+        domain: Domain name.
+        output_dir: Directory to save visualizations.
+    """
+    # Separate scores by class
+    good_scores = [s for l, s in zip(labels, scores) if l == 0]
+    fault_scores = [s for l, s in zip(labels, scores) if l == 1]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot histograms with transparency
+    bins = 50
+    if good_scores:
+        ax.hist(good_scores, bins=bins, alpha=0.6, label=f'Good (n={len(good_scores)})',
+                color='green', density=True)
+    if fault_scores:
+        ax.hist(fault_scores, bins=bins, alpha=0.6, label=f'Fault (n={len(fault_scores)})',
+                color='red', density=True)
+
+    # Add statistics text
+    stats_lines = []
+    if good_scores:
+        stats_lines.append(f"Good:  mean={np.mean(good_scores):.4f}, std={np.std(good_scores):.4f}")
+    if fault_scores:
+        stats_lines.append(f"Fault: mean={np.mean(fault_scores):.4f}, std={np.std(fault_scores):.4f}")
+
+    if stats_lines:
+        stats_text = "\n".join(stats_lines)
+        ax.text(0.95, 0.95, stats_text, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    ax.set_xlabel('Anomaly Score')
+    ax.set_ylabel('Density')
+    ax.set_title(f'{domain} - Anomaly Score Distribution')
+    ax.legend()
+
+    # Save
+    vis_dir = output_dir / "visualizations" / domain
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(vis_dir / "score_distribution.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+    logger.info(f"  Saved score distribution plot to {vis_dir / 'score_distribution.png'}")
+
+
+def visualize_all_domains_score_comparison(
+    domain_results: dict[str, tuple[list[int], list[float]]],
+    output_dir: Path,
+) -> None:
+    """Create 2x2 subplot comparing score distributions across all domains.
+
+    Args:
+        domain_results: Dictionary mapping domain names to (labels, scores) tuples.
+        output_dir: Directory to save visualizations.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    axes = axes.flatten()
+
+    domains = sorted(domain_results.keys())
+
+    for idx, domain in enumerate(domains):
+        if idx >= 4:
+            break  # Only show 4 domains max
+        labels, scores = domain_results[domain]
+        ax = axes[idx]
+
+        good_scores = [s for l, s in zip(labels, scores) if l == 0]
+        fault_scores = [s for l, s in zip(labels, scores) if l == 1]
+
+        if good_scores:
+            ax.hist(good_scores, bins=30, alpha=0.6, label='Good', color='green', density=True)
+        if fault_scores:
+            ax.hist(fault_scores, bins=30, alpha=0.6, label='Fault', color='red', density=True)
+        ax.set_title(f'{domain}')
+        ax.set_xlabel('Anomaly Score')
+        ax.set_ylabel('Density')
+        ax.legend()
+
+    plt.suptitle('Per-Domain Anomaly Score Distributions', fontsize=14)
+    plt.tight_layout()
+
+    vis_dir = output_dir / "visualizations"
+    vis_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(vis_dir / "all_domains_score_comparison.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+    logger.info(f"Saved all domains score comparison to {vis_dir / 'all_domains_score_comparison.png'}")
+
+
+def export_domain_scores_to_csv(
+    dataloader: DataLoader,
+    labels: list[int],
+    scores: list[float],
+    domain: str,
+    output_dir: Path,
+) -> Path:
+    """Export per-domain prediction scores to CSV file.
+
+    Args:
+        dataloader: DataLoader for the domain (to get image paths).
+        labels: Ground truth labels (0=normal, 1=anomaly).
+        scores: Predicted anomaly scores.
+        domain: Domain name.
+        output_dir: Directory to save CSV file.
+
+    Returns:
+        Path to the saved CSV file.
+    """
+    import csv
+
+    # Get image paths from dataset
+    dataset = dataloader.dataset
+    image_paths = []
+
+    for idx in range(len(dataset)):
+        sample = dataset[idx]
+        if hasattr(sample, 'image_path'):
+            img_path = sample.image_path
+        elif isinstance(sample, dict):
+            img_path = sample.get('image_path', f'sample_{idx}')
+        else:
+            img_path = f'sample_{idx}'
+
+        if isinstance(img_path, Path):
+            image_paths.append(str(img_path))
+        else:
+            image_paths.append(str(img_path))
+
+    # Ensure we have matching lengths
+    if len(image_paths) != len(labels) or len(image_paths) != len(scores):
+        logger.warning(f"Length mismatch: paths={len(image_paths)}, labels={len(labels)}, scores={len(scores)}")
+        # Use minimum length
+        min_len = min(len(image_paths), len(labels), len(scores))
+        image_paths = image_paths[:min_len]
+        labels = labels[:min_len]
+        scores = scores[:min_len]
+
+    # Create output directory
+    csv_dir = output_dir / "scores"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = csv_dir / f"{domain}_scores.csv"
+
+    # Write CSV
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['image_name', 'image_path', 'gt_label', 'gt_label_str', 'pred_score', 'domain'])
+
+        for img_path, label, score in zip(image_paths, labels, scores):
+            img_name = Path(img_path).stem if img_path else 'unknown'
+            label_str = 'fault' if label == 1 else 'good'
+            writer.writerow([img_name, img_path, label, label_str, f'{score:.6f}', domain])
+
+    logger.info(f"  Saved {len(labels)} scores to {csv_path}")
+    return csv_path
 
 
 def compute_auroc_safe(labels: list[int], scores: list[float]) -> float:
@@ -285,6 +659,110 @@ def compute_auroc_safe(labels: list[int], scores: list[float]) -> float:
     except Exception as e:
         logger.error(f"Failed to compute AUROC: {e}")
         return 0.0
+
+
+def compute_comprehensive_metrics(
+    labels: list[int],
+    scores: list[float],
+) -> dict[str, float]:
+    """Compute comprehensive evaluation metrics.
+
+    Metrics computed:
+    - AUROC: Area Under ROC Curve
+    - TPR@FPR=1%: True Positive Rate at 1% False Positive Rate
+    - TPR@FPR=5%: True Positive Rate at 5% False Positive Rate
+    - Precision: at optimal threshold (Youden's J)
+    - Recall: at optimal threshold
+    - F1 Score: at optimal threshold
+    - Accuracy: at optimal threshold
+
+    Args:
+        labels: Ground truth labels (0=normal, 1=anomaly).
+        scores: Anomaly scores (higher = more anomalous).
+
+    Returns:
+        Dictionary of metric names to values.
+    """
+    labels_arr = np.array(labels)
+    scores_arr = np.array(scores)
+
+    metrics = {
+        "auroc": 0.0,
+        "tpr_at_fpr_1pct": 0.0,
+        "tpr_at_fpr_5pct": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "accuracy": 0.0,
+        "optimal_threshold": 0.0,
+    }
+
+    # Check if we have both classes
+    if len(set(labels)) < 2:
+        logger.warning("Cannot compute metrics: only one class present")
+        return metrics
+
+    try:
+        # AUROC
+        metrics["auroc"] = roc_auc_score(labels_arr, scores_arr)
+
+        # ROC curve for TPR@FPR calculations
+        fpr, tpr, thresholds = roc_curve(labels_arr, scores_arr)
+
+        # TPR@FPR=1% (find TPR where FPR is closest to 0.01)
+        idx_1pct = np.argmin(np.abs(fpr - 0.01))
+        metrics["tpr_at_fpr_1pct"] = float(tpr[idx_1pct])
+
+        # TPR@FPR=5% (find TPR where FPR is closest to 0.05)
+        idx_5pct = np.argmin(np.abs(fpr - 0.05))
+        metrics["tpr_at_fpr_5pct"] = float(tpr[idx_5pct])
+
+        # Optimal threshold using Youden's J statistic (maximize TPR - FPR)
+        j_scores = tpr - fpr
+        optimal_idx = np.argmax(j_scores)
+        optimal_threshold = thresholds[optimal_idx]
+        metrics["optimal_threshold"] = float(optimal_threshold)
+
+        # Binary predictions at optimal threshold
+        predictions = (scores_arr >= optimal_threshold).astype(int)
+
+        # Precision, Recall, F1, Accuracy at optimal threshold
+        metrics["precision"] = float(precision_score(labels_arr, predictions, zero_division=0))
+        metrics["recall"] = float(recall_score(labels_arr, predictions, zero_division=0))
+        metrics["f1_score"] = float(f1_score(labels_arr, predictions, zero_division=0))
+        metrics["accuracy"] = float(accuracy_score(labels_arr, predictions))
+
+    except Exception as e:
+        logger.error(f"Failed to compute comprehensive metrics: {e}")
+
+    return metrics
+
+
+def format_metrics_table(domain_metrics: dict[str, dict[str, float]]) -> str:
+    """Format metrics as a readable table string.
+
+    Args:
+        domain_metrics: Dict mapping domain names to their metrics dicts.
+
+    Returns:
+        Formatted table string.
+    """
+    header = (
+        f"{'Domain':<10} {'AUROC':>8} {'TPR@1%':>8} {'TPR@5%':>8} "
+        f"{'Prec':>8} {'Recall':>8} {'F1':>8} {'Acc':>8}"
+    )
+    separator = "-" * len(header)
+
+    rows = [header, separator]
+    for domain, m in domain_metrics.items():
+        row = (
+            f"{domain:<10} {m['auroc']*100:>7.2f}% {m['tpr_at_fpr_1pct']*100:>7.2f}% "
+            f"{m['tpr_at_fpr_5pct']*100:>7.2f}% {m['precision']*100:>7.2f}% "
+            f"{m['recall']*100:>7.2f}% {m['f1_score']*100:>7.2f}% {m['accuracy']*100:>7.2f}%"
+        )
+        rows.append(row)
+
+    return "\n".join(rows)
 
 
 # =============================================================================
@@ -344,11 +822,11 @@ class HDMAPMultiClassDataset(torch.utils.data.Dataset):
             if not domain_path.exists():
                 raise FileNotFoundError(f"Training path not found: {domain_path}")
 
-            png_files = list(domain_path.glob("*.png"))
-            if not png_files:
-                logger.warning(f"No PNG files found in {domain_path}")
+            tiff_files = list(domain_path.glob("*.tiff"))
+            if not tiff_files:
+                logger.warning(f"No TIFF files found in {domain_path}")
 
-            for img_path in png_files:
+            for img_path in tiff_files:
                 self.samples.append({
                     "image_path": str(img_path),
                     "domain": domain,
@@ -360,7 +838,7 @@ class HDMAPMultiClassDataset(torch.utils.data.Dataset):
             for label_name, label_value in [("good", 0), ("fault", 1)]:
                 domain_path = self.root / domain / "test" / label_name
                 if domain_path.exists():
-                    for img_path in domain_path.glob("*.png"):
+                    for img_path in domain_path.glob("*.tiff"):
                         self.samples.append({
                             "image_path": str(img_path),
                             "domain": domain,
@@ -382,18 +860,36 @@ class HDMAPMultiClassDataset(torch.utils.data.Dataset):
             Dictionary with image, label, domain info.
         """
         sample = self.samples[idx]
+        image_path = sample["image_path"]
 
-        # Load image with proper resource management
-        with Image.open(sample["image_path"]) as img:
-            image = img.convert("RGB")
-            if self.transform:
-                image = self.transform(image)
+        # Load TIFF as float32 without clipping
+        if image_path.endswith(('.tiff', '.tif')):
+            # Use tifffile for proper float32 loading
+            img_array = tifffile.imread(image_path)  # float32, shape: (H, W) or (H, W, C)
+
+            # Handle grayscale -> RGB
+            if img_array.ndim == 2:
+                img_array = np.stack([img_array] * 3, axis=-1)
+            elif img_array.shape[-1] == 1:
+                img_array = np.repeat(img_array, 3, axis=-1)
+
+            # Convert to tensor: (H, W, C) -> (C, H, W), float32
+            image = torch.from_numpy(img_array).permute(2, 0, 1).float()
+        else:
+            # Fallback for PNG/JPG
+            with Image.open(image_path) as img:
+                img_array = np.array(img.convert("RGB"), dtype=np.float32) / 255.0
+                image = torch.from_numpy(img_array).permute(2, 0, 1)
+
+        # Apply transforms (Resize, CenterCrop, Normalize)
+        if self.transform:
+            image = self.transform(image)
 
         return {
             "image": image,
-            "label": sample["label"],  # Let DataLoader handle batching
+            "label": sample["label"],
             "domain_idx": sample["domain_idx"],
-            "image_path": sample["image_path"],
+            "image_path": image_path,
             "domain": sample["domain"],
         }
 
@@ -486,10 +982,10 @@ def get_transforms(
     Returns:
         Composed transforms.
     """
+    # transforms.v2 for tensor input (TIFF loaded as float32 tensor)
     return transforms.Compose([
-        transforms.Resize((image_size, image_size)),
+        transforms.Resize((image_size, image_size), antialias=True),
         transforms.CenterCrop(crop_size),
-        transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])
 
@@ -536,7 +1032,7 @@ def create_combined_dataset(
         if not train_path.exists():
             raise FileNotFoundError(f"Training path not found: {train_path}")
 
-        for img_path in train_path.glob("*.png"):
+        for img_path in train_path.glob("*.tiff"):
             link_path = train_dir / f"{domain}_{img_path.name}"
             if create_safe_symlink(img_path, link_path):
                 train_count += 1
@@ -544,7 +1040,7 @@ def create_combined_dataset(
         # Test good samples
         test_good_path = domain_root / "test" / "good"
         if test_good_path.exists():
-            for img_path in test_good_path.glob("*.png"):
+            for img_path in test_good_path.glob("*.tiff"):
                 link_path = test_good_dir / f"{domain}_{img_path.name}"
                 if create_safe_symlink(img_path, link_path):
                     test_good_count += 1
@@ -552,7 +1048,7 @@ def create_combined_dataset(
         # Test fault samples
         test_fault_path = domain_root / "test" / "fault"
         if test_fault_path.exists():
-            for img_path in test_fault_path.glob("*.png"):
+            for img_path in test_fault_path.glob("*.tiff"):
                 link_path = test_fault_dir / f"{domain}_{img_path.name}"
                 if create_safe_symlink(img_path, link_path):
                     test_fault_count += 1
@@ -577,6 +1073,10 @@ def run_multiclass_experiment(
     """Run multi-class unified training experiment with DinomalyGEM.
 
     This uses GEM pooling for anomaly map aggregation.
+
+    **통합 데이터 로딩**: Training과 Testing 모두 동일한 HDMAPDataset을 사용합니다.
+    - TIFF 파일: tifffile로 로딩 (float32 정밀도 유지, NO clipping)
+    - 동일한 전처리 파이프라인 보장
 
     Args:
         data_root: Path to dataset root.
@@ -606,27 +1106,27 @@ def run_multiclass_experiment(
     logger.info(f"Max steps: {max_steps}")
     logger.info(f"Batch size: {batch_size}")
     logger.info(f"Encoder: {encoder_name}")
+    logger.info("Using AllDomainsHDMAPDataModule (tifffile-based TIFF loading)")
 
     experiment_dir = output_dir / "multiclass_unified"
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create transforms
-    transform = get_transforms(image_size, crop_size)
-
-    # Create per-domain test dataloaders for validation callback
+    # Create per-domain test dataloaders using HDMAPDataset (same loading as training)
+    # 이렇게 하면 Training과 Testing에서 동일한 이미지 로딩 방식 사용
     test_dataloaders: dict[str, DataLoader] = {}
     for domain in domains:
-        test_dataset = HDMAPMultiClassDataset(
+        test_dataset = HDMAPDataset(
             root=data_root,
-            domains=[domain],
+            domain=domain,
             split="test",
-            transform=transform,
+            target_size=(image_size, image_size),  # Resize to match training
         )
         test_dataloaders[domain] = DataLoader(
             test_dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=4,
+            collate_fn=test_dataset.collate_fn,  # HDMAPDataset returns ImageItem
         )
 
     # Setup evaluator
@@ -640,6 +1140,7 @@ def run_multiclass_experiment(
         bottleneck_dropout=DEFAULT_BOTTLENECK_DROPOUT,
         evaluator=evaluator,
         pre_processor=True,
+        visualizer=False,  # Disable default ImageVisualizer (per-domain viz in visualizations/ folder)
         gem_p=gem_p,
         learnable_gem_p=learnable_gem_p,
     )
@@ -666,62 +1167,42 @@ def run_multiclass_experiment(
         version="",
     )
 
-    data_root_path = Path(data_root)
+    # Create unified datamodule using AllDomainsHDMAPDataModule
+    # 이 datamodule은 HDMAPDataset을 사용하여 TIFF를 tifffile로 로딩
+    logger.info("Creating AllDomainsHDMAPDataModule...")
+    datamodule = AllDomainsHDMAPDataModule(
+        root=data_root,
+        domains=domains,
+        train_batch_size=batch_size,
+        eval_batch_size=batch_size,
+        num_workers=8,
+        val_split_mode="from_test",
+        val_split_ratio=0.1,
+        seed=seed,
+    )
 
-    # Use context manager for automatic cleanup
-    with temporary_combined_dataset(data_root_path, domains) as combined_root:
-        logger.info("Creating combined dataset...")
+    # Set val_check_interval to safe fixed value
+    val_check_interval = 200
+    logger.info(f"Using val_check_interval={val_check_interval}")
 
-        train_count, test_good_count, test_fault_count = create_combined_dataset(
-            data_root_path, domains, combined_root
-        )
+    engine = Engine(
+        max_steps=max_steps,
+        accelerator="gpu",
+        devices=[gpu_id],
+        val_check_interval=val_check_interval,
+        callbacks=callbacks,
+        default_root_dir=str(experiment_dir),
+        logger=tb_logger,
+        gradient_clip_val=DEFAULT_GRADIENT_CLIP_VAL,
+    )
 
-        logger.info(f"Created combined dataset at: {combined_root}")
-        logger.info(f"  Train samples: {train_count}")
-        logger.info(f"  Test good: {test_good_count}")
-        logger.info(f"  Test fault: {test_fault_count}")
+    # Train
+    logger.info("Starting training...")
+    engine.fit(model, datamodule=datamodule)
 
-        if train_count == 0:
-            raise RuntimeError("No training samples found!")
-
-        # Create datamodule from combined dataset
-        datamodule = Folder(
-            name="HDMAP_MultiClass",
-            root=combined_root,
-            normal_dir="train/good",
-            abnormal_dir="test/fault",
-            normal_test_dir="test/good",
-            train_batch_size=batch_size,
-            eval_batch_size=batch_size,
-            num_workers=8,
-            seed=42,
-            val_split_mode="from_test",
-            val_split_ratio=0.1,
-        )
-
-        # Calculate val_check_interval
-        estimated_batches_per_epoch = max(1, train_count // batch_size)
-        val_check_interval = min(MAX_VAL_CHECK_INTERVAL, estimated_batches_per_epoch)
-        logger.info(f"Using val_check_interval={val_check_interval}")
-
-        engine = Engine(
-            max_steps=max_steps,
-            accelerator="gpu",
-            devices=[gpu_id],
-            val_check_interval=val_check_interval,
-            callbacks=callbacks,
-            default_root_dir=str(experiment_dir),
-            logger=tb_logger,
-            gradient_clip_val=DEFAULT_GRADIENT_CLIP_VAL,
-        )
-
-        # Train
-        logger.info("Starting training...")
-        engine.fit(model, datamodule=datamodule)
-
-        # Test
-        logger.info("Evaluating model...")
-        test_results = engine.test(model, datamodule=datamodule)
+    # Test
+    logger.info("Evaluating model...")
+    test_results = engine.test(model, datamodule=datamodule)
 
     # Extract overall AUROC
     if not test_results:
@@ -732,34 +1213,83 @@ def run_multiclass_experiment(
 
     logger.info(f"Overall Test AUROC: {format_auroc(overall_auroc)}")
 
-    # Evaluate per-domain (final evaluation)
-    logger.info("\nPer-Domain AUROC (Final):")
-    model.eval()
-    device = next(model.parameters()).device
+    # Evaluate per-domain (final evaluation) using same HDMAPDataset-based dataloaders
+    logger.info("\nPer-Domain Evaluation (Final):")
 
-    domain_results: dict[str, float] = {}
+    # Explicitly use GPU (engine.test() may move model to CPU)
+    device = torch.device(f"cuda:{gpu_id}")
+    model = model.to(device)
+    model.eval()
+
+    domain_metrics: dict[str, dict[str, float]] = {}
+    domain_results_for_viz: dict[str, tuple[list[int], list[float]]] = {}  # For score distribution plots
+    all_labels: list[int] = []
+    all_scores: list[float] = []
+
     for domain in domains:
         labels, scores = evaluate_domain(model, test_dataloaders[domain], device)
-        auroc = compute_auroc_safe(labels, scores)
-        domain_results[domain] = auroc
-        logger.info(f"  {domain}: {format_auroc(auroc)}")
+        metrics = compute_comprehensive_metrics(labels, scores)
+        domain_metrics[domain] = metrics
+        domain_results_for_viz[domain] = (labels, scores)  # Store for score distribution visualization
+        all_labels.extend(labels)
+        all_scores.extend(scores)
+        logger.info(f"  {domain}: AUROC={metrics['auroc']*100:.2f}%, TPR@1%={metrics['tpr_at_fpr_1pct']*100:.2f}%, TPR@5%={metrics['tpr_at_fpr_5pct']*100:.2f}%")
 
-    # Compute mean
-    mean_auroc = safe_mean(list(domain_results.values()))
-    logger.info(f"  Mean: {format_auroc(mean_auroc)}")
+        # Generate per-domain score distribution visualization
+        visualize_score_distribution(labels, scores, domain, experiment_dir)
+
+        # Export per-domain scores to CSV
+        export_domain_scores_to_csv(test_dataloaders[domain], labels, scores, domain, experiment_dir)
+
+        # Generate per-domain sample visualizations (anomaly maps overlaid on images)
+        visualize_domain_predictions(
+            model=model,
+            dataloader=test_dataloaders[domain],
+            device=device,
+            output_dir=experiment_dir,
+            domain=domain,
+            max_samples=50,  # 50 good + 50 fault per domain
+        )
+
+    # Generate all-domains score comparison visualization
+    visualize_all_domains_score_comparison(domain_results_for_viz, experiment_dir)
+
+    # Compute overall metrics from pooled data
+    overall_metrics = compute_comprehensive_metrics(all_labels, all_scores)
+
+    # Compute mean of per-domain metrics
+    metric_names = ["auroc", "tpr_at_fpr_1pct", "tpr_at_fpr_5pct", "precision", "recall", "f1_score", "accuracy"]
+    mean_metrics = {
+        name: safe_mean([domain_metrics[d][name] for d in domains])
+        for name in metric_names
+    }
+
+    logger.info(f"\n  Per-Domain Mean AUROC: {mean_metrics['auroc']*100:.2f}%")
+    logger.info(f"  Overall (Pooled) AUROC: {overall_metrics['auroc']*100:.2f}%")
+
+    # Print comprehensive table
+    logger.info("\n" + format_metrics_table(domain_metrics))
+    logger.info(f"\n{'Mean':<10} {mean_metrics['auroc']*100:>7.2f}% {mean_metrics['tpr_at_fpr_1pct']*100:>7.2f}% "
+                f"{mean_metrics['tpr_at_fpr_5pct']*100:>7.2f}% {mean_metrics['precision']*100:>7.2f}% "
+                f"{mean_metrics['recall']*100:>7.2f}% {mean_metrics['f1_score']*100:>7.2f}% {mean_metrics['accuracy']*100:>7.2f}%")
 
     # Save results
     results: dict[str, Any] = {
         "experiment_type": "multiclass_unified",
+        "method": "GEM_Pooling",
+        "gem_p": gem_p,
+        "learnable_gem_p": learnable_gem_p,
         "domains": domains,
         "max_steps": max_steps,
         "batch_size": batch_size,
         "encoder_name": encoder_name,
         "overall_auroc": float(overall_auroc),
-        "per_domain_auroc": {k: float(v) for k, v in domain_results.items()},
-        "mean_domain_auroc": float(mean_auroc),
+        "per_domain_metrics": {k: v for k, v in domain_metrics.items()},
+        "mean_metrics": mean_metrics,
+        "overall_pooled_metrics": overall_metrics,
         "training_history": per_domain_callback.history,
         "timestamp": datetime.now().isoformat(),
+        "data_loading": "tifffile (unified)",  # 통합 로딩 방식 기록
     }
 
     with open(experiment_dir / "results.json", "w") as f:
@@ -784,6 +1314,9 @@ def run_singleclass_experiments(
 ) -> dict[str, Any]:
     """Run single-class (per-domain) training with DinomalyGEM.
 
+    **통합 데이터 로딩**: HDMAPDataModule을 사용하여 Training과 Testing 동일한 방식 사용.
+    - TIFF 파일: tifffile로 로딩 (float32 정밀도 유지, NO clipping)
+
     Args:
         data_root: Path to dataset root.
         domains: List of domain names.
@@ -804,6 +1337,7 @@ def run_singleclass_experiments(
     logger.info("=" * 60)
     logger.info(f"Seed: {seed}")
     logger.info(f"GEM p: {gem_p} (learnable: {learnable_gem_p})")
+    logger.info("Using HDMAPDataModule (tifffile-based TIFF loading)")
 
     all_results: dict[str, dict[str, Any]] = {}
 
@@ -818,28 +1352,21 @@ def run_singleclass_experiments(
         experiment_dir = output_dir / f"singleclass_{domain}"
         experiment_dir.mkdir(parents=True, exist_ok=True)
 
-        domain_path = Path(data_root) / domain
-        if not domain_path.exists():
-            raise FileNotFoundError(f"Domain path not found: {domain_path}")
-
         # Setup evaluator
         val_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="val_image_")
         test_auroc = AUROC(fields=["pred_score", "gt_label"], prefix="test_image_")
         evaluator = Evaluator(val_metrics=[val_auroc], test_metrics=[test_auroc])
 
-        # Create datamodule
-        datamodule = Folder(
-            name=f"HDMAP_{domain}",
-            root=domain_path,
-            normal_dir="train/good",
-            abnormal_dir="test/fault",
-            normal_test_dir="test/good",
+        # Create datamodule using HDMAPDataModule (tifffile-based TIFF loading)
+        datamodule = HDMAPDataModule(
+            root=data_root,
+            domain=domain,
             train_batch_size=batch_size,
             eval_batch_size=batch_size,
             num_workers=8,
-            seed=42,
             val_split_mode="from_test",
             val_split_ratio=0.1,
+            seed=seed,
         )
 
         # Create model (DinomalyGEM)
@@ -848,6 +1375,7 @@ def run_singleclass_experiments(
             bottleneck_dropout=DEFAULT_BOTTLENECK_DROPOUT,
             evaluator=evaluator,
             pre_processor=True,
+            visualizer=False,  # Disable default ImageVisualizer
             gem_p=gem_p,
             learnable_gem_p=learnable_gem_p,
         )
@@ -859,9 +1387,8 @@ def run_singleclass_experiments(
             version="",
         )
 
-        # Val check interval
-        estimated_batches = max(1, 1000 // batch_size)
-        val_check_interval = min(DEFAULT_VAL_CHECK_INTERVAL, estimated_batches)
+        # Val check interval - safe fixed value
+        val_check_interval = 50
 
         engine = Engine(
             max_steps=max_steps,
@@ -890,6 +1417,8 @@ def run_singleclass_experiments(
         all_results[domain] = {
             "auroc": float(auroc),
             "max_steps": max_steps,
+            "gem_p": gem_p,
+            "data_loading": "tifffile (unified)",
         }
 
         # Save domain results
@@ -969,7 +1498,7 @@ def main() -> None:
     parser.add_argument(
         "--data-root",
         type=str,
-        default=HDMAP_PNG_ROOT,
+        default=HDMAP_TIFF_ROOT,
         help="Path to HDMAP dataset",
     )
     parser.add_argument(

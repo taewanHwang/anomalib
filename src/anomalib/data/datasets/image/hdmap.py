@@ -26,11 +26,13 @@ Domains / 도메인:
 
 """
 
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import tifffile
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -41,6 +43,8 @@ from anomalib.data.datasets.base import AnomalibDataset
 from anomalib.data.errors import MisMatchError
 from anomalib.data.utils import LabelName, Split, validate_path
 from anomalib.utils import deprecate
+
+logger = logging.getLogger(__name__)
 
 IMG_EXTENSIONS = (".tiff", ".tif", ".TIFF", ".TIF", ".png", ".PNG")
 DOMAINS = (
@@ -154,11 +158,18 @@ class HDMAPDataset(AnomalibDataset):
             extensions=IMG_EXTENSIONS,
         )
 
+        # 데이터 로딩 검증 로깅 플래그 / Data loading verification logging flag
+        self._logged_data_stats = False
+        self._log_interval = 1000  # 이후 n개마다 로깅
+
     def load_and_resize_image(self, image_path: str) -> np.ndarray:
         """Load and resize image from file path.
 
-        TIFF(32bit float) 또는 PNG(16bit) 파일을 로딩하고 지정된 방법으로 리사이즈합니다.
-        PNG의 경우 [0, 1] 범위로 정규화합니다.
+        TIFF(32bit float) 파일은 tifffile로 로딩하여 float32 정밀도를 유지합니다.
+        PNG(16bit) 파일은 PIL로 로딩하고 [0, 1] 범위로 정규화합니다.
+
+        **중요**: TIFF 파일은 tifffile을 사용하여 로딩합니다. 이는 PIL보다 정확하게
+        float32 데이터를 보존합니다 (NO clipping, 원본 값 범위 유지).
 
         Args:
             image_path: Path to image file
@@ -166,29 +177,30 @@ class HDMAPDataset(AnomalibDataset):
         Returns:
             Resized image as numpy array (C, H, W) in float32 format
         """
-        # 이미지 파일 로딩
-        with Image.open(image_path) as img:
-            # 이미지 모드에 따라 처리
-            if img.mode == 'F':
-                # 32bit TIFF (정규화 불필요)
-                img_array = np.array(img).astype(np.float32)
-            elif img.mode == 'I;16':
-                # 16bit PNG (0~65535 → 0~1 정규화)
-                img_array = np.array(img, dtype=np.uint16).astype(np.float32) / 65535.0
-            else:
-                # 기타 모드는 float32로 변환
-                img_array = np.array(img).astype(np.float32)
+        # TIFF 파일인지 확인
+        if image_path.lower().endswith(('.tiff', '.tif')):
+            # tifffile로 TIFF 로딩 (float32 정밀도 유지, NO clipping)
+            img_array = tifffile.imread(image_path).astype(np.float32)
+        else:
+            # 기타 파일은 PIL로 로딩
+            with Image.open(image_path) as img:
+                if img.mode == 'I;16':
+                    # 16bit PNG (0~65535 → 0~1 정규화)
+                    img_array = np.array(img, dtype=np.uint16).astype(np.float32) / 65535.0
+                else:
+                    # 기타 모드는 float32로 변환
+                    img_array = np.array(img).astype(np.float32)
 
-            # 그레이스케일을 RGB로 변환
-            if len(img_array.shape) == 2:
-                img_array = np.stack([img_array, img_array, img_array], axis=0)  # (3, H, W)
-            elif len(img_array.shape) == 3:
-                img_array = np.transpose(img_array, (2, 0, 1))  # (H, W, C) -> (C, H, W)
-        
+        # 그레이스케일을 RGB로 변환
+        if len(img_array.shape) == 2:
+            img_array = np.stack([img_array, img_array, img_array], axis=0)  # (3, H, W)
+        elif len(img_array.shape) == 3:
+            img_array = np.transpose(img_array, (2, 0, 1))  # (H, W, C) -> (C, H, W)
+
         # 리사이즈 적용 (필요한 경우)
         if self.target_size is not None:
             img_array = self.resize_image(img_array)
-            
+
         return img_array
     
     def resize_image(self, img: np.ndarray) -> np.ndarray:
@@ -285,31 +297,87 @@ class HDMAPDataset(AnomalibDataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         """Get dataset item with custom TIFF loading and resizing.
-        
+
         Args:
             index: Sample index
-            
+
         Returns:
             Dict containing image, label, and metadata
         """
         # 부모 클래스의 기본 __getitem__ 호출
         item = super().__getitem__(index)
-        
+
         # 커스텀 TIFF 로딩으로 이미지 교체
         sample = self.samples.iloc[index]
         image_path = sample.image_path
-        
+
         # 커스텀 이미지 로딩 및 리사이즈
         image = self.load_and_resize_image(image_path)
-        
+
         # torch tensor로 변환
         custom_image = torch.from_numpy(image).float()
-        
+
+        # 데이터 로딩 검증 로깅 (첫 번째 샘플에서만)
+        if not self._logged_data_stats:
+            self._log_data_statistics(custom_image, image_path)
+            self._logged_data_stats = True
+
         # 새로운 item 생성 (기존 item의 모든 속성 복사 + 커스텀 이미지)
         from dataclasses import replace
         new_item = replace(item, image=custom_image)
-        
+
         return new_item
+
+    def _log_data_statistics(self, image: torch.Tensor, image_path: str) -> None:
+        """Log data loading statistics for verification.
+
+        데이터 로딩이 올바르게 수행되었는지 확인하기 위한 통계 로깅.
+        - 값 범위 (min, max)
+        - 평균, 표준편차
+        - 데이터 타입
+        - NaN/Inf 확인
+
+        Args:
+            image: Loaded image tensor (C, H, W)
+            image_path: Path to the image file
+        """
+        is_tiff = image_path.lower().endswith(('.tiff', '.tif'))
+        file_type = "TIFF" if is_tiff else "PNG"
+
+        # 통계 계산
+        img_min = image.min().item()
+        img_max = image.max().item()
+        img_mean = image.mean().item()
+        img_std = image.std().item()
+        has_nan = torch.isnan(image).any().item()
+        has_inf = torch.isinf(image).any().item()
+
+        # 클리핑 여부 확인 (TIFF는 [0,1] 범위 밖도 허용)
+        is_clipped = (img_min >= 0.0 and img_max <= 1.0)
+        clipping_status = "CLIPPED to [0,1]" if is_clipped else "NOT clipped (raw values)"
+
+        # 상태 메시지 결정
+        if is_tiff and not is_clipped:
+            status_msg = "  [OK] TIFF float32 preserved (NO clipping)"
+        elif is_tiff and is_clipped:
+            status_msg = "  [WARN] TIFF values in [0,1] - possible clipping or normalized data"
+        else:
+            status_msg = f"  [INFO] {file_type} loaded normally"
+
+        # domain 속성 안전하게 가져오기 (AllDomainsHDMAPDataset은 domains 사용)
+        domain_info = getattr(self, 'domain', None) or getattr(self, 'domains', 'unknown')
+        if isinstance(domain_info, list):
+            domain_info = ','.join(domain_info)
+
+        logger.info(
+            f"[HDMAPDataset] Data Loading Verification ({domain_info}/{self.split}):\n"
+            f"  File: {Path(image_path).name} ({file_type})\n"
+            f"  Shape: {tuple(image.shape)}, dtype: {image.dtype}\n"
+            f"  Range: [{img_min:.6f}, {img_max:.6f}] - {clipping_status}\n"
+            f"  Mean: {img_mean:.6f}, Std: {img_std:.6f}\n"
+            f"  NaN: {has_nan}, Inf: {has_inf}\n"
+            f"{status_msg}"
+        )
 
 
 def make_hdmap_dataset(
