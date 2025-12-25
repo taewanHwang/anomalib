@@ -1105,14 +1105,16 @@ def run_multiclass_experiment(
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
     # Create per-domain test dataloaders using HDMAPDataset (same loading as training)
-    # 이렇게 하면 Training과 Testing에서 동일한 이미지 로딩 방식 사용
+    # IMPORTANT: target_size=None to match training behavior
+    # - Training: raw TIFF (31x95) → PreProcessor bilinear resize to 448 → CenterCrop to 392
+    # - If target_size is set, HDMAPDataset uses nearest neighbor resize which produces different results
     test_dataloaders: dict[str, DataLoader] = {}
     for domain in domains:
         test_dataset = HDMAPDataset(
             root=data_root,
             domain=domain,
             split="test",
-            target_size=(image_size, image_size),  # Resize to match training
+            target_size=None,  # Let PreProcessor handle resize (same as training)
         )
         test_dataloaders[domain] = DataLoader(
             test_dataset,

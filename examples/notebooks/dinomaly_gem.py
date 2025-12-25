@@ -3,11 +3,12 @@ Dinomaly GEM (Generalized Mean Pooling) for HDMAP Dataset.
 
 This script implements Method 1: GEM Pooling variant of Dinomaly.
 GEM pooling replaces simple average pooling with generalized mean pooling
-for anomaly map aggregation.
+for anomaly map aggregation. GEM is applied both during training
+(via CosineHardMiningGEMLoss) and inference.
 
 Key features:
 - --gem-p: GEM pooling power parameter (default: 3.0)
-- --learnable-gem-p: Make gem_p a learnable parameter
+- --gem-factor: Gradient reduction factor for easy points (default: 0.3)
 - --seed: Specify random seed for reproducibility
 - --result-dir: Specify output directory for results
 
@@ -266,8 +267,8 @@ def evaluate_domain(
 
     logger.info(f"  Evaluating on device: {device} (samples: {len(dataloader.dataset)})")
 
-    # Use updated torch.amp.autocast API (torch.cuda.amp.autocast is deprecated)
-    with torch.no_grad(), torch.amp.autocast('cuda', enabled=True):
+    # Disable autocast for GEM - power operations (x^p, x^(1/p)) are unstable with FP16
+    with torch.no_grad():
         for batch in dataloader:
             # HDMAPDataset returns ImageBatch (dataclass), not dict
             # Support both formats for compatibility
@@ -371,7 +372,8 @@ def visualize_domain_predictions(
     fault_count = 0
 
     # Process selected indices directly (random order)
-    with torch.no_grad(), torch.amp.autocast('cuda', enabled=True):
+    # Note: autocast disabled for GEM - power operations unstable with FP16
+    with torch.no_grad():
         for idx in selected_indices:
             sample = dataset[idx]
 
@@ -1068,7 +1070,7 @@ def run_multiclass_experiment(
     encoder_name: str = "dinov2reg_vit_base_14",
     seed: int = 42,
     gem_p: float = 3.0,
-    learnable_gem_p: bool = False,
+    gem_factor: float = 0.3,
 ) -> dict[str, Any]:
     """Run multi-class unified training experiment with DinomalyGEM.
 
@@ -1090,7 +1092,7 @@ def run_multiclass_experiment(
         encoder_name: DINOv2 encoder variant.
         seed: Random seed for reproducibility.
         gem_p: GEM pooling power parameter.
-        learnable_gem_p: If True, gem_p becomes learnable.
+        gem_factor: Gradient reduction factor for easy points (0.3 default).
 
     Returns:
         Dictionary containing experiment results.
@@ -1101,7 +1103,7 @@ def run_multiclass_experiment(
     logger.info("MULTI-CLASS UNIFIED TRAINING (GEM Pooling)")
     logger.info("=" * 60)
     logger.info(f"Seed: {seed}")
-    logger.info(f"GEM p: {gem_p} (learnable: {learnable_gem_p})")
+    logger.info(f"GEM p: {gem_p}, factor: {gem_factor}")
     logger.info(f"Domains: {domains}")
     logger.info(f"Max steps: {max_steps}")
     logger.info(f"Batch size: {batch_size}")
@@ -1112,14 +1114,16 @@ def run_multiclass_experiment(
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
     # Create per-domain test dataloaders using HDMAPDataset (same loading as training)
-    # 이렇게 하면 Training과 Testing에서 동일한 이미지 로딩 방식 사용
+    # IMPORTANT: target_size=None to match training behavior
+    # - Training: raw TIFF (31x95) → PreProcessor bilinear resize to 448 → CenterCrop to 392
+    # - If target_size is set, HDMAPDataset uses nearest neighbor resize which produces different results
     test_dataloaders: dict[str, DataLoader] = {}
     for domain in domains:
         test_dataset = HDMAPDataset(
             root=data_root,
             domain=domain,
             split="test",
-            target_size=(image_size, image_size),  # Resize to match training
+            target_size=None,  # Let PreProcessor handle resize (same as training)
         )
         test_dataloaders[domain] = DataLoader(
             test_dataset,
@@ -1142,7 +1146,7 @@ def run_multiclass_experiment(
         pre_processor=True,
         visualizer=False,  # Disable default ImageVisualizer (per-domain viz in visualizations/ folder)
         gem_p=gem_p,
-        learnable_gem_p=learnable_gem_p,
+        gem_factor=gem_factor,
     )
 
     # Setup callbacks
@@ -1278,7 +1282,7 @@ def run_multiclass_experiment(
         "experiment_type": "multiclass_unified",
         "method": "GEM_Pooling",
         "gem_p": gem_p,
-        "learnable_gem_p": learnable_gem_p,
+        "gem_factor": gem_factor,
         "domains": domains,
         "max_steps": max_steps,
         "batch_size": batch_size,
@@ -1310,7 +1314,7 @@ def run_singleclass_experiments(
     encoder_name: str = "dinov2reg_vit_base_14",
     seed: int = 42,
     gem_p: float = 3.0,
-    learnable_gem_p: bool = False,
+    gem_factor: float = 0.3,
 ) -> dict[str, Any]:
     """Run single-class (per-domain) training with DinomalyGEM.
 
@@ -1327,7 +1331,7 @@ def run_singleclass_experiments(
         encoder_name: DINOv2 encoder variant.
         seed: Random seed for reproducibility.
         gem_p: GEM pooling power parameter.
-        learnable_gem_p: If True, gem_p becomes learnable.
+        gem_factor: Gradient reduction factor for easy points (0.3 default).
 
     Returns:
         Dictionary containing per-domain results.
@@ -1336,7 +1340,7 @@ def run_singleclass_experiments(
     logger.info("SINGLE-CLASS (PER-DOMAIN) TRAINING (GEM Pooling)")
     logger.info("=" * 60)
     logger.info(f"Seed: {seed}")
-    logger.info(f"GEM p: {gem_p} (learnable: {learnable_gem_p})")
+    logger.info(f"GEM p: {gem_p}, factor: {gem_factor}")
     logger.info("Using HDMAPDataModule (tifffile-based TIFF loading)")
 
     all_results: dict[str, dict[str, Any]] = {}
@@ -1377,7 +1381,7 @@ def run_singleclass_experiments(
             pre_processor=True,
             visualizer=False,  # Disable default ImageVisualizer
             gem_p=gem_p,
-            learnable_gem_p=learnable_gem_p,
+            gem_factor=gem_factor,
         )
 
         # Setup TensorBoard logger
@@ -1491,9 +1495,10 @@ def main() -> None:
         help="GEM pooling power parameter (default: 3.0)",
     )
     parser.add_argument(
-        "--learnable-gem-p",
-        action="store_true",
-        help="Make GEM p parameter learnable",
+        "--gem-factor",
+        type=float,
+        default=0.3,
+        help="Gradient reduction factor for easy points in hard mining (default: 0.3)",
     )
     parser.add_argument(
         "--data-root",
@@ -1539,14 +1544,14 @@ def main() -> None:
         "data_root": args.data_root,
         "seed": args.seed,
         "gem_p": args.gem_p,
-        "learnable_gem_p": args.learnable_gem_p,
+        "gem_factor": args.gem_factor,
         "timestamp": timestamp,
     }
     with open(output_dir / "experiment_settings.json", "w") as f:
         json.dump(settings, f, indent=2)
 
     logger.info(f"Seed: {args.seed}")
-    logger.info(f"GEM p: {args.gem_p} (learnable: {args.learnable_gem_p})")
+    logger.info(f"GEM p: {args.gem_p}, factor: {args.gem_factor}")
     logger.info(f"Output directory: {output_dir}")
 
     results: dict[str, Any] = {}
@@ -1562,7 +1567,7 @@ def main() -> None:
             encoder_name=args.encoder,
             seed=args.seed,
             gem_p=args.gem_p,
-            learnable_gem_p=args.learnable_gem_p,
+            gem_factor=args.gem_factor,
         )
 
     if args.mode in ["singleclass", "compare"]:
@@ -1576,7 +1581,7 @@ def main() -> None:
             seed=args.seed,
             encoder_name=args.encoder,
             gem_p=args.gem_p,
-            learnable_gem_p=args.learnable_gem_p,
+            gem_factor=args.gem_factor,
         )
 
     # Comparison summary

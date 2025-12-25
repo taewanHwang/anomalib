@@ -89,6 +89,30 @@ test_dataset = HDMAPDataset(
 | **AUROC 감소 (Step 1000→3000)** | 과적합 (HDMAP 다양성 < MVTec) | max_steps=1500~2000 권장 |
 | **TPR@FPR=0%** | NaN으로 ROC curve 계산 실패 | NaN 발생 시 해당 도메인 스킵 또는 경고 |
 | **Baseline=GEM 동일 결과** | 100 steps로는 차이 안 나타남 | 충분한 학습 후 비교 필요 |
+| **Per-Domain AUROC 불일치** | HDMAPDataset의 `target_size` 설정으로 인한 보간 방법 차이 | `target_size=None` 사용 (아래 상세 설명) |
+
+##### Per-Domain 평가 버그 수정 (2024-12-24)
+
+**증상**: Engine.test() AUROC = 98.61%, Per-Domain Mean = 41.76%
+
+**근본 원인**: 이미지 리사이즈 보간 방법 불일치
+- Training: Raw TIFF (31x95) → **PreProcessor bilinear** resize to 448 → CenterCrop to 392
+- Per-Domain 평가 (버그): HDMAPDataset `target_size=(448, 448)` → **nearest neighbor** resize → PreProcessor (no-op)
+
+**nearest neighbor vs bilinear** 보간은 31x95 → 448x448 업스케일링 시 완전히 다른 픽셀 값을 생성하여 다른 anomaly score 분포를 유발.
+
+**해결책**: Per-domain 평가에서 `target_size=None` 사용
+```python
+# CORRECT: Let PreProcessor handle resize (same as training)
+test_dataset = HDMAPDataset(root=data_root, domain=domain, split="test", target_size=None)
+
+# WRONG: Different interpolation method than training
+test_dataset = HDMAPDataset(root=data_root, domain=domain, split="test", target_size=(448, 448))
+```
+
+**수정 후 결과**:
+- domain_A: 99.08%, domain_B: 99.11%, domain_C: 97.63%, domain_D: 98.23%
+- Per-Domain Mean: 98.51% (Engine.test() 98.59%와 일치!)
 
 #### 원본 Dinomaly 학습 조건 (MVTec)
 ```
@@ -212,7 +236,11 @@ done
 
 ### 실험 설정
 - **모델**: DinomalyGEM
-- **변경점**: average pooling → GEM pooling (p=3)
+- **변경점**:
+  - Training: CosineHardMiningGEMLoss (scale별 distance를 GEM으로 aggregate 후 hard mining)
+  - Inference: GEM pooling (p=3)으로 anomaly map aggregation
+- **gem_p**: 3.0 (GEM power parameter)
+- **gem_factor**: 0.3 (easy point gradient 감소 비율)
 - **Seeds**: 42, 43, 44, 123, 456 (5회 반복)
 - **결과 폴더**: `results/dinomaly_gem/`
 
@@ -228,6 +256,7 @@ for seed in 42 43 44 123 456; do
         --seed $seed \
         --gpu $gpu_id \
         --gem-p 3.0 \
+        --gem-factor 0.3 \
         --result-dir results/dinomaly_gem \
         > logs/gem_seed${seed}.log 2>&1 &
     gpu_id=$((gpu_id + 1))
