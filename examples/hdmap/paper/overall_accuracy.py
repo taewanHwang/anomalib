@@ -14,7 +14,7 @@ linestyles = ['-', '--', '-.', ':']
 markers = ['o', 's', '^', 'D']
 markersizes = [6, 6, 7, 6]
 
-methods = ["DRAEM","CutPaste","2D CNN","UniNet","Rerverse\nDistillation","Padim","Dinomaly","PatchCore","C-Flow","Scaled\nCutPaste", "Proposed"]
+methods = ["DRAEM","CutPaste","2D CNN","UniNet","Reverse\nDistillation","PaDiM","Dinomaly","PatchCore","CFlow-AD","Scaled\nCutPaste", "Proposed"]
 domain_avg = np.array([51.0, 65.9, 70.6, 72.4 ,78.0, 81.7, 90.9, 91.6, 92.0, 97.1, 99.6])
 domain_avg_std = np.array([2.0, 18.0, 0.8, 9.8, 8.3, 9.3, 5.7, 7.7, 6.2, 0.5, 0.4])
 
@@ -27,7 +27,7 @@ plt.figure(figsize=(10,6))
 
 plt.errorbar(x_positions, domain_avg, yerr=domain_avg_std, marker=markers[0], linewidth=2,
              linestyle='-', color=colors[0], markersize=markersizes[0],
-             capsize=4, capthick=1.5, elinewidth=1.5, alpha=0.8, label="Average")
+             capsize=4, capthick=1.5, elinewidth=1.5, alpha=0.8, label="Domain average")
 
 # Domain C - error bar를 대시선으로
 c_line = plt.errorbar(x_positions, domain_c, yerr=domain_c_std, marker=markers[1], linewidth=2,
@@ -36,12 +36,12 @@ c_line = plt.errorbar(x_positions, domain_c, yerr=domain_c_std, marker=markers[1
 # error bar 선도 대시선으로 설정
 c_line[-1][0].set_linestyle('--')
 
-plt.title("Accuracy Comparison", fontsize=16)
-plt.xlabel("Methods", fontsize=14)
+plt.title("Overall fault detection accuracy", fontsize=16)
+plt.xlabel("Method", fontsize=14)
 plt.ylabel("Accuracy (%)", fontsize=14)
 plt.xticks(x_positions, methods)
 plt.ylim(45, 105)
-plt.grid(axis='y', linestyle='--', alpha=0.3, linewidth=0.5, color='gray')
+plt.grid(axis='both', linestyle='--', alpha=0.3, linewidth=0.5, color='gray')
 plt.legend(fontsize=12, labelspacing=1.0)
 
 # Save to paper directory
