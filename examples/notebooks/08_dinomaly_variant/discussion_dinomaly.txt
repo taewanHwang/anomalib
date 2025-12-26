@@ -1,0 +1,143 @@
+4) 네 피드백 반영한 “Dinomaly 내부에 prior를 자연스럽게 넣는” 방향성 제안
+
+너가 본질적으로 원하는 건 이거였지:
+
+“결함(가로 패턴)이 재구성되면 안 되게 만들어서,
+결함에서 재구성 실패가 더 커지도록 하고 싶다.”
+
+이건 Dinomaly의 언어로 바꾸면:
+
+Decoder가 ‘가로 구조 이상’을 일반화해서 복원해버리는 걸 막고
+
+정상에서는 잘 복원, 가로 결함에서는 더 실패하도록
+
+훈련 과정에서 decoder의 “복원 방식/제약/노이즈”를 설계해야 한다
+
+여기서 가장 자연스럽게 들어가는 지점은 3.2 Noisy Bottleneck + 3.4 Loose restoration / loose loss야.
+
+제안 A (가장 Dinomaly스럽고 설득력 높음): Spatial Token Directional Dropout (Decoder-side, training only)
+핵심 아이디어
+
+MLP 뉴런이 아니라, **공간 토큰(패치 위치)**에 방향 구조를 가진 dropout을 건다.
+단, “가로 줄 전체를 날리는 강한 Stripe dropout”이 아니라,
+Domain C 특성(희미 + 끊김)을 반영해서 **‘부분적 가로 연속성을 교란’**하는 형태로.
+
+왜 이게 Dinomaly와 잘 맞냐?
+
+Dinomaly의 dropout 해석은 “pseudo feature anomaly를 만든다”였지?
+그러면 우리는 prior를 이용해:
+
+pseudo anomaly를 **‘가로 결함처럼 보이는 형태’**로 만들거나,
+
+혹은 가로 방향 정보를 약화시켜서 decoder가 가로 구조를 쉽게 복원하는 습관을 못 들이게 만들 수 있어.
+
+두 가지 모드 중 무엇이 더 맞나?
+
+네 목표는 “결함에서 복원을 더 못하게”니까, 나는 **두 번째(가로 복원 능력 억제)**가 더 안전하다고 봐.
+
+A1) Horizontal-Connectivity Suppression Dropout
+
+디코더 입력 토큰 또는 디코더 중간 토큰에서
+
+같은 row(같은 y)의 이웃 토큰들을 부분적으로 끊어서
+
+디코더가 “가로로 이어진 정보를 이용해 매끈하게 메우는” 일반화를 못 하게 함.
+
+중요 포인트:
+이건 “완전 row 제거”가 아니라 짧은 구간을 랜덤으로 끊는(drop segments) 방식이어야 함.
+(네 결함이 “중간이 끊김”이라 완전 stripe 가정이 틀림)
+
+A2) Direction-Aware Dropout schedule
+
+학습 초반엔 약하게(정상 복원 학습)
+
+후반엔 강하게(가로 구조 일반화 억제)
+
+제안 B (너의 Top-q 성공을 그대로 확장): Directional Tail Mining in Loss (훈련 목적함수 내 mining 기준을 방향 구조로)
+
+너는 이미 “tail을 강화하면 Domain C가 오른다”를 증명했어(q=2%).
+그러면 이제 tail을 정의할 때 prior를 넣으면 됨.
+
+핵심
+
+기존 Top-q는 픽셀 단위 tail.
+우리가 원하는 건 ‘가로 구조로 일관되게 나타나는 tail’.
+
+근데 여기서 pooling/head로 가면 너가 싫어하니,
+loss 내부에서만 “구조적 tail”을 계산해서 mining mask를 만들고,
+최종 loss는 기존 방식처럼 “distance map의 mean/topq”로 유지하는 형태로 설계할 수 있어.
+
+예:
+
+mining mask를 만들 때만 “가로 구조성 점수”를 쓰고
+
+loss 자체는 “masked top-q”를 쓰는 식
+
+이러면
+
+논문 기여: Dinomaly loose loss의 hard-mining criterion을 물리 prior로 바꿨다
+
+inference 변경 없음(너가 원하는 방향)
+
+제안 C (Linear Attention과 결합하는 Dinomaly스러운 방식): Direction-Biased Unfocusing (Decoder LA에 방향 prior를 ‘약하게’ 주입)
+
+이건 더 논문화하기 좋은 “아키텍처 내부 변형”이 될 수 있어.
+다만 구현 난이도는 A/B보다 높음.
+
+아이디어
+
+Dinomaly는 linear attention이 “unfocusing”이라서 아이덴티티 매핑을 막는다고 주장해.
+그러면 우리는 여기에 prior를 이렇게 넣을 수 있어:
+
+가로 방향의 정보 전파가 “너무 잘 되지 않게”
+(가로 결함을 가로 문맥으로 메워버리는 걸 방지)
+
+구현 예:
+
+attention에서 relative positional bias를 “가로 방향 연결”에 패널티로 넣거나,
+
+K/V mixing에서 가로 이웃 토큰의 contribution을 약간 감소시키는 bias를 넣는 등
+
+장점:
+
+“pooling 트릭”이 아니라 decoder의 복원 메커니즘 자체를 건드림
+
+Dinomaly의 3.3 논리(softmax vs linear attention)와 연결해 논문 스토리 만들기 좋음
+
+단점:
+
+튜닝이 필요하고, 과하면 정상 복원도 깨질 수 있음
+
+내가 추천하는 우선순위 (너의 실험 흐름/리스크 기준)
+
+너는 이미 성능을 올리는 방향(Top-q)을 찾아냈고,
+이제 “prior 넣기”가 목적이니까, 성공 확률/논문화/구현 난이도 밸런스로는:
+
+B: Directional tail mining in loss (가장 안전, inference 불변, Top-q 연장선)
+
+A: Spatial token directional dropout (Dinomaly 3.2 Noisy bottleneck 확장, 강한 기여)
+
+C: Direction-biased linear attention (가장 Dinomaly스럽지만 리스크/튜닝 큼)
+
+마지막으로: 내가 너에게 되묻지 않고 바로 제안해야 하는 핵심 결정 1개
+
+너가 “pooling/score head는 제외”라고 했으니,
+prior를 넣는 목적은 둘 중 하나로 정리돼:
+
+(i) 훈련 중 pseudo anomaly를 ‘가로 결함스럽게’ 주입해서 디코더가 그걸 복원 못하게 만들기
+
+(ii) 훈련 중 mining 기준을 ‘가로 구조 tail’로 바꾸기 (너의 Top-q 철학 연장)
+
+내 의견은 지금 데이터(희미/끊김 stripe)와 너의 실험 히스토리(Top-q 성공)를 보면
+(ii)부터 가는 게 가장 확률 높고, 논문화도 깔끔해.
+
+원하면, 내가 다음 턴에서 “Directional tail mining loss”를 Dinomaly 코드에 어떻게 넣는지를
+
+어디에 hook을 걸지,
+
+어떤 텐서 shape에서 mask를 만들지,
+
+top-q와 hard-mining을 어떻게 합성할지,
+
+ablation을 어떻게 짤지
+를 구체적인 PyTorch 코드 스케치로 바로 적어줄게.

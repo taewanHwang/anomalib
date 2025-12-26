@@ -8,6 +8,8 @@ computing statistics and generating comparison tables.
 Usage:
     python examples/notebooks/analyze_results.py --result-dir results/dinomaly_baseline
     python examples/notebooks/analyze_results.py --result-dir results/dinomaly_gem
+    python examples/notebooks/analyze_results.py --result-dir results/dinomaly_topk
+    python examples/notebooks/analyze_results.py --result-dir results/dinomaly_topk_ablation
     python examples/notebooks/analyze_results.py --result-dir results/dinomaly_baseline results/dinomaly_gem --compare
 """
 
