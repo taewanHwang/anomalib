@@ -151,6 +151,132 @@ Score 시계열 플롯에서 4개의 뚜렷한 영역이 관찰됨:
 
 ---
 
+## 개선 방안 A 실험: Per-Image Normalization
+
+**실험 일자**: 2025-12-27
+
+### 실험 목적
+Cold/Warm 간 intensity 차이를 per-image normalization으로 제거하여 성능 개선 시도
+
+### 실험 방법
+
+3가지 per-image normalization 방법 테스트:
+
+| 방법 | 수식 | 설명 |
+|------|------|------|
+| **minmax** | `(x - min) / (max - min)` | 전체 범위를 [0,1]로 정규화 |
+| **robust (p5/p95)** | `(x - p5) / (p95 - p5)` | 극단값에 강건한 정규화 |
+| **robust_soft (p1/p99)** | `(x - p1) / (p99 - p1)` | 더 부드러운 정규화 (stretch 감소) |
+
+### 실험 결과 (Domain C, Zero-shot)
+
+| Method | All AUROC | Cold Only | Warm Only | Cold F vs Warm N |
+|--------|-----------|-----------|-----------|------------------|
+| **Baseline** | **73.05%** | **72.50%** | 75.53% | **64.25%** |
+| minmax | 69.24% | 56.74% | 81.16% | 58.92% |
+| robust (p5/p95) | 66.43% | 44.87% | 85.62% | 53.42% |
+| robust_soft (p1/p99) | 71.57% | 50.44% | **91.66%** | 53.08% |
+
+### 실패 원인 분석
+
+#### 1. Noise Amplification 문제
+
+Per-image normalization이 **Cold 이미지에서 noise를 크게 증폭**시킴:
+
+```
+Noise 증폭 분석 (robust p5/p95):
+
+Cold 이미지 (idx=327):
+  Original noise: 0.0439
+  Normalized noise: 0.2415
+  Amplification: 5.51x  ← 크게 증폭!
+
+Warm 이미지 (idx=625):
+  Original noise: 0.0885
+  Normalized noise: 0.2411
+  Amplification: 2.72x
+
+결론: Cold는 Warm보다 2.02배 더 noise가 증폭됨
+```
+
+#### 2. 원인 메커니즘
+
+```
+Cold 이미지 특성:
+- Dynamic range가 작음 (p95-p5 ≈ 0.15)
+- [0.15 range] → [1.0 range] = 6.7배 stretch
+- Fault 패턴과 noise가 함께 증폭
+- Signal-to-Noise Ratio (SNR) 저하
+- CLIP이 noise를 texture로 오인식
+
+Warm 이미지:
+- Dynamic range가 큼 (p95-p5 ≈ 0.29)
+- Stretch가 상대적으로 적음 (3.4배)
+- SNR 유지, 성능 향상
+```
+
+#### 3. WinCLIP 전처리와의 상호작용
+
+WinCLIP은 CLIP 전역 정규화를 사용:
+```python
+Normalize(mean=(0.48, 0.46, 0.41), std=(0.27, 0.26, 0.28))
+```
+
+이 전역 정규화 자체는 문제가 아님 (다른 데이터셋에서도 잘 작동).
+문제는 **per-image normalization이 local contrast/noise를 변화**시키는 것.
+
+### 시각적 증거
+
+#### Normalization 효과 비교
+`examples/hdmap/EDA/HDMAP_vis/results/`
+
+| 파일 | 설명 |
+|------|------|
+| `normalization_effect_domainC_fault_*.png` | Fault 이미지: Original vs MinMax vs Robust |
+| `normalization_effect_domainC_good_*.png` | Good 이미지: Original vs MinMax vs Robust |
+
+**시각화 구성**:
+- Row 1: Original (Cold 어둡고, Warm 밝음)
+- Row 2: MinMax normalized (비율 역전됨)
+- Row 3: Robust normalized (intensity 동일해짐)
+
+#### Noise Amplification 분석
+| 파일 | 설명 |
+|------|------|
+| `noise_amplification_domainC_*.png` | Cold/Warm noise 증폭 비교 |
+
+**시각화 구성**:
+- Row 1: 원본 vs 정규화 이미지
+- Row 2: Local noise map (Cold에서 더 빨갛게 = noise 많음)
+- Row 3: Histogram 분포
+- Row 4: Line profile (Cold 정규화 후 진폭 크게 증가)
+
+### 결론
+
+❌ **Per-image Normalization은 부적합**
+
+| 장점 | 단점 |
+|------|------|
+| Warm Only AUROC 향상 (75% → 92%) | Cold Only AUROC 급락 (72% → 50%) |
+| Cold/Warm intensity 차이 제거 | Noise 증폭으로 SNR 저하 |
+| | Cold Fault vs Warm Normal 개선 안됨 |
+
+### 다음 단계
+
+**방법 B (Score 후처리 정규화)** 시도 권장:
+- 원본 이미지 그대로 사용 (noise 증폭 없음)
+- CLIP이 정상적으로 feature 추출
+- 출력 score만 intensity로 보정
+
+```python
+# 예시
+normalized_score = score / image_mean_intensity
+# 또는
+normalized_score = score - alpha * image_mean_intensity
+```
+
+---
+
 ## 분석 스크립트
 
 분석에 사용된 스크립트들:
@@ -212,6 +338,40 @@ python examples/hdmap/EDA/winclip_baseline_post_analysis/analyze_score_vs_intens
 
 ### CSV 데이터
 - `domain_C_intensity_stats.csv` - 이미지별 intensity 통계
+
+---
+
+## Per-Image Normalization 시각화 파일
+
+분석 결과 시각화 파일 경로 (`examples/hdmap/EDA/HDMAP_vis/results/`):
+
+### Normalization Effect Comparison
+- `normalization_effect_domainC_fault_20251227_052502.png` - Fault 이미지 Original/MinMax/Robust 비교
+- `normalization_effect_domainC_good_20251227_052504.png` - Good 이미지 Original/MinMax/Robust 비교
+
+### Noise Amplification Analysis
+- `noise_amplification_domainC_20251227_054330.png` - Cold/Warm noise 증폭 비교
+
+### Per-Image Normalization 실험 결과
+실험 결과 파일 경로 (`results/winclip_hdmap_normalized/`):
+
+| 디렉토리 | 내용 |
+|----------|------|
+| `20251227_051036_minmax/` | MinMax normalization 결과 |
+| `20251227_051223_robust/` | Robust (p5/p95) normalization 결과 |
+| `20251227_054651_robust_soft/` | Robust Soft (p1/p99) normalization 결과 |
+
+각 디렉토리 구조:
+```
+results/winclip_hdmap_normalized/YYYYMMDD_HHMMSS_method/
+├── experiment_settings.json    # 실험 설정
+├── summary.json                # 결과 요약
+├── scores/
+│   └── domain_C_zero_shot_scores.csv  # 예측 score CSV
+└── visualizations/
+    └── domain_C/
+        └── score_distribution.png     # Score 분포 시각화
+```
 
 ---
 

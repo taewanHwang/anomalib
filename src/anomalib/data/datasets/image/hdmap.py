@@ -89,9 +89,19 @@ class HDMAPDataset(AnomalibDataset):
         target_size (tuple[int, int] | None, optional): Target image size (H, W) for resizing.
             Defaults to ``None`` (no resizing).
             / 리사이즈 타겟 크기 (H, W). 기본값은 ``None`` (리사이즈 안함)
-        resize_method (str, optional): Resize method - "resize", "black_padding", or "noise_padding".
+        resize_method (str, optional): Resize method. Available options:
+            - ``"resize"``: Nearest neighbor interpolation (default)
+            - ``"resize_bilinear"``: Bilinear interpolation (smoother)
+            - ``"resize_aspect_padding"``: Preserve aspect ratio, scale to fit, then pad
+            - ``"black_padding"``: No resize, just add black padding
+            - ``"noise_padding"``: No resize, just add noise padding
             Defaults to ``"resize"``.
-            / 리사이즈 방법 - "resize", "black_padding", "noise_padding" 중 하나
+            / 리사이즈 방법:
+            - ``"resize"``: Nearest neighbor 보간 (기본값)
+            - ``"resize_bilinear"``: Bilinear 보간 (부드러움)
+            - ``"resize_aspect_padding"``: 비율 유지 + 최대 확대 + 패딩
+            - ``"black_padding"``: 리사이즈 없이 검은색 패딩만
+            - ``"noise_padding"``: 리사이즈 없이 노이즈 패딩만
 
     Example:
         >>> from pathlib import Path
@@ -144,7 +154,7 @@ class HDMAPDataset(AnomalibDataset):
         self.resize_method = resize_method  # 리사이즈 방법
         
         # 리사이즈 방법 유효성 검사
-        valid_methods = {"resize", "black_padding", "noise_padding"}
+        valid_methods = {"resize", "resize_bilinear", "resize_aspect_padding", "black_padding", "noise_padding"}
         if self.resize_method not in valid_methods:
             msg = f"Invalid resize_method '{self.resize_method}'. Valid methods: {valid_methods}"
             raise ValueError(msg)
@@ -222,7 +232,40 @@ class HDMAPDataset(AnomalibDataset):
             img_tensor = torch.from_numpy(img).unsqueeze(0)  # (1, C, H, W)
             resized = F.interpolate(img_tensor, size=(target_h, target_w), mode='nearest')
             return resized.squeeze(0).numpy()  # (C, H, W)
-            
+
+        elif self.resize_method == 'resize_bilinear':
+            # Bilinear interpolation 리사이즈 (부드러운 보간)
+            img_tensor = torch.from_numpy(img).unsqueeze(0)  # (1, C, H, W)
+            resized = F.interpolate(img_tensor, size=(target_h, target_w), mode='bilinear', align_corners=False)
+            return resized.squeeze(0).numpy()  # (C, H, W)
+
+        elif self.resize_method == 'resize_aspect_padding':
+            # Aspect ratio 유지하면서 최대 확대 후 패딩
+            # 1. 비율 계산: 가로/세로 중 더 큰 스케일 팩터 사용
+            scale_h = target_h / current_h
+            scale_w = target_w / current_w
+            scale = min(scale_h, scale_w)  # aspect ratio 유지하면서 fit
+
+            # 2. 새 크기 계산
+            new_h = int(current_h * scale)
+            new_w = int(current_w * scale)
+
+            # 3. Bilinear interpolation으로 리사이즈
+            img_tensor = torch.from_numpy(img).unsqueeze(0)  # (1, C, H, W)
+            resized = F.interpolate(img_tensor, size=(new_h, new_w), mode='bilinear', align_corners=False)
+            resized = resized.squeeze(0)  # (C, new_h, new_w)
+
+            # 4. 패딩 추가 (중앙 배치)
+            pad_h = target_h - new_h
+            pad_w = target_w - new_w
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+
+            padded = F.pad(resized, (pad_left, pad_right, pad_top, pad_bottom), mode='constant', value=0.0)
+            return padded.numpy()  # (C, target_h, target_w)
+
         elif self.resize_method == 'black_padding':
             # 검은색 패딩
             if current_h >= target_h and current_w >= target_w:
