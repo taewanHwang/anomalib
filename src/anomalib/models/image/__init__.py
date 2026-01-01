@@ -56,6 +56,7 @@ from .draem import Draem
 from .dsr import Dsr
 from .efficient_ad import EfficientAd
 from .fastflow import Fastflow
+from .feclip import FEClip
 from .fre import Fre
 from .ganomaly import Ganomaly
 from .padim import Padim
@@ -79,6 +80,7 @@ __all__ = [
     "Dsr",
     "EfficientAd",
     "Fastflow",
+    "FEClip",
     "Fre",
     "Ganomaly",
     "Padim",
