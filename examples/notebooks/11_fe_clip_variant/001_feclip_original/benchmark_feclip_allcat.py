@@ -21,6 +21,7 @@ from anomalib.data import MVTecAD, BTech, Visa
 from anomalib.data.dataclasses.torch.image import ImageBatch, ImageItem
 from anomalib.models.image import FEClip
 from anomalib.models.image.feclip.losses import focal_loss, dice_loss, bce_loss
+from anomalib.metrics.aupro import _AUPRO
 
 # Image size for FE-CLIP
 IMAGE_SIZE = 336
@@ -261,7 +262,62 @@ def save_heatmap_visualization(image, anomaly_map, gt_mask, pred_score, gt_label
     plt.close()
 
 
-def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_dir=None, category=None, n_vis=3):
+def compute_pixel_auroc(all_masks_pred: list, all_masks_gt: list) -> float:
+    """Compute pixel-level AUROC."""
+    preds_flat = []
+    targets_flat = []
+
+    for pred, gt in zip(all_masks_pred, all_masks_gt):
+        if gt is None or gt.sum() == 0:
+            continue
+        preds_flat.append(pred.flatten())
+        targets_flat.append(gt.flatten())
+
+    if len(preds_flat) == 0:
+        return 0.5
+
+    preds = np.concatenate(preds_flat)
+    targets = np.concatenate(targets_flat)
+
+    if len(np.unique(targets)) < 2:
+        return 0.5
+
+    return roc_auc_score(targets, preds)
+
+
+def compute_pro_score(all_masks_pred: list, all_masks_gt: list, device: str = "cuda") -> float:
+    """Compute PRO (Per-Region Overlap) score using AUPRO metric on GPU."""
+    pro_metric = _AUPRO(fpr_limit=0.3)
+    n_valid = 0
+
+    for pred, gt in zip(all_masks_pred, all_masks_gt):
+        if gt is None:
+            continue
+        # pred should be float, target should be int/long
+        # Move to GPU for faster connected components analysis
+        pred_tensor = torch.tensor(pred).float().to(device) if not isinstance(pred, torch.Tensor) else pred.float().to(device)
+        gt_tensor = torch.tensor(gt).long().to(device) if not isinstance(gt, torch.Tensor) else gt.long().to(device)
+
+        if gt_tensor.sum() == 0:
+            continue
+
+        # Normalize pred to [0, 1] if needed
+        if pred_tensor.max() > 1.0:
+            pred_tensor = pred_tensor / pred_tensor.max()
+
+        pro_metric.update(pred_tensor.unsqueeze(0), gt_tensor.unsqueeze(0))
+        n_valid += 1
+
+    if n_valid == 0:
+        return 0.0
+
+    try:
+        return pro_metric.compute().item()
+    except Exception:
+        return 0.0
+
+
+def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_dir=None, category=None, n_vis=10):
     """Evaluate model on a datamodule.
 
     Args:
@@ -272,12 +328,27 @@ def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_
         visualize: Whether to save visualizations
         vis_dir: Directory to save visualizations
         category: Category name for visualization folder
-        n_vis: Number of samples to visualize per class (normal/anomaly)
+        n_vis: Number of samples to visualize per class (normal/anomaly), default 10
     """
     datamodule.setup()
 
+    # CLIP-style mask transform: Resize shorter edge + CenterCrop (same as image)
+    mask_resize = Resize(IMAGE_SIZE, interpolation=InterpolationMode.NEAREST, antialias=False)
+    mask_crop = CenterCrop((IMAGE_SIZE, IMAGE_SIZE))
+
+    def preprocess_gt_mask(mask_tensor):
+        """Apply CLIP-style preprocessing to GT mask."""
+        if mask_tensor is None:
+            return None
+        if mask_tensor.ndim == 2:
+            mask_tensor = mask_tensor.unsqueeze(0)
+        mask_processed = mask_crop(mask_resize(mask_tensor))
+        return mask_processed.squeeze(0)
+
     all_scores = []
     all_labels = []
+    all_masks_pred = []
+    all_masks_gt = []
 
     # For visualization: track how many we've saved
     n_normal_saved = 0
@@ -290,6 +361,26 @@ def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_
             out = model.model(images)
             all_scores.append(out.pred_score.cpu())
             all_labels.append(batch.gt_label.cpu())
+
+            # Collect pixel-level predictions and ground truth
+            for i in range(len(images)):
+                amap = out.anomaly_map[i].cpu().numpy()
+                all_masks_pred.append(amap)
+
+                gt_mask = None
+                if batch.gt_mask is not None:
+                    # Apply CLIP-style preprocessing to GT mask (Resize + CenterCrop)
+                    gt_mask_processed = preprocess_gt_mask(batch.gt_mask[i])
+                    gt_mask = gt_mask_processed.cpu().numpy()
+
+                    # Resize to match anomaly map size if still different
+                    if gt_mask.shape != amap.shape:
+                        gt_mask = torch.nn.functional.interpolate(
+                            torch.tensor(gt_mask).unsqueeze(0).unsqueeze(0).float(),
+                            size=amap.shape,
+                            mode='nearest'
+                        ).squeeze().numpy()
+                all_masks_gt.append(gt_mask)
 
             # Save visualizations
             if visualize and vis_dir and category:
@@ -306,16 +397,17 @@ def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_
                     idx = n_anomaly_saved if gt_label == 1 else n_normal_saved
                     save_path = vis_dir / category / f"{label_str}_{idx:03d}.png"
 
-                    gt_mask = batch.gt_mask[i] if batch.gt_mask is not None else None
-                    if gt_mask is not None and gt_mask.ndim == 3:
-                        gt_mask = gt_mask.squeeze(0)
+                    # Apply CLIP-style preprocessing to GT mask for visualization
+                    gt_mask_vis = None
+                    if batch.gt_mask is not None:
+                        gt_mask_vis = preprocess_gt_mask(batch.gt_mask[i])
 
                     image_path = batch.image_path[i] if hasattr(batch, 'image_path') and batch.image_path else None
 
                     save_heatmap_visualization(
                         image=images[i],
                         anomaly_map=out.anomaly_map[i],
-                        gt_mask=gt_mask,
+                        gt_mask=gt_mask_vis,
                         pred_score=out.pred_score[i].item(),
                         gt_label=gt_label,
                         save_path=save_path,
@@ -332,8 +424,10 @@ def evaluate_dataset(model, datamodule, device, transform, visualize=False, vis_
 
     auroc = roc_auc_score(labels, scores)
     ap = average_precision_score(labels, scores)
+    pixel_auroc = compute_pixel_auroc(all_masks_pred, all_masks_gt)
+    pro = compute_pro_score(all_masks_pred, all_masks_gt, device=device)
 
-    return auroc, ap, len(labels)
+    return auroc, ap, pixel_auroc, pro, len(labels)
 
 
 def finetune_on_visa_all(epochs: int = 9, batch_size: int = 16, device: str = "cuda"):
@@ -376,16 +470,18 @@ def finetune_on_mvtec_all(epochs: int = 9, batch_size: int = 16, device: str = "
     return model
 
 
-def test_on_mvtec(model, device, transform, visualize=False, vis_dir=None):
+def test_on_mvtec(model, device, transform, visualize=False, vis_dir=None, n_vis=10):
     """Test model on all MVTec AD categories."""
-    logger.info("\n" + "-" * 70)
+    logger.info("\n" + "-" * 80)
     logger.info("Testing on MVTec AD (all categories)")
-    logger.info("-" * 70)
-    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'N':>6}")
-    logger.info("-" * 70)
+    logger.info("-" * 80)
+    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'pAUROC':>8} {'PRO':>8} {'N':>6}")
+    logger.info("-" * 80)
 
     aurocs = []
     aps = []
+    pixel_aurocs = []
+    pros = []
 
     for category in MVTEC_CATEGORIES:
         datamodule = MVTecAD(
@@ -394,35 +490,41 @@ def test_on_mvtec(model, device, transform, visualize=False, vis_dir=None):
             eval_batch_size=16,
             num_workers=8,
         )
-        auroc, ap, n = evaluate_dataset(
+        auroc, ap, pixel_auroc, pro, n = evaluate_dataset(
             model, datamodule, device, transform,
-            visualize=visualize, vis_dir=vis_dir, category=category
+            visualize=visualize, vis_dir=vis_dir, category=category, n_vis=n_vis
         )
         aurocs.append(auroc)
         aps.append(ap)
-        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {n:>6}")
+        pixel_aurocs.append(pixel_auroc)
+        pros.append(pro)
+        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {pixel_auroc*100:>7.1f}% {pro*100:>7.1f}% {n:>6}")
 
     mean_auroc = np.mean(aurocs)
     mean_ap = np.mean(aps)
+    mean_pixel_auroc = np.mean(pixel_aurocs)
+    mean_pro = np.mean(pros)
 
-    logger.info("-" * 70)
-    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}%")
-    logger.info(f"{'Paper':<15} {'91.9%':>8} {'96.5%':>8}")
-    logger.info(f"{'Gap':<15} {(mean_auroc*100-91.9):>+7.1f}%")
+    logger.info("-" * 80)
+    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}% {mean_pixel_auroc*100:>7.1f}% {mean_pro*100:>7.1f}%")
+    logger.info(f"{'Paper':<15} {'91.9%':>8} {'96.5%':>8} {'92.6%':>8} {'88.3%':>8}")
+    logger.info(f"{'Gap':<15} {(mean_auroc*100-91.9):>+7.1f}% {' ':>8} {(mean_pixel_auroc*100-92.6):>+7.1f}% {(mean_pro*100-88.3):>+7.1f}%")
 
-    return mean_auroc, mean_ap
+    return mean_auroc, mean_ap, mean_pixel_auroc, mean_pro
 
 
-def test_on_btad(model, device, transform, visualize=False, vis_dir=None):
+def test_on_btad(model, device, transform, visualize=False, vis_dir=None, n_vis=10):
     """Test model on all BTAD categories."""
-    logger.info("\n" + "-" * 70)
+    logger.info("\n" + "-" * 80)
     logger.info("Testing on BTAD (all categories)")
-    logger.info("-" * 70)
-    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'N':>6}")
-    logger.info("-" * 70)
+    logger.info("-" * 80)
+    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'pAUROC':>8} {'PRO':>8} {'N':>6}")
+    logger.info("-" * 80)
 
     aurocs = []
     aps = []
+    pixel_aurocs = []
+    pros = []
 
     for category in BTAD_CATEGORIES:
         datamodule = BTech(
@@ -431,35 +533,41 @@ def test_on_btad(model, device, transform, visualize=False, vis_dir=None):
             eval_batch_size=16,
             num_workers=8,
         )
-        auroc, ap, n = evaluate_dataset(
+        auroc, ap, pixel_auroc, pro, n = evaluate_dataset(
             model, datamodule, device, transform,
-            visualize=visualize, vis_dir=vis_dir, category=category
+            visualize=visualize, vis_dir=vis_dir, category=category, n_vis=n_vis
         )
         aurocs.append(auroc)
         aps.append(ap)
-        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {n:>6}")
+        pixel_aurocs.append(pixel_auroc)
+        pros.append(pro)
+        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {pixel_auroc*100:>7.1f}% {pro*100:>7.1f}% {n:>6}")
 
     mean_auroc = np.mean(aurocs)
     mean_ap = np.mean(aps)
+    mean_pixel_auroc = np.mean(pixel_aurocs)
+    mean_pro = np.mean(pros)
 
-    logger.info("-" * 70)
-    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}%")
-    logger.info(f"{'Paper':<15} {'90.3%':>8} {'90.0%':>8}")
-    logger.info(f"{'Gap':<15} {(mean_auroc*100-90.3):>+7.1f}%")
+    logger.info("-" * 80)
+    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}% {mean_pixel_auroc*100:>7.1f}% {mean_pro*100:>7.1f}%")
+    logger.info(f"{'Paper':<15} {'90.3%':>8} {'90.0%':>8} {'95.6%':>8} {'80.4%':>8}")
+    logger.info(f"{'Gap':<15} {(mean_auroc*100-90.3):>+7.1f}% {' ':>8} {(mean_pixel_auroc*100-95.6):>+7.1f}% {(mean_pro*100-80.4):>+7.1f}%")
 
-    return mean_auroc, mean_ap
+    return mean_auroc, mean_ap, mean_pixel_auroc, mean_pro
 
 
-def test_on_visa(model, device, transform, visualize=False, vis_dir=None):
+def test_on_visa(model, device, transform, visualize=False, vis_dir=None, n_vis=10):
     """Test model on all VisA categories."""
-    logger.info("\n" + "-" * 70)
+    logger.info("\n" + "-" * 80)
     logger.info("Testing on VisA (all categories)")
-    logger.info("-" * 70)
-    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'N':>6}")
-    logger.info("-" * 70)
+    logger.info("-" * 80)
+    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'pAUROC':>8} {'PRO':>8} {'N':>6}")
+    logger.info("-" * 80)
 
     aurocs = []
     aps = []
+    pixel_aurocs = []
+    pros = []
 
     for category in VISA_CATEGORIES:
         datamodule = Visa(
@@ -468,23 +576,27 @@ def test_on_visa(model, device, transform, visualize=False, vis_dir=None):
             eval_batch_size=16,
             num_workers=8,
         )
-        auroc, ap, n = evaluate_dataset(
+        auroc, ap, pixel_auroc, pro, n = evaluate_dataset(
             model, datamodule, device, transform,
-            visualize=visualize, vis_dir=vis_dir, category=category
+            visualize=visualize, vis_dir=vis_dir, category=category, n_vis=n_vis
         )
         aurocs.append(auroc)
         aps.append(ap)
-        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {n:>6}")
+        pixel_aurocs.append(pixel_auroc)
+        pros.append(pro)
+        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {pixel_auroc*100:>7.1f}% {pro*100:>7.1f}% {n:>6}")
 
     mean_auroc = np.mean(aurocs)
     mean_ap = np.mean(aps)
+    mean_pixel_auroc = np.mean(pixel_aurocs)
+    mean_pro = np.mean(pros)
 
-    logger.info("-" * 70)
-    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}%")
-    logger.info(f"{'Paper':<15} {'84.6%':>8} {'86.6%':>8}")
-    logger.info(f"{'Gap':<15} {(mean_auroc*100-84.6):>+7.1f}%")
+    logger.info("-" * 80)
+    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}% {mean_pixel_auroc*100:>7.1f}% {mean_pro*100:>7.1f}%")
+    logger.info(f"{'Paper':<15} {'84.6%':>8} {'86.6%':>8} {'95.9%':>8} {'92.8%':>8}")
+    logger.info(f"{'Gap':<15} {(mean_auroc*100-84.6):>+7.1f}% {' ':>8} {(mean_pixel_auroc*100-95.9):>+7.1f}% {(mean_pro*100-92.8):>+7.1f}%")
 
-    return mean_auroc, mean_ap
+    return mean_auroc, mean_ap, mean_pixel_auroc, mean_pro
 
 
 def set_seed(seed):
@@ -507,6 +619,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--visualize", action="store_true", help="Save heatmap visualizations")
     parser.add_argument("--vis_dir", type=str, default="examples/notebooks/11_fe_clip_variant/results/feclip_vis", help="Directory for visualizations")
+    parser.add_argument("--n_vis", type=int, default=10, help="Number of samples to visualize per class (normal/anomaly)")
     args = parser.parse_args()
 
     # Set seed for reproducibility
@@ -536,8 +649,10 @@ def main():
 
         # Test on MVTec AD
         mvtec_vis_dir = vis_dir / "mvtec" if vis_dir else None
-        mvtec_auroc, mvtec_ap = test_on_mvtec(model_visa, device, transform, visualize=args.visualize, vis_dir=mvtec_vis_dir)
-        results["MVTec AD"] = {"AUROC": mvtec_auroc, "AP": mvtec_ap}
+        mvtec_auroc, mvtec_ap, mvtec_pauroc, mvtec_pro = test_on_mvtec(
+            model_visa, device, transform, visualize=args.visualize, vis_dir=mvtec_vis_dir, n_vis=args.n_vis
+        )
+        results["MVTec AD"] = {"AUROC": mvtec_auroc, "AP": mvtec_ap, "pAUROC": mvtec_pauroc, "PRO": mvtec_pro}
 
     if args.mode in ["btad", "all"]:
         logger.info("\n" + "=" * 70)
@@ -552,8 +667,10 @@ def main():
 
         # Test on BTAD
         btad_vis_dir = vis_dir / "btad" if vis_dir else None
-        btad_auroc, btad_ap = test_on_btad(model_mvtec, device, transform, visualize=args.visualize, vis_dir=btad_vis_dir)
-        results["BTAD"] = {"AUROC": btad_auroc, "AP": btad_ap}
+        btad_auroc, btad_ap, btad_pauroc, btad_pro = test_on_btad(
+            model_mvtec, device, transform, visualize=args.visualize, vis_dir=btad_vis_dir, n_vis=args.n_vis
+        )
+        results["BTAD"] = {"AUROC": btad_auroc, "AP": btad_ap, "pAUROC": btad_pauroc, "PRO": btad_pro}
 
     if args.mode in ["visa"]:
         logger.info("\n" + "=" * 70)
@@ -568,29 +685,49 @@ def main():
 
         # Test on VisA
         visa_vis_dir = vis_dir / "visa" if vis_dir else None
-        visa_auroc, visa_ap = test_on_visa(model_mvtec, device, transform, visualize=args.visualize, vis_dir=visa_vis_dir)
-        results["VisA"] = {"AUROC": visa_auroc, "AP": visa_ap}
+        visa_auroc, visa_ap, visa_pauroc, visa_pro = test_on_visa(
+            model_mvtec, device, transform, visualize=args.visualize, vis_dir=visa_vis_dir, n_vis=args.n_vis
+        )
+        results["VisA"] = {"AUROC": visa_auroc, "AP": visa_ap, "pAUROC": visa_pauroc, "PRO": visa_pro}
 
     # Summary
-    logger.info("\n" + "=" * 70)
+    logger.info("\n" + "=" * 100)
     logger.info("BENCHMARK SUMMARY (All Categories Training)")
-    logger.info("=" * 70)
-    logger.info(f"{'Dataset':<15} {'Ours':>15} {'Paper':>15} {'Gap':>10}")
+    logger.info("=" * 100)
+    logger.info("Image-level Detection (ZSAD):")
+    logger.info(f"{'Dataset':<15} {'Ours AUROC/AP':>20} {'Paper AUROC/AP':>20} {'Gap':>10}")
     logger.info("-" * 70)
 
     if "MVTec AD" in results:
         r = results["MVTec AD"]
-        logger.info(f"{'MVTec AD':<15} {r['AUROC']*100:>6.1f}/{r['AP']*100:>6.1f} {'91.9/96.5':>15} {(r['AUROC']*100-91.9):>+.1f}%")
+        logger.info(f"{'MVTec AD':<15} {r['AUROC']*100:>8.1f}/{r['AP']*100:<8.1f} {'91.9/96.5':>20} {(r['AUROC']*100-91.9):>+.1f}%")
 
     if "BTAD" in results:
         r = results["BTAD"]
-        logger.info(f"{'BTAD':<15} {r['AUROC']*100:>6.1f}/{r['AP']*100:>6.1f} {'90.3/90.0':>15} {(r['AUROC']*100-90.3):>+.1f}%")
+        logger.info(f"{'BTAD':<15} {r['AUROC']*100:>8.1f}/{r['AP']*100:<8.1f} {'90.3/90.0':>20} {(r['AUROC']*100-90.3):>+.1f}%")
 
     if "VisA" in results:
         r = results["VisA"]
-        logger.info(f"{'VisA':<15} {r['AUROC']*100:>6.1f}/{r['AP']*100:>6.1f} {'84.6/86.6':>15} {(r['AUROC']*100-84.6):>+.1f}%")
+        logger.info(f"{'VisA':<15} {r['AUROC']*100:>8.1f}/{r['AP']*100:<8.1f} {'84.6/86.6':>20} {(r['AUROC']*100-84.6):>+.1f}%")
 
-    logger.info("=" * 70)
+    logger.info("")
+    logger.info("Pixel-level Segmentation (ZSAS):")
+    logger.info(f"{'Dataset':<15} {'Ours pAUROC/PRO':>20} {'Paper pAUROC/PRO':>20} {'Gap pAUROC/PRO':>20}")
+    logger.info("-" * 80)
+
+    if "MVTec AD" in results:
+        r = results["MVTec AD"]
+        logger.info(f"{'MVTec AD':<15} {r['pAUROC']*100:>8.1f}/{r['PRO']*100:<8.1f} {'92.6/88.3':>20} {(r['pAUROC']*100-92.6):>+.1f}/{(r['PRO']*100-88.3):>+.1f}%")
+
+    if "BTAD" in results:
+        r = results["BTAD"]
+        logger.info(f"{'BTAD':<15} {r['pAUROC']*100:>8.1f}/{r['PRO']*100:<8.1f} {'95.6/80.4':>20} {(r['pAUROC']*100-95.6):>+.1f}/{(r['PRO']*100-80.4):>+.1f}%")
+
+    if "VisA" in results:
+        r = results["VisA"]
+        logger.info(f"{'VisA':<15} {r['pAUROC']*100:>8.1f}/{r['PRO']*100:<8.1f} {'95.9/92.8':>20} {(r['pAUROC']*100-95.9):>+.1f}/{(r['PRO']*100-92.8):>+.1f}%")
+
+    logger.info("=" * 100)
 
 
 if __name__ == "__main__":

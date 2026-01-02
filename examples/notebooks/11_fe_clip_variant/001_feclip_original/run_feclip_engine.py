@@ -40,6 +40,8 @@ from anomalib.engine import Engine
 from sklearn.metrics import roc_auc_score, average_precision_score
 from torchvision.transforms.v2 import Resize, CenterCrop, InterpolationMode
 
+from anomalib.metrics.aupro import _AUPRO
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -289,6 +291,80 @@ def train_feclip(
     return model
 
 
+def compute_pixel_auroc(all_masks_pred: list, all_masks_gt: list) -> float:
+    """Compute pixel-level AUROC.
+
+    Args:
+        all_masks_pred: List of predicted anomaly maps (H, W)
+        all_masks_gt: List of ground truth masks (H, W)
+
+    Returns:
+        Pixel-level AUROC score
+    """
+    preds_flat = []
+    targets_flat = []
+
+    for pred, gt in zip(all_masks_pred, all_masks_gt):
+        if gt is None or gt.sum() == 0:
+            continue
+        preds_flat.append(pred.flatten())
+        targets_flat.append(gt.flatten())
+
+    if len(preds_flat) == 0:
+        return 0.5
+
+    preds = np.concatenate(preds_flat)
+    targets = np.concatenate(targets_flat)
+
+    if len(np.unique(targets)) < 2:
+        return 0.5
+
+    return roc_auc_score(targets, preds)
+
+
+def compute_pro_score(all_masks_pred: list, all_masks_gt: list, device: str = "cuda") -> float:
+    """Compute PRO (Per-Region Overlap) score using AUPRO metric on GPU.
+
+    Args:
+        all_masks_pred: List of predicted anomaly maps (H, W)
+        all_masks_gt: List of ground truth masks (H, W)
+        device: Device for computation (default: cuda for GPU acceleration)
+
+    Returns:
+        PRO score (AUPRO with fpr_limit=0.3)
+    """
+    pro_metric = _AUPRO(fpr_limit=0.3)
+    n_valid = 0
+
+    for pred, gt in zip(all_masks_pred, all_masks_gt):
+        if gt is None:
+            continue
+        # Ensure proper tensor format - pred should be float, target should be int/long
+        # Move to GPU for faster connected components analysis
+        pred_tensor = torch.tensor(pred).float().to(device) if not isinstance(pred, torch.Tensor) else pred.float().to(device)
+        gt_tensor = torch.tensor(gt).long().to(device) if not isinstance(gt, torch.Tensor) else gt.long().to(device)
+
+        # Skip if no anomaly in ground truth
+        if gt_tensor.sum() == 0:
+            continue
+
+        # Normalize pred to [0, 1] if needed
+        if pred_tensor.max() > 1.0:
+            pred_tensor = pred_tensor / pred_tensor.max()
+
+        pro_metric.update(pred_tensor.unsqueeze(0), gt_tensor.unsqueeze(0))
+        n_valid += 1
+
+    if n_valid == 0:
+        return 0.0
+
+    try:
+        return pro_metric.compute().item()
+    except Exception as e:
+        logger.warning(f"PRO computation failed: {e}")
+        return 0.0
+
+
 def evaluate_and_visualize(
     model,
     dataset_class,
@@ -298,22 +374,52 @@ def evaluate_and_visualize(
     dataset_name: str,
     device: str,
     visualize: bool = True,
-    n_vis: int = 3,
+    n_vis: int = 10,
 ):
-    """Evaluate model and optionally save visualizations."""
+    """Evaluate model and optionally save visualizations.
+
+    Args:
+        model: FE-CLIP model
+        dataset_class: Dataset class (MVTecAD, BTech, Visa)
+        root: Dataset root path
+        categories: List of categories to evaluate
+        exp_dir: Experiment directory
+        dataset_name: Name of the dataset for logging
+        device: Device to use
+        visualize: Whether to save visualizations
+        n_vis: Number of samples to visualize per class (normal/anomaly), default 10
+    """
     import matplotlib.pyplot as plt
 
     model.eval()
     transform = model.pre_processor.transform
 
+    # CLIP-style mask transform: Resize shorter edge + CenterCrop (same as image)
+    # This ensures GT masks are properly aligned with preprocessed images
+    mask_resize = Resize(336, interpolation=InterpolationMode.NEAREST, antialias=False)
+    mask_crop = CenterCrop((336, 336))
+
+    def preprocess_gt_mask(mask_tensor):
+        """Apply CLIP-style preprocessing to GT mask."""
+        if mask_tensor is None:
+            return None
+        # Ensure 3D tensor (C, H, W)
+        if mask_tensor.ndim == 2:
+            mask_tensor = mask_tensor.unsqueeze(0)
+        # Apply same Resize + CenterCrop as image
+        mask_processed = mask_crop(mask_resize(mask_tensor))
+        return mask_processed.squeeze(0)  # Return (H, W)
+
     vis_dir = exp_dir / "visualizations" / dataset_name
     results = {"categories": {}}
     aurocs = []
     aps = []
+    pixel_aurocs = []
+    pros = []
 
     logger.info(f"\nEvaluating on {dataset_name}...")
-    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'N':>6}")
-    logger.info("-" * 40)
+    logger.info(f"{'Category':<15} {'AUROC':>8} {'AP':>8} {'pAUROC':>8} {'PRO':>8} {'N':>6}")
+    logger.info("-" * 60)
 
     for category in categories:
         dm = dataset_class(root=root, category=category, eval_batch_size=16, num_workers=8)
@@ -321,6 +427,8 @@ def evaluate_and_visualize(
 
         all_scores = []
         all_labels = []
+        all_masks_pred = []
+        all_masks_gt = []
         n_normal_vis, n_anomaly_vis = 0, 0
 
         with torch.no_grad():
@@ -329,6 +437,27 @@ def evaluate_and_visualize(
                 out = model.model(images)
                 all_scores.append(out.pred_score.cpu())
                 all_labels.append(batch.gt_label.cpu())
+
+                # Collect pixel-level predictions and ground truth
+                for i in range(len(images)):
+                    amap = out.anomaly_map[i].cpu().numpy()
+                    all_masks_pred.append(amap)
+
+                    gt_mask = None
+                    if batch.gt_mask is not None:
+                        # Apply CLIP-style preprocessing to GT mask (Resize + CenterCrop)
+                        gt_mask_tensor = batch.gt_mask[i]
+                        gt_mask_processed = preprocess_gt_mask(gt_mask_tensor)
+                        gt_mask = gt_mask_processed.cpu().numpy()
+
+                        # Resize to match anomaly map size if still different
+                        if gt_mask.shape != amap.shape:
+                            gt_mask = torch.nn.functional.interpolate(
+                                torch.tensor(gt_mask).unsqueeze(0).unsqueeze(0).float(),
+                                size=amap.shape,
+                                mode='nearest'
+                            ).squeeze().numpy()
+                    all_masks_gt.append(gt_mask)
 
                 # Save visualizations
                 if visualize:
@@ -339,9 +468,14 @@ def evaluate_and_visualize(
                         if gt_label == 1 and n_anomaly_vis >= n_vis:
                             continue
 
+                        # Apply CLIP-style preprocessing to GT mask for visualization
+                        gt_mask_vis = None
+                        if batch.gt_mask is not None:
+                            gt_mask_vis = preprocess_gt_mask(batch.gt_mask[i])
+
                         save_visualization(
                             images[i], out.anomaly_map[i],
-                            batch.gt_mask[i] if batch.gt_mask is not None else None,
+                            gt_mask_vis,
                             out.pred_score[i].item(), gt_label,
                             vis_dir / category,
                             f"{'anomaly' if gt_label else 'normal'}_{n_anomaly_vis if gt_label else n_normal_vis}.png"
@@ -355,21 +489,38 @@ def evaluate_and_visualize(
         scores = torch.cat(all_scores).numpy()
         labels = torch.cat(all_labels).numpy()
 
+        # Image-level metrics
         auroc = roc_auc_score(labels, scores) if len(np.unique(labels)) > 1 else 0.5
         ap = average_precision_score(labels, scores) if len(np.unique(labels)) > 1 else 0.5
 
+        # Pixel-level metrics
+        pixel_auroc = compute_pixel_auroc(all_masks_pred, all_masks_gt)
+        pro = compute_pro_score(all_masks_pred, all_masks_gt, device)
+
         aurocs.append(auroc)
         aps.append(ap)
-        results["categories"][category] = {"auroc": auroc, "ap": ap, "n_samples": len(labels)}
-        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {len(labels):>6}")
+        pixel_aurocs.append(pixel_auroc)
+        pros.append(pro)
+
+        results["categories"][category] = {
+            "auroc": auroc, "ap": ap,
+            "pixel_auroc": pixel_auroc, "pro": pro,
+            "n_samples": len(labels)
+        }
+        logger.info(f"{category:<15} {auroc*100:>7.1f}% {ap*100:>7.1f}% {pixel_auroc*100:>7.1f}% {pro*100:>7.1f}% {len(labels):>6}")
 
     mean_auroc = np.mean(aurocs)
     mean_ap = np.mean(aps)
+    mean_pixel_auroc = np.mean(pixel_aurocs)
+    mean_pro = np.mean(pros)
+
     results["mean_auroc"] = mean_auroc
     results["mean_ap"] = mean_ap
+    results["mean_pixel_auroc"] = mean_pixel_auroc
+    results["mean_pro"] = mean_pro
 
-    logger.info("-" * 40)
-    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}%")
+    logger.info("-" * 60)
+    logger.info(f"{'Mean':<15} {mean_auroc*100:>7.1f}% {mean_ap*100:>7.1f}% {mean_pixel_auroc*100:>7.1f}% {mean_pro*100:>7.1f}%")
 
     return results
 
@@ -442,6 +593,8 @@ def main():
                         help="Use CLIP's learned logit_scale instead of fixed temperature")
     parser.add_argument("--lfs_agg_mode", type=str, default="mean", choices=["mean", "abs", "power"],
                         help="LFS aggregation mode: mean (signed), abs, power")
+    parser.add_argument("--n_vis", type=int, default=10,
+                        help="Number of samples to visualize per class (normal/anomaly)")
     args = parser.parse_args()
 
     # Parse tap_indices
@@ -524,20 +677,38 @@ def main():
         dataset_name=args.mode,
         device=device,
         visualize=args.visualize,
+        n_vis=args.n_vis,
     )
+
+    # Paper reference values (segmentation: pAUROC/PRO)
+    paper_seg = {
+        "mvtec": {"pixel_auroc": 92.6, "pro": 88.3},
+        "visa": {"pixel_auroc": 95.9, "pro": 92.8},
+        "btad": {"pixel_auroc": 95.6, "pro": 80.4},
+    }
 
     # Add paper comparison
     results["paper_auroc"] = paper_auroc
     results["paper_ap"] = paper_ap
     results["gap_auroc"] = results["mean_auroc"] * 100 - paper_auroc
+    results["paper_pixel_auroc"] = paper_seg[args.mode]["pixel_auroc"]
+    results["paper_pro"] = paper_seg[args.mode]["pro"]
+    results["gap_pixel_auroc"] = results["mean_pixel_auroc"] * 100 - paper_seg[args.mode]["pixel_auroc"]
+    results["gap_pro"] = results["mean_pro"] * 100 - paper_seg[args.mode]["pro"]
 
     # Summary
-    logger.info("\n" + "=" * 60)
+    logger.info("\n" + "=" * 80)
     logger.info("SUMMARY")
-    logger.info("=" * 60)
-    logger.info(f"Ours:  AUROC={results['mean_auroc']*100:.1f}%, AP={results['mean_ap']*100:.1f}%")
-    logger.info(f"Paper: AUROC={paper_auroc}%, AP={paper_ap}%")
-    logger.info(f"Gap:   {results['gap_auroc']:+.1f}%")
+    logger.info("=" * 80)
+    logger.info("Image-level Detection (ZSAD):")
+    logger.info(f"  Ours:  AUROC={results['mean_auroc']*100:.1f}%, AP={results['mean_ap']*100:.1f}%")
+    logger.info(f"  Paper: AUROC={paper_auroc}%, AP={paper_ap}%")
+    logger.info(f"  Gap:   {results['gap_auroc']:+.1f}%")
+    logger.info("")
+    logger.info("Pixel-level Segmentation (ZSAS):")
+    logger.info(f"  Ours:  pAUROC={results['mean_pixel_auroc']*100:.1f}%, PRO={results['mean_pro']*100:.1f}%")
+    logger.info(f"  Paper: pAUROC={paper_seg[args.mode]['pixel_auroc']}%, PRO={paper_seg[args.mode]['pro']}%")
+    logger.info(f"  Gap:   pAUROC {results['gap_pixel_auroc']:+.1f}%, PRO {results['gap_pro']:+.1f}%")
 
     # Save results
     results["args"] = vars(args)
